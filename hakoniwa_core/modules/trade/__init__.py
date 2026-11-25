@@ -2601,6 +2601,13 @@ class _Round:
                 shipping.economy["ships_short"] = history[-keep:]
                 loads = [*shipping.economy.get(ship_orders.SHORT_LOAD, []), here.ship_short_load]
                 shipping.economy[ship_orders.SHORT_LOAD] = loads[-keep:]
+            if self.config.get("trade.shipping_reentry"):
+                # 海運の再参入（W-308 の 2）の需要: このターンに船がなくて運べなかった荷（要る船の
+                # 重さ。商社の需要から、自分の船・借りた船・外国の商人で運べた分を引いた残り）を
+                # 残し、参入と撤退の段は前のターンの分で判定する。海運業がない島では施設の記録に
+                # 残らないので、貿易の状態に書く
+                state["reentry_short_prev"] = state.get("reentry_short_load", 0)
+                state["reentry_short_load"] = here.ship_short_load
             self._stats(island, here)
 
     def _keep_charter(self, island: IslandState, here: _IslandTurn) -> None:

@@ -150,6 +150,7 @@ from hakoniwa_core.state import (
 )
 from hakoniwa_core.trade import merchant, offtake, send_to_market
 from hakoniwa_core.trade import orders as ship_orders
+from hakoniwa_core.trade import reentry as trade_reentry
 from hakoniwa_core.trade import setup as trade_setup
 from hakoniwa_core.trade import traders as trade_traders
 from hakoniwa_core.turn.context import StageContext
@@ -469,6 +470,8 @@ class EntryExit(IslandStage):
         self._exits(island, ctx)
         self._foreclosures(island, ctx)
         if not is_planned(ctx.defs, island):
+            # 国営の海運業の政府引き取り（W-308 の 0。民営の売りの輪とは別の道）
+            self._take_over_shipping(island, ctx)
             # 居抜きの売り（FM-60）を先に。新しく建てる参入と合わせて firms.entries_per_turn 件まで
             slots = ctx.config.get("firms.entries_per_turn")
             slots -= self._sell_on_sale(island, ctx, slots)
@@ -482,6 +485,8 @@ class EntryExit(IslandStage):
         self._bank_entry(island, ctx)
         trade_setup.entry(island, ctx.defs, ctx.config, is_planned(ctx.defs, island), ctx.turn)
         trade_setup.expand(island, ctx, is_planned(ctx.defs, island))  # 商社の建て増し（W-308）
+        # 海運の後継の会社（W-308。切り替えが切なら何もしない）
+        trade_reentry.place_successor(island, ctx)
         # 土木業者の参入（W-270。埋まらなかった工事が続けば、資産を持つ層が出資して開く。IN-35）
         contracts.settle_new(island, ctx.config)
         contracts.entry(island, ctx.defs, ctx.config, is_planned(ctx.defs, island))
@@ -827,6 +832,10 @@ class EntryExit(IslandStage):
             seized = f.economy.get(SEIZED)
             if not isinstance(seized, dict):
                 continue
+            if trade_reentry.in_path(config, f):
+                # 海運業の売り値は、成約時点の船団の帳簿の残りから出す（W-308。管財中に退役した
+                # 組は売り値に入れない）。帳簿の値打ちを今の船団で付け直す
+                seized["book"] = banks.book_capital(f)
             if "book" not in seized:  # 管財人の前の差し押さえ: 売り値から帳簿の値打ちを戻す
                 share = config.get("firms.foreclosure_price")
                 seized["book"] = round(seized.get("price", 0) / share) if share else 0
@@ -839,7 +848,11 @@ class EntryExit(IslandStage):
             ship_orders.cancel_all(island, config, f)
             # 残った在庫は国が市場の値段で引き取り、その代金も同じ順で分ける（回3。E25）
             arrears.sell_stock_to_state(island, facility_entity(f.id), f.stock)
+            reentry_ship = trade_reentry.in_path(config, f)  # 差し押さえを終えると当たらなくなる
             close_foreclosure(island, f)
+            if reentry_ship:
+                # 買い手が付かなかった海運業の船は、組のまま国の倉庫へ（W-308 の 1）
+                trade_reentry.fleet_to_warehouse(island, config, f)
             take_over_stock(island, ctx, f)
             fac.vacate(island, f)
             freight_rates.forget(island)
@@ -2223,6 +2236,49 @@ class EntryExit(IslandStage):
         stats["firms.entered"] = stats.get("firms.entered", 0) + 1
         return None
 
+    def _take_over_shipping(self, island: IslandState, ctx: StageContext) -> None:
+        """国営の海運業の政府引き取り（W-308 の 0。切り替え trade.shipping_reentry）。
+
+        差し押さえ中の国営の海運業を、政府が売り値で引き取る（国の海運会社の救済）。民営の
+        居抜きの売りの輪（_sell_on_sale）には入れず、別の道にする。成立は、売り値と引き継ぎ
+        直後の燃料・賃金の不足分を国庫から出せるときだけ。出せない間は管財が続き、取り壊しに
+        至ったら船は国の倉庫へ行く（trade/reentry.py の 1）。成約は 1 回で確定させる: 代金を
+        施設に入れ、管財人の運転資金と請求を清算し（close_foreclosure）、持ち主を国に戻して
+        管財を解き、不足分を出資で足す。施設の番号と船団はそのまま残る。"""
+        config = ctx.config
+        if not trade_reentry.enabled(config):
+            return
+        for f in sorted(island.facilities, key=lambda f: f.id):
+            if not trade.is_shipping(config, f) or f.owner != OWNER_STATE:
+                continue
+            if not in_receivership(f) or not f.built:
+                continue
+            price = receivership.asking_price(config, f, ctx.turn)
+            if price is None:
+                continue
+            entity = facility_entity(f.id)
+            short = max(
+                0,
+                trade_reentry.operating_need(island, config, f) - ledger.money(island, entity),
+            )
+            if funds.available(island, Payer(ledger.GOV)) < price + short:
+                continue  # 国庫から出せない間は管財を続ける
+            own = ledger.money(island, entity)
+            funds.pay(island, Payer(ledger.GOV), entity, price, "foreclosure_sale")
+            close_foreclosure(island, f, own + price, "foreclosure_sale")
+            restart(island, ctx, f, OWNER_STATE, price, True)
+            if short > 0:
+                invest(island, ledger.GOV, entity, short)
+            trade_reentry.record_transfer(island, f, ledger.GOV, ctx.turn)
+            island.log.append(
+                LogEntry(
+                    "shipping_state_takeover",
+                    {"facility": f.kind, "x": f.x, "y": f.y, "price": price},
+                )
+            )
+            stats = island.stats
+            stats["firms.resold"] = stats.get("firms.resold", 0) + 1
+
     def _sell_on_sale(self, island: IslandState, ctx: StageContext, slots: int) -> int:
         """居抜きの売り（FM-60。2026-11-10）: 差し押さえた施設（管財人のもと）と閉鎖に入った施設を、
         資本家階級（同業の企業を先に。元の企業は買い手にしない）が、新しく建てる参入と同じ物差しで
@@ -2251,9 +2307,19 @@ class EntryExit(IslandStage):
         keep = settings["ebitda_turns"]
         offers = []
         for f in sorted(island.facilities, key=lambda f: f.id):
-            if not is_on_sale(f) or not f.built or not fac.on_map(f):
+            if not is_on_sale(f) or not f.built:
                 continue
-            if f.owner != OWNER_PRIVATE or not private_allowed(defs, island, f.kind):
+            # 海運業の再参入（W-308 の 0）: 差し押さえ中の海運業だけ、この経路の中では「マスが
+            # あること」と private_allowed を見ない（マスを持たず、民間が建てられない分類のため、
+            # ふつうの輪では必ず落ちる）。国営の海運業は政府の引き取り（_take_over_shipping）の
+            # 担当なので、ここでは買わない
+            reentry_ship = trade_reentry.in_path(config, f)
+            if reentry_ship:
+                if f.owner != OWNER_PRIVATE:
+                    continue
+            elif not fac.on_map(f):
+                continue
+            elif f.owner != OWNER_PRIVATE or not private_allowed(defs, island, f.kind):
                 continue
             price = receivership.asking_price(config, f, ctx.turn)
             if price is None:
@@ -2274,7 +2340,15 @@ class EntryExit(IslandStage):
                 history = banks.ebitda(f)[-keep:]
                 if len(history) < keep:
                     continue  # 管財人のもとの稼ぎを見てから値を付ける
-                worn = equipment.yearly_wear(defs, config, f.kind, prices)
+                if reentry_ship:
+                    # 海運業の年の傷みは、船の減価（船の値段 × 隻数 ÷ 寿命の年数分）
+                    worn = (
+                        money_of(prices.get(config.get("trade.ship_good"), 0), trade.ships.fleet(f))
+                        * YEAR
+                        // max(1, config.get("trade.ship_life"))
+                    )
+                else:
+                    worn = equipment.yearly_wear(defs, config, f.kind, prices)
                 r = (YEAR * sum(history) / len(history) - worn) * (1 - tax) / max(1, capital)
             else:
                 optional = set(recipe.get("optional_inputs", ()))  # 店の包装は待たない（FM-67）
@@ -2326,6 +2400,13 @@ class EntryExit(IslandStage):
         paid = price + banks.inventory_value(island, f)
         rate = rates.get(f.id, 0)
         earnings = variable_profit(ctx.defs, config, f, prices, wage, rate)
+        reentry_ship = trade_reentry.in_path(config, f)
+        if reentry_ship:
+            # 海運業は作り方を持たず変動費の利益では測れないので、買い手の融資の審査は管財人の
+            # もとの実際の稼ぎ（売りの輪の値踏みと同じ記録）で見る（W-308 の 0）
+            history = banks.ebitda(f)
+            if history:
+                earnings = sum(history) // len(history)
         start = operating_cost(ctx.defs, config, f, prices, wage, rate)
         amount = paid + start * config.get("firms.operating_turns")
         seized = f.economy.get(SEIZED)
@@ -2359,6 +2440,9 @@ class EntryExit(IslandStage):
             settle_closing(island, f, own + paid, old_loans, before)
         restart(island, ctx, f, OWNER_PRIVATE, price, running)
         companies.invested(island, firm, f, ctx.turn)
+        if reentry_ship:
+            # 移管の台帳（施設の番号・買い手・移ったターン・船団の組。W-308 の 0）
+            trade_reentry.record_transfer(island, f, owner_entity(f), ctx.turn)
         f.economy["entered"] = ctx.turn
         island.log.append(
             LogEntry("foreclosure_sold", {"facility": f.kind, "x": f.x, "y": f.y, "price": paid})
