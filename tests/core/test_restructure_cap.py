@@ -3,8 +3,8 @@
 
 G3a: 組み替えの切り下げを銀行ごとに、切り下げ後の自己資本が最低線（規制の比率 × 融資）を
 下回らない分までに抑える。止めた分は、線より上に資本のある銀行は期間の延長、線以下だが
-自己資本の残っている銀行は利率の引き下げ、切る前から自己資本が 0 以下の銀行は今の扱いで
-受け、組み替えごとに銀行ごとの記録を残す。
+自己資本の残っている銀行は利率の引き下げで受け、切る前から自己資本が 0 以下の銀行は
+上限で止めず全部切る（#5223）。組み替えごとに銀行ごとの記録を残す。
 G3c: 借り換えの危機で国債の支払いに国庫が足りないときも、削れる支出の取り置きを先に使い、
 残りの不足だけを払わない。"""
 
@@ -95,23 +95,29 @@ def test_the_cap_stops_the_cut_at_the_capital_line(game, monkeypatch):
     assert island.stats["bonds.restructure_hmax"] == pytest.approx(stats["restructure_hmax"])
 
 
-def test_a_bank_without_capital_is_cut_nothing_and_recorded_apart(game, monkeypatch):
-    """切る前から自己資本が 0 以下の銀行（h_max = 0 の組）: 1 円も切らず、止めた分は
-    「線で止めた分」と分けて、今の扱いに残した額として記録する（#5042 の 2）。"""
+def test_a_bank_without_capital_is_cut_in_full_and_recorded_apart(game, monkeypatch):
+    """切る前から自己資本が 0 以下の銀行（h_max = 0 の組）: 上限で止めず、G2 どおり本来の
+    切り下げ額を全部切る（#5223）。全部切った額は「線で止めた分」と分けて
+    restructure_stopped_nocap に記録し、止めた分としては数えない。"""
     island, ctx, bond, later, bank, payer, line = capped_setup(
         game, monkeypatch, lambda line, b: -1
     )
+    total_before = debt.total_debt(island)
     Bonds()._roll_over(island, ctx, payer)
     stats = island.scratch["bond_stats"]
     records = records_of(island)
     rec = records[bank]
     assert rec["group"] == "nocap" and rec["h_max"] == 0.0
-    assert rec["actual"] == 0 and rec["stopped"] == rec["intended"] > 0
+    assert rec["actual"] == rec["intended"] > 0 and rec["stopped"] == 0
     assert stats["restructure_stopped_nocap"] == sum(
-        r["stopped"] for r in records.values() if r["group"] == "nocap"
+        r["actual"] for r in records.values() if r["group"] == "nocap"
     )
-    assert stats["restructure_left"] == stats["restructure_stopped_nocap"]
+    assert stats["restructure_stopped_nocap"] == rec["intended"]
+    assert stats["restructure_stopped"] == 0 and stats["restructure_left"] == 0
     assert stats["restructure_extended"] == 0 and stats["restructure_rate_cut"] == 0
+    assert debt.total_debt(island) == total_before - stats["restructure_cut"]
+    Bonds.record_stats(island)
+    assert island.stats["bonds.restructure_stopped_nocap"] == stats["restructure_stopped_nocap"]
 
 
 def test_a_bank_below_the_line_swaps_the_stopped_part_at_a_reduced_rate(game, monkeypatch):

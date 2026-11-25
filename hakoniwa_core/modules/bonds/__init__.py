@@ -17,9 +17,10 @@
    足りない分の不履行は、切り捨ての代わりに市中の国債をまとめて額面を減らした国債のラダーに
    組み替える（_restructure。設計 BK-54）。bonds.restructure_cap も入なら、組み替えの切り下げを
    銀行ごとに、切り下げ後の自己資本が最低線（規制の比率 × 融資。瞬間の融資で固定）を下回らない
-   分までに抑え、止めた分は期間の延長・利率の引き下げ・今の扱いで受けて記録に残す（G3a。設計
-   BK-55）。bonds.coupon_austerity も入なら、利払いに国庫が足りないときも、元本の不足のときと
-   同じく削れる支出の取り置きを先に使って払い、残りの不足だけを払わない（G3c。設計 BK-55）。
+   分までに抑え、止めた分は期間の延長・利率の引き下げで受けて記録に残す。切る前から自己資本が
+   0 以下の銀行は上限で止めず全部切る（G3a。設計 BK-55）。bonds.coupon_austerity も入なら、
+   利払いに国庫が足りないときも、元本の不足のときと同じく削れる支出の取り置きを先に使って払い、
+   残りの不足だけを払わない（G3c。設計 BK-55）。
 5. 銘柄ごとに利子を払い、満期の銘柄は額面を返して消す。不履行は命令 set_bond_payment で選んだとき
    だけ: 中央銀行以外の額面を bonds.haircut だけ切り下げ（持ち手の損）、残りを同じ期間で出し直す。
    切り下げた額が 0 なら新しい罰は付けない。不履行の記録は
@@ -621,8 +622,10 @@ class Bonds(WorldStage):
 
         止めた分の受け方は、銀行の組で分ける: 線より上に資本のある銀行は期間の延長（ラダーに
         乗せる）、線以下だが自己資本が残っている銀行は利率の引き下げ（止めた分だけ利率を
-        bonds.haircut の割合で下げたラダーに替える）、切る前から自己資本が 0 以下の銀行
-        （h_max = 0 の組、#5042 の 2）は今の扱いに残す。"""
+        bonds.haircut の割合で下げたラダーに替える）。切る前から自己資本が 0 以下の銀行
+        （h_max = 0 の組）は上限で止めない（#5223）: 止めても資本が無いことは変わらず、止めると
+        その分の損が帳簿から消えて持ち手の総損の比べが甘くなるので、G2 どおり全部切る。組は
+        記録に分けて残し、全部切った額は restructure_stopped_nocap に数える。"""
         haircut = to_basis(ctx.config.get("bonds.haircut"))
         ratio = banks.regulatory(ctx.config)
         intended: dict[str, int] = {}
@@ -641,7 +644,11 @@ class Bonds(WorldStage):
             line = int(ratio * banks.loans_of(island, bank))
             held_face = holdings[bank]
             want = intended[bank]
-            allowance[bank] = capped_cut(capital, lambda _x, line=line: line, held_face, want)
+            allowance[bank] = (
+                want
+                if capital <= 0
+                else capped_cut(capital, lambda _x, line=line: line, held_face, want)
+            )
             own_hmax = max(0, capital - line) / held_face if held_face > 0 else 0.0
             h_max = own_hmax if h_max is None else min(h_max, own_hmax)
             group = "nocap" if capital <= 0 else ("rate" if capital <= line else "line")
@@ -693,9 +700,9 @@ class Bonds(WorldStage):
 
         bonds.restructure_cap が入なら G3a（設計 BK-55）: 銀行ごとの切り下げを、切り下げ後の
         自己資本が最低線を下回らない分までに抑える（_restructure_cap）。止めた分は、銀行の組に
-        応じて期間の延長（ふつうのラダー）・利率の引き下げ（利率を下げたラダー）・今の扱い
-        （ふつうのラダーに替えるが、受け方としては「残した額」に数える）で受け、組み替えごとに
-        記録に残す。銀行以外の持ち手は今までどおり切る。"""
+        応じて期間の延長（ふつうのラダー）・利率の引き下げ（利率を下げたラダー）で受け、
+        組み替えごとに記録に残す。切る前から自己資本が 0 以下の銀行は上限で止めず全部切る
+        （#5223）。銀行以外の持ち手は今までどおり切る。"""
         haircut = to_basis(ctx.config.get("bonds.haircut"))
         terms = ctx.defs.bond_terms()
         cap = (
@@ -798,8 +805,9 @@ class Bonds(WorldStage):
         stats["restructured"] = stats.get("restructured", 0) + swapped
         stats["restructure_cut"] = stats.get("restructure_cut", 0) + cut_total
         if cap is not None:
-            # 止めた分の受け方の集計（銀行の組ごと: line → 期間の延長、rate → 利率の引き下げ、
-            # nocap → 今の扱いに残す。#5042 の 2 で、自己資本 0 以下の組は分けて数える）
+            # 止めた分の受け方の集計（銀行の組ごと: line → 期間の延長、rate → 利率の引き下げ。
+            # 自己資本 0 以下の組（nocap）は上限で止めず全部切るので止めた分は 0 で、全部切った
+            # 額を restructure_stopped_nocap に分けて数える。#5223）
             for record in cap["records"]:
                 key = {"line": "extended", "rate": "rate_cut", "nocap": "left"}[record["group"]]
                 received[key] += record["stopped"]
@@ -814,7 +822,7 @@ class Bonds(WorldStage):
             )
             stats["restructure_left"] = stats.get("restructure_left", 0) + received["left"]
             stats["restructure_stopped_nocap"] = stats.get("restructure_stopped_nocap", 0) + sum(
-                r["stopped"] for r in cap["records"] if r["group"] == "nocap"
+                r["actual"] for r in cap["records"] if r["group"] == "nocap"
             )
             stats["restructure_hmax"] = cap["h_max"]
             stats.setdefault("restructure_banks", []).extend(cap["records"])
@@ -1633,7 +1641,7 @@ class Bonds(WorldStage):
         stats["bonds.rollover_default"] = extra.get("rollover_default", 0)
         stats["bonds.restructured"] = extra.get("restructured", 0)  # 組み替えで替えた額（G2）
         stats["bonds.restructure_cut"] = extra.get("restructure_cut", 0)  # 組み替えで切り下げた額
-        # G3a（設計 BK-55）: 上限で止めた額と受け方の内訳、自己資本 0 以下の組の止めた額、h_max
+        # G3a（設計 BK-55）: 上限で止めた額と受け方の内訳、自己資本 0 以下の組の全部切った額、h_max
         stats["bonds.restructure_stopped"] = extra.get("restructure_stopped", 0)
         stats["bonds.restructure_extended"] = extra.get("restructure_extended", 0)
         stats["bonds.restructure_rate_cut"] = extra.get("restructure_rate_cut", 0)
