@@ -457,13 +457,13 @@ export class OrderQueue {
 
     const unsold = Object.fromEntries(Object.entries(p.bond_unsold_choices).filter(([id]) => !(independent && id === "underwrite")));
     const shares = Object.entries(p.bond_terms)
-      .map(([id, t]) => `<label>${escapeHtml(t.name)} ${num(`term:${id}`, t.share, 'min="0" step="1"')}</label>`)
+      .map(([id, t]) => `<label>${escapeHtml(t.name)}（${t.turns}ターン） ${num(`term:${id}`, t.share, 'min="0" step="1"')}</label>`)
       .join("");
     forms.set_bond_policy = `<form class="actions" data-form="set_bond_policy">
         <strong>国債（${p.bonds ? `${p.bonds} 銘柄` : "まだ発行していません"}）</strong>
         <p class="hint">国庫が足りなくなる分は、毎ターン入札で発行して銀行に買ってもらいます。</p>
         <label>入札の売れ残り（今: ${escapeHtml(p.bond_unsold_choices[p.bond_unsold] || p.bond_unsold)}） <select name="unsold">${options(unsold, "変えない")}</select></label>
-        <p class="hint">自動で発行する期間の割合（%。入れた期間だけで割合を決め直します）</p>
+        <p class="hint">自動で発行する期間の割合（%）です。何も決めていなければ、自動の発行は1年国債だけです。5年・10年も自動で出したいときは、ここに期間ごとの割合を入れてください（入れた期間だけで割合を決め直します）。</p>
         ${shares}
         <label>このターンに追加で入札に出す額 ${num("issue", "", 'min="0" step="1"')}</label>
         <label>その期間 <select name="issue_term">${options(terms)}</select></label>

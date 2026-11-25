@@ -61,3 +61,16 @@ test("命令で出した生産方式の切り替えと補助金は、窓の施�
   assert.match(html, /<th>生産方式の切り替え<\/th><td>次のターンに「木材」に切り替えます。<\/td>/);
   assert.match(html, /<th>補助金<\/th><td>生産補助 10%（あと 12 ターン）<\/td>/);
 });
+
+test("設備の割合は 100 未満を切り捨てる（99.7% が 100% と出ない）", () => {
+  const panel = Object.create(TilePanel.prototype);
+  panel.el = { dataset: {} };
+  panel.orders = {};
+  panel.defs = { facilities: { factory: { recipes: {} } } };
+  const base = {
+    number: 17, kind: "factory", name: "工場", kind_name: "工場", owner_name: "国営", accounting_name: "国庫直轄",
+    built: true, stock: [], workers: 10, workers_needed: 10, operating_rate: 1,
+  };
+  assert.match(panel.facilityHtml({ ...base, equipment: 0.997 }), /<th>設備<\/th><td>99%（傷んだ分は作れません）<\/td>/);
+  assert.match(panel.facilityHtml({ ...base, equipment: 1 }), /<th>設備<\/th><td>100%<\/td>/);
+});
