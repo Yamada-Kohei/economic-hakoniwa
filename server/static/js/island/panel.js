@@ -220,8 +220,12 @@ export class TilePanel {
       rows.push(["稼働率", `${Math.round(f.operating_rate * 100)}%`]);
       // 水力発電所（W-148）: 川の水で出る分。近くの水力発電所と水を分け合い、雨の少ない年は下がる
       if (water) rows.push(["水の量（全力に対して）", `${water.percent}%（場所は ${water.site}%、今年の雨は平年の ${water.year}%）`]);
-      // 設備の傷み（回6）: 傷んだ分は作れない
-      if (f.equipment != null) rows.push(["設備", `${Math.round(f.equipment * 100)}%${f.equipment < 1 ? "（傷んだ分は作れません）" : ""}`]);
+      // 設備の傷み（回6）: 傷んだ分は作れない。割合は 100 未満を切り捨て（99.7% が四捨五入で
+      // 「100%（傷んだ分は作れません）」と出るのを防ぐ。施設のページの _pct と同じ決まり）
+      if (f.equipment != null) {
+        const pct = f.equipment * 100;
+        rows.push(["設備", `${pct < 100 ? Math.floor(pct + 1e-9) : Math.round(pct)}%${f.equipment < 1 ? "（傷んだ分は作れません）" : ""}`]);
+      }
       if (f.wage != null) rows.push(["賃金（1人1ターン）", f.wage.toLocaleString()]);
       // 土木業者（W-270）: 受けた工事・届けた工事・全力（直営の作業員の人数に直した単位）と単価
       if (f.contract) {
