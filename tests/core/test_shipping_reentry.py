@@ -253,6 +253,28 @@ def test_fleet_to_warehouse_keeps_batches_and_successor_buys_the_oldest(game, wa
     ]  # 初輸送は後継の番号で拾う
 
 
+def test_successor_ship_purchase_kind_is_defined(game, warmed, on):  # noqa: F811
+    """2: 後継が倉庫の船を買う代金の仕訳（ship_purchase）が、仕訳の種類として定義されて
+    いること。定義が無いと records の帳簿チェックが LedgerCheckFailed になり、ターンが
+    落ちる（2026-11-26 の測り直しで23件が落ちた根本原因）。後継の買い取りで書かれる
+    仕訳の種類が全て定義済みであることを確かめる。"""
+    world, island = _setup(game, warmed)
+    config = game.config
+    turn = world.turn + 1
+    f = shipping_of(island, config)
+    f.economy["fleet"] = [[turn - 50, 1000]]
+    assert reentry.fleet_to_warehouse(island, config, f) == 1000
+    _no_shipping_island(game, world, island)
+    _rich_owners(island)
+    ctx = context(game, world, "entry_exit")
+    journal_before = len(island.journal)
+    new = reentry.place_successor(island, ctx)
+    assert new is not None
+    kinds = {e.kind for e in island.journal[journal_before:]}
+    assert "ship_purchase" in kinds
+    assert kinds <= set(game.defs.journal_kinds())
+
+
 def test_zero_life_batch_is_chosen_transferred_and_booked_in_order(game, warmed, on):  # noqa: F811
     """倉庫で待つ間に寿命へ達した組（#5509・#5515・#5516）。断言の順:
     1. 残りの使える期間が 0 の最古の組が選ばれる（倉庫では傷んで消えず、選考からも外さない）。
