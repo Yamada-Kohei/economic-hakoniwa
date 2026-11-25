@@ -908,7 +908,7 @@ def shipment_rows(
                 "name": defs.name("goods", s["good"]),
                 "unit": defs.unit_name(s["good"]),
                 "amount": display.amount(sum(q for _, q in s["batches"]), s["good"]),
-                "load": display.tons(s["load"]),
+                "load": display.tons(s["load"], s["good"]),
                 "loaded": s["loaded"],
                 "arrive": s["arrive"],
             }
