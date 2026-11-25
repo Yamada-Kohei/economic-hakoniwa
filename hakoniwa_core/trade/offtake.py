@@ -36,7 +36,10 @@
   売れ残りが長く続けば、今の決まりどおり島の市場に戻して売る（traders.home_orders）。2026-11-24 の
   追跡 2 で、契約で受け取った余りを指値なしで圏に売り、圏の値段が下がって契約のない輸出の島が
   引き合わずに抜けていた（種 1 で 13 島中 6 島がその順）。現実の引き取り契約の買い手も、余りは
-  安値で投げずに在庫として持つか、国内に回す。
+  安値で投げずに在庫として持つか、国内に回す。`trade.offtake.import_first` を入れると、余りの
+  受け手として、その財を作る建った施設のない島（輸入に頼る島）の輸入の注文を、圏の板寄せで
+  優先を 1 つ上げて先に約定させる（会議 #4742 の cfB。現実では、長期契約の荷を国内の需要家・
+  不足地域へ先に回す割り当てに当たる）。
 - 作る側: 操業目標に、契約の量から前のターンに商社が市場で買った量を引いた分（重み 1）を足す
   （modules/market の operating_target。committed_extra）。
 
@@ -91,6 +94,12 @@ SEEN = "offtake_seen"
 
 def enabled(config: GameConfig) -> bool:
     return bool(config.get("trade.offtake.enabled"))
+
+
+def import_first(config: GameConfig) -> bool:
+    """輸入に頼る島の輸入の注文を、圏の板寄せで先に約定させるか（W-307 の cfB。会議 #4742）。
+    引き取り契約（enabled）が入のときだけ効く。"""
+    return enabled(config) and bool(config.get("trade.offtake.import_first"))
 
 
 def goods(config: GameConfig) -> tuple[str, ...]:

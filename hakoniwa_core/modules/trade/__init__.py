@@ -36,6 +36,7 @@ from dataclasses import dataclass, field
 from functools import partial
 from typing import Any
 
+from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
@@ -1863,6 +1864,13 @@ class _Round:
                     )
                     if order is None:
                         continue
+                    # 輸入に頼る島（その財を作る建った施設が島にひとつもない島）の輸入の注文は、
+                    # 圏の売りが足りないとき先に約定させる（W-307 の cfB。会議 #4742。
+                    # trade.offtake.import_first）
+                    if offtake.import_first(self.config) and not any(
+                        g.built and good in fac.outputs_of(self.defs, g) for g in island.facilities
+                    ):
+                        order = Order(order.quantity, order.limit, order.priority + 1)
                     if (m, good) in self.quota_left:
                         self.quota_left[(m, good)] -= order.quantity
                     buys.append(order)
