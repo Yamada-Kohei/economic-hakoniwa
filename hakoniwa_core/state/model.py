@@ -146,6 +146,10 @@ class MarketRecord:
     # 別（BUYER_GROUPS の名前）→ [注文した量, 約定した量]
     buyers: dict[str, list[int]] = field(default_factory=dict)
     sellers: dict[str, list[int]] = field(default_factory=dict)
+    # 見込み需要（MK-48）: 家計の第一希望の献立＋家計以外の注文。代わりに買った物は入れない。
+    # 切り替え market.expected_demand が切のターンや、見込みを残さない作り手の記録では None
+    # （記録なし。読み手はその行の demand で補う）
+    expected_demand: int | None = None
 
 
 @dataclass

@@ -594,6 +594,24 @@ def plan_own_materials(island: IslandState, defs: Defs, config: GameConfig, f: F
     f.ext[fac.OWN_MATERIALS] = {"materials": made, "labor": -(-labor // turns)}
 
 
+def expected_series(
+    finance: dict[str, Any], good: str, demand: list[int] | None = None
+) -> list[int]:
+    """見込み需要（MK-48）の系列を、買いたい量 demand の系列と同じ並び・長さで返す。
+
+    見込みの記録（finance["expected_demand"]）は、切り替えが入った後のターンからしかない。
+    記録のない古い行は、その行の買いたい量で補う（0 と記録された行は 0 のまま）。読み込むときに
+    昔の行を書き換えはしない。"""
+    if demand is None:
+        demand = finance.get("demand", {}).get(good, [])
+    recorded = finance.get("expected_demand", {}).get(good, [])
+    if not demand:
+        return []
+    if len(recorded) >= len(demand):
+        return list(recorded[-len(demand) :])
+    return [*demand[: len(demand) - len(recorded)], *recorded]
+
+
 def expected_price(
     island: IslandState,
     good: str,
@@ -614,6 +632,8 @@ def expected_price(
 
     - 買いたい量 D: 直近の買いたい量のうち、売れ残りの出たターン（品切れでないターン）の平均。どの
       ターンも売り切れたなら、いちばん多いターン（品切れで買えずに減った買いを、需要の減りと読まない）。
+      見込み需要（market.expected_demand）が入のときは、見込みの記録のある品切れターンも見込みの
+      値で平均に入れる（要望 B 案 A、#5005・#5014）。
       島の施設がこの財を原料に使う量（売れ行きの見込みで動く稼働率の分。_input_need）より少なければ
       そちら（掲示板 #1349 の 2: 原料が足りずに操業を絞った工場の注文の減りを、需要の減りと
       読まない）。
@@ -643,16 +663,40 @@ def expected_price(
         return price
     finance = economy.finance
     demand = finance.get("demand", {}).get(good, [])
+    expected_on = bool(config.get("market.expected_demand"))
+    recorded = finance.get("expected_demand", {}).get(good, []) if expected_on else []
+    if expected_on:
+        # 見込み需要（MK-48）: 買いたい量の代わりに、家計の第一希望で見る（記録のない行は
+        # その行の買いたい量で補う。expected_series）
+        expected = expected_series(finance, good, demand)
+        # 行対応の印（#5014）: 見込みの系列は買いたい量と同じ並び・長さで末尾にそろう。
+        # この後の末尾への切り詰めは、両方に同じ開始 offset が効く。
+        assert len(expected) == len(demand)
+        demand = expected
     supply = finance.get("supply", {}).get(good, [])
     n = min(len(demand), len(supply))
     if n <= 0:
         return price
-    demand, supply = demand[-n:], supply[-n:]
+    offset = len(demand) - n  # 切り詰め前の開始位置（需要・見込みで共通、#5014）
+    demand, supply = demand[offset:], supply[-n:]
     sold = finance.get("sold", {}).get(good, [])[-n:]
     if len(sold) < n:  # 売れた量の記録の前の島: 買いたい量と売りに出た量の少ない方
         sold = [min(d, s) for d, s in zip(demand, supply, strict=True)]
-    # 売れ残りの出たターン（買いたい人がみな買えた）だけで平均する
-    met = [d for d, s, q in zip(demand, supply, sold, strict=True) if s > q]
+    # 売れ残りの出たターン（買いたい人がみな買えた）だけで平均する。見込み需要が入のときは、
+    # 見込みの記録のある品切れターン（売りに出た量 = 売れた量）も見込みの値で平均に入れる:
+    # 見込みは在庫の上限を外して組んだ第一希望で、品切れで細った観測ではない。記録のない
+    # 品切れターンは買いたい量で補われた細った値なので、今までどおり平均から除く
+    # （要望 B 案 A、#5005・#5014）。
+    if expected_on:
+        # 見込みの記録は買いたい量の末尾に並ぶので、窓の中で記録のある行は末尾側
+        first_recorded = max(0, n - len(recorded))
+        met = [
+            d
+            for i, (d, s, q) in enumerate(zip(demand, supply, sold, strict=True))
+            if s > q or (s == q and i >= first_recorded)
+        ]
+    else:
+        met = [d for d, s, q in zip(demand, supply, sold, strict=True) if s > q]
     wanted = sum(met) / len(met) if met else float(max(demand))
     wanted = max(wanted, _input_need(island, defs, config, good))
     if wanted <= 0:

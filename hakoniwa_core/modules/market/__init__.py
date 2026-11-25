@@ -166,6 +166,11 @@ WAREHOUSE_PLACED = "warehouse_placed"
 MARKET_SELLS = "contract_market_sells"  # scratch: 市場に出す契約の品の売り注文（財 → 注文）
 WAREHOUSE_BUDGET = "warehouse"  # 年の予算の項目（国の倉庫の買い入れ費）
 UNFUNDED = "unfunded"  # 国の工事が公共事業費で買えず、注文しなかった資材の量（財 → 量）
+# 見込み需要（MK-48）の材料（scratch。財 → 量）: 家計の第一希望の献立の合計、出した食料の注文の
+# 合計、売りに出ていない食料の買いたい量の合計。_record が記録の demand と差し引きして見込みを出す
+EXPECTED_FIRST = "expected_first"
+EXPECTED_PLACED = "expected_placed"
+EXPECTED_WANTED = "expected_wanted"
 # 施設の economy: 投入財の買いの指値を出したターンと指値（{"turn", "limits": 財 → 指値}）。
 # 買い負けたら次のターンに少しずつ上げる
 BIDS = "bids"
@@ -643,6 +648,24 @@ def food_orders(
     if cost > budget and cost > 0:
         plan = {g: (q * budget // cost, lim) for g, (q, lim) in plan.items()}
     return plan
+
+
+def first_choice(
+    need: int, menu: FoodMenu, food_budget: int, budget: int, hungry: bool = False
+) -> dict[str, int]:
+    """家計の第一希望の献立（MK-48。掲示板の会議の締め #2030）: 全ての食料について、要る量
+    いっぱいまでは買えることにして（在庫の上限を外して）、同じ値段・同じ食費の予算で献立を
+    一度だけ組む。財ごとに上限を外して試すと予算を二重に使うので、必ず一度だけ組む。
+    予算で買えない分は第一希望にも入らない（food_orders が使う額で割り落とす）。
+    飢えた家計の献立は好みの献立（food_split）そのものなので、そちらで組む。"""
+    caps = {g: -(-need * QUANTITY_SCALE // menu.nutritions[g]) for g in menu.values}
+    if hungry:
+        return food_split(need, menu.values, menu.nutritions, caps, menu.prefs, menu.elasticity)
+    return {
+        g: q
+        for g, (q, _limit) in food_orders(need, caps, menu, food_budget, budget).items()
+        if q > 0
+    }
 
 
 def hungry_food_orders(
@@ -1721,9 +1744,16 @@ class Market(IslandStage):
         planning.apply_prices(island)
         power = ctx.config.get("power.good")
         records = {m.good: m for m in island.markets}
-        demand = {
-            g: m.demand for g, m in records.items() if g in official and g != power and m.demand
-        }
+        # 見込み需要（MK-48）が入のときは、生産目標の需要も見込みで数える（公定価格の島は
+        # 計画にだけ伝わり、値段は動かない）。見込みのない記録は今までどおり demand
+        expected_on = bool(ctx.config.get("market.expected_demand"))
+        demand = {}
+        for g, m in records.items():
+            if g not in official or g == power:
+                continue
+            qty = m.expected_demand if expected_on and m.expected_demand is not None else m.demand
+            if qty:
+                demand[g] = qty
         # 輸出の計画の分の商社の買い（PL-62）は、約定しなかった分も含めて注文の量で除く（除かないと
         # 輸出の買いが次のターンの需要に入り、生産目標が毎ターン膨らむ）
         for good, qty in island.scratch.get(planning.EXPORT_ORDERED, {}).items():
@@ -2884,6 +2914,7 @@ class Market(IslandStage):
         dual = planning.is_dual(island)
         prices = island.economy.prices
         priority = config.get("market.household_priority")
+        expected_on = bool(config.get("market.expected_demand"))  # 見込み需要（MK-48）
         pi = inflation(island.economy)
         power_paid = island.scratch.get("household_power", {})
         needs_by_layer = layer_food_needs(island, ctx)
@@ -3033,6 +3064,7 @@ class Market(IslandStage):
             #    注文する（指値は値幅の上端まで）。食料の後に注文するが、食料の質を上げる予算からは
             #    先に引いておく
             wear: dict[str, list[tuple[int, int]]] = {}
+            wear_first: dict[str, int] = {}  # 見込み需要の材料: 財 → 本来ほしかった量（要望B 案B）
             wear_budget = round_money(cap * settings["clothing"]["share"])
             for good in clothing:
                 qty, full = needs.clothes_wanted(config, state, good)
@@ -3046,6 +3078,21 @@ class Market(IslandStage):
                     wanted[good] = wanted.get(good, 0) + qty
                     if desire is not None:
                         desire[good] = desire.get(good, 0) + qty
+                    if expected_on:
+                        # 見込み需要（MK-48）の材料: 売りに出ていない衣料も、買いたい量と
+                        # 本来ほしかった量を貯める（要望B 案B。食料と同じ差し引きを _record で
+                        # する）。本来の量は、残りの衣料の分の予算で真ん中の値段で買える量まで
+                        spent = sum(curve_cost(t, rate, taxes[g]) for g, t in wear.items())
+                        wanted_acc = island.scratch.setdefault(EXPECTED_WANTED, {})
+                        wanted_acc[good] = wanted_acc.get(good, 0) + qty
+                        first_acc = island.scratch.setdefault(EXPECTED_FIRST, {})
+                        first_acc[good] = first_acc.get(good, 0) + min(
+                            full,
+                            qty_for(
+                                max(0, wear_budget - spent) * BASIS // (BASIS + rate + tax),
+                                centre,
+                            ),
+                        )
                     continue
                 spent = sum(curve_cost(t, rate, taxes[g]) for g, t in wear.items())
                 wear[good] = elastic_orders(
@@ -3059,6 +3106,16 @@ class Market(IslandStage):
                     rate,
                     taxes[good],
                 )
+                if expected_on:
+                    # 本来ほしかった量（残りの予算で真ん中の値段で買える量まで）を覚えておき、
+                    # 注文の量とあわせて、注文が決まった後で貯める（要望B 案B）
+                    wear_first[good] = min(
+                        full,
+                        qty_for(
+                            max(0, wear_budget - spent) * BASIS // (BASIS + rate + taxes[good]),
+                            needs.centre_price(island, config, good),
+                        ),
+                    )
             wear_cost = sum(curve_cost(t, rate, taxes[g]) for g, t in wear.items())
             # 2. 食料: 売りに出ている量を上限に、一番安く満たす献立から、必需品の上限に収まる分だけ
             #    好みの献立へ寄せる（好みは層の所得で変わる。LB-20）。値幅の上端を指値にする
@@ -3081,6 +3138,19 @@ class Market(IslandStage):
             else:
                 tiers = []
                 plan = food_orders(need, caps, layer_menu, food_budget, budget)
+            if expected_on:
+                # 見込み需要（MK-48）の材料: 第一希望の献立（在庫の上限を外して一度だけ組む）と、
+                # 実際に注文した食料の量を貯める。記録の demand との差し引きは _record でする
+                first_acc = island.scratch.setdefault(EXPECTED_FIRST, {})
+                for g, q in first_choice(need, layer_menu, food_budget, budget, hungry).items():
+                    first_acc[g] = first_acc.get(g, 0) + q
+                placed_acc = island.scratch.setdefault(EXPECTED_PLACED, {})
+                for g, (q, _limit) in plan.items():
+                    if q > 0:
+                        placed_acc[g] = placed_acc.get(g, 0) + q
+                for g, q, _limit in tiers:
+                    if q > 0:
+                        placed_acc[g] = placed_acc.get(g, 0) + q
             wish = need
             if hungry and desire is None and layer == GENERAL:
                 # 食べ物が買えずに畑に戻った働き手とその家族（modules/employment の back_to_fields）
@@ -3106,6 +3176,10 @@ class Market(IslandStage):
                     if qty <= 0:
                         continue
                     wanted[good] = wanted.get(good, 0) + qty
+                    if expected_on:
+                        # 見込み需要（MK-48）の差し引き用: wanted のうち家計の食料の分
+                        wanted_acc = island.scratch.setdefault(EXPECTED_WANTED, {})
+                        wanted_acc[good] = wanted_acc.get(good, 0) + qty
                     if desire is not None:
                         desire[good] = desire.get(good, 0) + qty
             food_cost = sum(gross_cost(lim, q, rate, taxes[g]) for g, (q, lim) in plan.items())
@@ -3134,6 +3208,15 @@ class Market(IslandStage):
                     for g, t in wear.items()
                 }
                 wear_cost = sum(curve_cost(t, rate, taxes[g]) for g, t in wear.items())
+            if expected_on and wear:
+                # 見込み需要（MK-48）の材料: 衣料で実際に出した注文の量（食費に押されて
+                # 縮んだ後は、その量）と、本来ほしかった量を貯める（要望B 案B。記録の
+                # demand との差し引きは _record でする）
+                placed_acc = island.scratch.setdefault(EXPECTED_PLACED, {})
+                first_acc = island.scratch.setdefault(EXPECTED_FIRST, {})
+                for good, curve in wear.items():
+                    placed_acc[good] = placed_acc.get(good, 0) + sum(q for q, _limit in curve)
+                    first_acc[good] = first_acc.get(good, 0) + wear_first[good]
             for good, (qty, limit) in sorted(plan.items()):
                 tax = taxes[good]
                 self._household_food(
@@ -5187,12 +5270,39 @@ class Market(IslandStage):
         supply = {}
         prices = island.economy.prices
         wanted = dict(island.scratch.get("wanted", {}))  # 売りに出ていなくて注文しなかった量
+        expected_on = bool(ctx.config.get("market.expected_demand"))
+
+        def expected_of(good: str, demand: int) -> int | None:
+            """見込み需要（MK-48）: 記録の demand から家計の食料の注文と、売りに出ていない
+            食料の買いたい量を引き、第一希望の献立を足す（家計以外の注文はそのまま残る）。
+            代わりに買った物は第一希望に入らないので、見込みには残らない。切り替えが切なら
+            記録なし（None）"""
+            if not expected_on:
+                return None
+            return max(
+                0,
+                demand
+                - island.scratch.get(EXPECTED_PLACED, {}).get(good, 0)
+                - island.scratch.get(EXPECTED_WANTED, {}).get(good, 0)
+                + island.scratch.get(EXPECTED_FIRST, {}).get(good, 0),
+            )
+
         for good in sorted(set(results) | set(wanted)):
             result = results.get(good)
             if result is None:  # 売りも買いの注文もなかったが、あれば買いたい人がいた
                 carried = Market._within_controls(island, ctx, good, prices.get(good, 1))
                 prices[good] = carried
-                island.markets.append(MarketRecord(good, carried, 0, wanted[good], 0, PRICE_CARRY))
+                island.markets.append(
+                    MarketRecord(
+                        good,
+                        carried,
+                        0,
+                        wanted[good],
+                        0,
+                        PRICE_CARRY,
+                        expected_demand=expected_of(good, wanted[good]),
+                    )
+                )
                 continue
             signal = Market._consumption_result(books_by_good.get(good), result)
             own = signal.demand - Market._out_of_money(books_by_good.get(good), result)
@@ -5204,6 +5314,7 @@ class Market(IslandStage):
             if result.volume <= 0:  # 約定のない月の持ち越し・気配も、統制の値幅の外に残さない
                 price = Market._within_controls(island, ctx, good, price)
             record = MarketRecord(good, price, result.volume, demand, result.supply, _kind(result))
+            record.expected_demand = expected_of(good, demand)
             book = books_by_good.get(good)
             if book is not None:
                 record.buyers = _by_group(ctx.config, book.buys, result.bought)
