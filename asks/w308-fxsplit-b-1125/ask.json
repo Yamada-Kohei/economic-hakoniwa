@@ -1,0 +1,115 @@
+{
+ "commit": "e7b12b554c11e183446b126b6e5f1cc24f1d1d0d",
+ "files": [
+  "w308_fxsplit_probe.py"
+ ],
+ "name": "w308-fxsplit-b-1125",
+ "patches": [
+  "wk-on.diff"
+ ],
+ "pool": "any",
+ "runs": [
+  {
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "19",
+    "--turns",
+    "1200",
+    "--out",
+    "fxsplit-WK-plan-s19-t1200.json"
+   ],
+   "large": [],
+   "name": "plan-s19-t1200",
+   "summary": [
+    "fxsplit-WK-plan-s19-t1200.json"
+   ]
+  },
+  {
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "20",
+    "--turns",
+    "1200",
+    "--out",
+    "fxsplit-WK-plan-s20-t1200.json"
+   ],
+   "large": [],
+   "name": "plan-s20-t1200",
+   "summary": [
+    "fxsplit-WK-plan-s20-t1200.json"
+   ]
+  },
+  {
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "21",
+    "--turns",
+    "1200",
+    "--out",
+    "fxsplit-WK-plan-s21-t1200.json"
+   ],
+   "large": [],
+   "name": "plan-s21-t1200",
+   "summary": [
+    "fxsplit-WK-plan-s21-t1200.json"
+   ]
+  },
+  {
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "22",
+    "--turns",
+    "1200",
+    "--out",
+    "fxsplit-WK-plan-s22-t1200.json"
+   ],
+   "large": [],
+   "name": "plan-s22-t1200",
+   "summary": [
+    "fxsplit-WK-plan-s22-t1200.json"
+   ]
+  },
+  {
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "23",
+    "--turns",
+    "1200",
+    "--out",
+    "fxsplit-WK-plan-s23-t1200.json"
+   ],
+   "large": [],
+   "name": "plan-s23-t1200",
+   "summary": [
+    "fxsplit-WK-plan-s23-t1200.json"
+   ]
+  },
+  {
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "24",
+    "--turns",
+    "1200",
+    "--out",
+    "fxsplit-WK-plan-s24-t1200.json"
+   ],
+   "large": [],
+   "name": "plan-s24-t1200",
+   "summary": [
+    "fxsplit-WK-plan-s24-t1200.json"
+   ]
+  }
+ ]
+}

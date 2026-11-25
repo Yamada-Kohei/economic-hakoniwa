@@ -1,0 +1,239 @@
+{
+ "commit": "9335f95a4bf67e7bc2d3f6606ba8557e1f313570",
+ "files": [
+  "svc_wage_probe.py"
+ ],
+ "name": "svc-wage-probe-b-1125",
+ "patches": [],
+ "pool": "any",
+ "runs": [
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "2",
+    "--turns",
+    "300",
+    "--out",
+    "svc-plan-s2.jsonl.gz"
+   ],
+   "large": [],
+   "name": "svc-plan-s2",
+   "summary": [
+    "svc-plan-s2.jsonl.gz",
+    "svc-plan-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "none",
+    "--seed",
+    "2",
+    "--turns",
+    "300",
+    "--out",
+    "svc-none-s2.jsonl.gz"
+   ],
+   "large": [],
+   "name": "svc-none-s2",
+   "summary": [
+    "svc-none-s2.jsonl.gz",
+    "svc-none-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "2",
+    "--turns",
+    "300",
+    "--out",
+    "svc-independent-s2.jsonl.gz"
+   ],
+   "large": [],
+   "name": "svc-independent-s2",
+   "summary": [
+    "svc-independent-s2.jsonl.gz",
+    "svc-independent-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "small",
+    "--seed",
+    "2",
+    "--turns",
+    "300",
+    "--out",
+    "svc-small-s2.jsonl.gz"
+   ],
+   "large": [],
+   "name": "svc-small-s2",
+   "summary": [
+    "svc-small-s2.jsonl.gz",
+    "svc-small-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "open",
+    "--seed",
+    "2",
+    "--turns",
+    "300",
+    "--out",
+    "svc-open-s2.jsonl.gz"
+   ],
+   "large": [],
+   "name": "svc-open-s2",
+   "summary": [
+    "svc-open-s2.jsonl.gz",
+    "svc-open-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "war",
+    "--seed",
+    "2",
+    "--turns",
+    "300",
+    "--out",
+    "svc-war-s2.jsonl.gz"
+   ],
+   "large": [],
+   "name": "svc-war-s2",
+   "summary": [
+    "svc-war-s2.jsonl.gz",
+    "svc-war-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "3",
+    "--turns",
+    "300",
+    "--out",
+    "svc-plan-s3.jsonl.gz"
+   ],
+   "large": [],
+   "name": "svc-plan-s3",
+   "summary": [
+    "svc-plan-s3.jsonl.gz",
+    "svc-plan-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "none",
+    "--seed",
+    "3",
+    "--turns",
+    "300",
+    "--out",
+    "svc-none-s3.jsonl.gz"
+   ],
+   "large": [],
+   "name": "svc-none-s3",
+   "summary": [
+    "svc-none-s3.jsonl.gz",
+    "svc-none-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "3",
+    "--turns",
+    "300",
+    "--out",
+    "svc-independent-s3.jsonl.gz"
+   ],
+   "large": [],
+   "name": "svc-independent-s3",
+   "summary": [
+    "svc-independent-s3.jsonl.gz",
+    "svc-independent-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "small",
+    "--seed",
+    "3",
+    "--turns",
+    "300",
+    "--out",
+    "svc-small-s3.jsonl.gz"
+   ],
+   "large": [],
+   "name": "svc-small-s3",
+   "summary": [
+    "svc-small-s3.jsonl.gz",
+    "svc-small-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "open",
+    "--seed",
+    "3",
+    "--turns",
+    "300",
+    "--out",
+    "svc-open-s3.jsonl.gz"
+   ],
+   "large": [],
+   "name": "svc-open-s3",
+   "summary": [
+    "svc-open-s3.jsonl.gz",
+    "svc-open-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "war",
+    "--seed",
+    "3",
+    "--turns",
+    "300",
+    "--out",
+    "svc-war-s3.jsonl.gz"
+   ],
+   "large": [],
+   "name": "svc-war-s3",
+   "summary": [
+    "svc-war-s3.jsonl.gz",
+    "svc-war-s3.gate.json"
+   ]
+  }
+ ]
+}
