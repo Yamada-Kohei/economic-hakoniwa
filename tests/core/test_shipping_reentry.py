@@ -137,8 +137,9 @@ def test_receivership_sale_inherits_the_fleet_at_the_settlement_batches(game, wa
     entry = island_state(island)["shipping_transfers"][-1]
     assert entry["facility"] == f.id and entry["turn"] == turn
     assert entry["fleet"] == [[young, 1000]] and entry["buyer"]
-    # 清算（#5508・#5527・#5532〜#5544）: 買い手は資本家階級だけ（唯一の買い手）で、代金は全額が
-    # 旧社の借入へ回り、買い手の使えるお金は売り値の分だけ減る（清算額を買い手側に二重に数えない）
+    # 清算（#5508・#5527・#5532〜#5544・#5566・#5568）: 買い手は資本家階級だけ（唯一の買い手）で、
+    # 代金は全額が旧社の借入へ回り、買い手の使えるお金は売り値の分だけ減る（清算額を買い手側に
+    # 二重に数えない）
     transfers = island_state(island)["shipping_transfers"]
     assert len(transfers) == transfers_before + 1 and entry["buyer"] == owners
     holders = {
@@ -147,12 +148,22 @@ def test_receivership_sale_inherits_the_fleet_at_the_settlement_batches(game, wa
         if name.endswith(f"/{ledger.EQUITY}/{facility_entity(f.id)}") and value > 0
     }
     assert holders == {owners}  # 出資しているのは買い手だけ
-    loans_after = sum(seized["claims"][arrears.LOANS].values())
-    assert loans_before - loans_after == price  # 借入の帳簿の減り＝債権者の受け取り合計（#5534）
-    assert funds.available(island, Payer(owners)) == available_before - price
-    # 現金の側（#5542）: 成約の区間の仕訳で隔離して見る。銀行が受け取る支払いは、その銀行の
-    # 預金の発行勘定が借方になる（施設の預金が消えて銀行の取り分になる）形で残る
+    # 成約の区間の仕訳（foreclosure_sale）を隔離して見る（#5542）
     receipts = [e for e in island.journal[journal_before:] if e.kind == "foreclosure_sale"]
+    # ② 旧社の純効果（#5534）: 借入の帳簿の減りが売り値に一致する
+    loans_after = sum(seized["claims"][arrears.LOANS].values())
+    assert loans_before - loans_after == price
+    # ③ 貸方の帰属（#5566・#5568）: 貸方を勘定別に集計し、債権者の受け取りにあたる勘定
+    # （債権者の銀行にある旧社の預金勘定）だけに、売り値ちょうどが計上されていること。
+    # ②（帳簿の差分）とは独立に、計上先の取り違え（別の持ち主の預金勘定への計上など）を落とす
+    credited: dict[str, int] = {}
+    for e in receipts:
+        credited[e.credit] = credited.get(e.credit, 0) + e.amount
+    assert credited == {ledger.account(facility_entity(f.id), ledger.DEPOSIT, bank): price}
+    # ④ 買い手の使えるお金は売り値の分だけ減る
+    assert funds.available(island, Payer(owners)) == available_before - price
+    # ⑤ 借方の帰属（#5542）: 銀行が受け取る支払いは、その銀行の預金の発行勘定が借方になる
+    # （施設の預金が消えて銀行の取り分になる）形で残る
     assert sum(e.amount for e in receipts) == price
     assert all(e.debit == ledger.issued(bank, ledger.DEPOSIT) for e in receipts)
 
