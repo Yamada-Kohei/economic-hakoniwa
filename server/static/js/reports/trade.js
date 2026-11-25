@@ -1,6 +1,7 @@
 // 貿易の画面（概要と、契約・貿易圏・船と港・海外の商人のタブ）: 輸出・輸入と船のグラフと、
 // 貿易の命令（貿易圏を作る・入る・抜ける・設定・代表を譲る・引き継ぐ、二国間契約の申し込み・
-// 受ける・やめる、フェーズ3-3 の関税・輸出補助・輸入の割り当て・禁輸・援助）。表の中の小さな
+// 受ける・やめる・条件の変更の申し込みと受ける、フェーズ3-3 の関税・輸出補助・輸入の割り当て・
+// 禁輸・援助）。表の中の小さな
 // 入力欄（form[data-order]）から、命令の列（右の欄か打てる手の箱。島の画面と同じ列）の後ろに足す。
 
 import { mountCharts } from "./common.js";
@@ -42,8 +43,8 @@ function payloadOf(kind, form) {
   if (kind === "bloc_settings" && ("fixed_good" in payload) !== ("fixed_price" in payload)) {
     return [null, "固定価格は、資源と値段の両方を入れてください。"];
   }
-  if (kind === "propose_contract" && payload.indefinite) {
-    delete payload.turns; // 無期限の契約は期間を書かない（FX-68）
+  if (["propose_contract", "propose_contract_change"].includes(kind) && payload.indefinite) {
+    delete payload.turns; // 無期限の契約・変更は期間を書かない（FX-68・FX-70）
   } else if (kind === "propose_contract" && !payload.turns) {
     return [null, "期間を入れるか、無期限を選んでください。"];
   }
