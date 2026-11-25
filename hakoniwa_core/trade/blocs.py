@@ -99,6 +99,7 @@ def create(world: WorldState, island: IslandState, name: str, open_: bool, turn:
         "volume": {},
         "demand": {},
         "supply": {},
+        "unmet": {},
     }
     state["blocs"].append(bloc)
     island.log.append(LogEntry("bloc_created", {"bloc": name}))

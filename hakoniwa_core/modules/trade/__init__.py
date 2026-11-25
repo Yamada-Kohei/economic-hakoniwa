@@ -2351,7 +2351,9 @@ class _Round:
     def _record_bloc(
         self, bloc: dict[str, Any], good: str, price: int, result: auction.Result, volume: int
     ) -> None:
-        """圏の値段と、約定した量（禁輸で相手がいなかった分を除く）・買い・売りを残す。"""
+        """圏の値段と、約定した量（禁輸で相手がいなかった分を除く）・買い・売り・買えなかった量を
+        残す。買えなかった量は、買い注文の合計から払って積んだ量を引いたもの（商社の狙う量の
+        見直しに渡す bloc_unmet と同じ。W-307 別件。#4731 の 3）。"""
         bloc["prices"][good] = price
         keep = self.config.get("trade.history_turns")
         history = bloc["history"].setdefault(good, [])
@@ -2361,6 +2363,7 @@ class _Round:
             ("volume", volume),
             ("demand", result.demand),
             ("supply", result.supply),
+            ("unmet", result.demand - volume),
         ):
             if value:
                 bloc[name][good] = value

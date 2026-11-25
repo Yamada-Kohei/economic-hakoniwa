@@ -241,7 +241,8 @@ def entry(f: Facility, good: str) -> dict[str, Any]:
     """財の状態: dir（向き）、x・m（輸出と輸入の狙う量）、held（[持っている量（運ぶ途中を含む）,
     その仕入れ値]）、transit（運ぶ途中の量）、age（売れ残ったターン数）、bx・bm（使う圏）、hold（輸入の
     荷の持つ量。FX-66）、leads（注文から売れるまでのターン数の実績）、restock（最後の仕入れ直しの値。
-    FX-63）、outlet・reexport（持ちすぎの分の値下げと輸出し直し。FX-64）。"""
+    FX-63）、outlet・reexport（持ちすぎの分の値下げと輸出し直し。FX-64）、xneg（輸出の差が負のターンが
+    続いた数。W-307 別件の粘り。切り替えを入れている間だけ）。"""
     item = goods_of(f).setdefault(good, {})
     item.setdefault("x", 0)
     item.setdefault("m", 0)
@@ -756,6 +757,9 @@ def update_targets(
                 importers[good] = importers.get(good, 0) + 1
     planned = is_planned(island)
     offtake_on = not planned and bool(config.get("trade.offtake.enabled"))
+    # 輸出の抜けの粘りと戻り（W-307 別件。#4731）。計画経済は値段で向きを決めないので入れない
+    reentry_on = not planned and bool(config.get("trade.bloc_reentry"))
+    exit_turns = config.get("trade.exit_turns")
     delivered = island.scratch.get(OFFTAKE_DELIVERED, {})
     exporters: dict[str, int] = {}
     for f in traders:
@@ -794,8 +798,10 @@ def update_targets(
             probe = round_money(cap * PROBE)
             held = item["held"][0]
             # 島で買い手のいない物は輸入せず、島の売り手が売りに出していない物は輸出しない（海外の
-            # 商人の売れ残りや、商社が輸入した物を輸出し直さない）
-            can_export = exportable(p, home) and supply > 0
+            # 商人の売れ残りや、商社が輸入した物を輸出し直さない）。戻りの道を入れている間は、島に
+            # 売りが無くても exportable なら輸出に向けられる（W-307 別件。#4731。売りが消えた島では、
+            # 差が戻ってもこの条件で閉じたまま戻れなかった）
+            can_export = exportable(p, home) and (supply > 0 or reentry_on)
             can_import = importable(p) and record is not None and record.demand > 0
             if planned:  # 計画経済: 行列のある物を輸入し、島の売り手の売れ残った物を輸出する
                 can_export = unsold
@@ -805,6 +811,13 @@ def update_targets(
                     and home_unmet(island, record) > 0  # 商社自身の輸出の買いは除く（PL-62）
                 )
             direction = item.get("dir")
+            if reentry_on:
+                # 抜けの粘り（W-307 別件。#4731）: 輸出の差（圏で払える上限 − 島の値段）が負のターンが
+                # 続いた数を数える。差が戻れば 0 に戻す
+                if exportable(p, home):
+                    item["xneg"] = 0
+                elif direction == EXPORT:
+                    item["xneg"] = item.get("xneg", 0) + 1
             if held <= 0:  # 荷が残っている間は向きを変えない（売り切ってから）
                 if can_import and can_export:
                     assert p is not None
@@ -814,9 +827,13 @@ def update_targets(
                     direction = IMPORT
                 elif can_export:
                     direction = EXPORT
+                elif reentry_on and direction == EXPORT and item.get("xneg", 0) < exit_turns:
+                    pass  # 粘り: 差が負のターンが exit_turns 続くまでは「なし」にしない
                 else:
                     direction = None
             item["dir"] = direction
+            if direction != EXPORT:
+                item.pop("xneg", None)
             if p is not None:
                 item["bx"], item["bm"] = p.export_bloc, p.import_bloc
             want_x = want_m = uncapped = 0
@@ -828,7 +845,12 @@ def update_targets(
                 if _probing(item["x"], sold_bloc.get(good, 0), stock.total(f.stock, good)):
                     want_x = max(want_x, item["x"] + probe)
                 uncapped = want_x
-                want_x = min(want_x, supply)
+                if supply > 0:
+                    want_x = min(want_x, supply)
+                elif not reentry_on:
+                    want_x = 0
+                # 戻りの道を入れている間は、島に売りが無いときも圏の買えなかった量と多めの狙いの分が
+                # 狙う量に残り、市場の段で買い注文になる（W-307 別件。#4731）
                 if planned:  # 圏で売れる量まで。売れ残りを輸出する商社で分けた分を超えない
                     # 圏で売れた量のうち輸出の計画の分（PL-62）は、売れ残りの狙う量に入れない
                     sold_unsold = max(0, sold_bloc.get(good, 0) - item.get(PLAN_X, 0))
@@ -888,7 +910,10 @@ def update_targets(
                 item["age"] += 1
             else:
                 item["age"] = 0
-            if not item["x"] and not item["m"] and held <= 0 and item["transit"] <= 0:
+            # 粘りで輸出の向きを保っている間は、狙う量が 0 でも状態を消さない（消すと負の続いた
+            # 数ごと消えて、差が戻っても向きが戻らない。W-307 別件）
+            kept = reentry_on and direction == EXPORT and not can_export
+            if not item["x"] and not item["m"] and held <= 0 and item["transit"] <= 0 and not kept:
                 goods_of(f).pop(good, None)
 
 
