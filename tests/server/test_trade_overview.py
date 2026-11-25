@@ -302,3 +302,5 @@ def test_trade_partner_stats_table(world):
     section = _section(page, "trade-partners")
     assert "貿易の相手国" in section and "圏の市場（相手は混ざる）" in section
     assert other.name in section and "穀物" in section
+    # 金額の桁が長くスマホ幅に収まらないので、表は横スクロールの入れ物で包む
+    assert '<div class="table-scroll">' in section
