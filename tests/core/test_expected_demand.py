@@ -215,6 +215,102 @@ def test_mixed_history_survives_a_save_round_trip_without_rewriting(game):
     assert expected_price(loaded, MEAT, 2, game.defs, on_config(game)) == 1000
 
 
+# --- 案 A: 品切れターンの見込みを需要水準に入れる（#5005・#5006・#5014） -------------
+
+
+def _flows_island(game, demand, supply, sold, expected=None):
+    """穀物の流れ（買いたい量・売りに出た量・売れた量と、あれば見込みの記録）を置いた島。
+    値段の履歴は 1000 で一定。"""
+    island = with_economy(game, make_island(game))
+    island.economy.price_history["grain"] = [1000] * 6
+    finance = {
+        "demand": {"grain": list(demand)},
+        "supply": {"grain": list(supply)},
+        "sold": {"grain": list(sold)},
+    }
+    if expected is not None:
+        finance["expected_demand"] = {"grain": list(expected)}
+    island.economy.finance.update(finance)
+    return island
+
+
+def _price(game, island, config):
+    return expected_price(island, "grain", 3, game.defs, config)
+
+
+def test_plan_a_recorded_stockout_turns_raise_the_price(game):
+    """売れ残り（買いたい 4000）と品切れ（買いたい 5000・見込み 9000）が半々の島。
+    切は今までどおり（1027 は直す前の値）。入では、記録のある品切れターンの見込みが
+    需要水準に入って、見込みの値段が切より上がる（直す前は入でも 1027 で、信号が
+    捨てられていた）。"""
+    island = _flows_island(
+        game,
+        [4000] * 3 + [5000] * 3,
+        [8000] * 3 + [5000] * 3,
+        [4000] * 3 + [5000] * 3,
+        [4000] * 3 + [9000] * 3,
+    )
+    assert _price(game, island, game.config) == 1027
+    assert _price(game, island, on_config(game)) > 1027
+
+
+def test_plan_a_no_stockout_no_difference(game):
+    """品切れのない島（見込み = 買いたい量）では、入にしても値段は変わらない。"""
+    island = _flows_island(game, [4000] * 6, [8000] * 6, [4000] * 6, [4000] * 6)
+    assert _price(game, island, on_config(game)) == _price(game, island, game.config) == 1000
+
+
+def test_plan_a_longer_recorded_stockout_raises_monotonically(game):
+    """供給は一定。品切れ（見込み 9000）のターンが長いほど、入の見込みの値段は
+    単調に上がる。切はどの長さでも今のまま動かない。"""
+    prices = []
+    for k in (0, 2, 4, 6):
+        island = _flows_island(
+            game,
+            [4000] * (6 - k) + [5000] * k,
+            [5000] * 6,
+            [4000] * (6 - k) + [5000] * k,
+            [4000] * (6 - k) + [9000] * k,
+        )
+        assert _price(game, island, game.config) == 1000
+        prices.append(_price(game, island, on_config(game)))
+    assert prices[0] == 1000
+    assert prices[0] < prices[1] < prices[2] < prices[3]
+
+
+def test_plan_a_zero_expected_erases_the_difference(game):
+    """見込みが 0 の財（第一希望が無い。肉の例）では、全ターン品切れでも入と切で
+    差は出ない。"""
+    island = _flows_island(game, [6000] * 6, [6000] * 6, [6000] * 6, [0] * 6)
+    assert _price(game, island, on_config(game)) == _price(game, island, game.config) == 1000
+
+
+def test_plan_a_leftover_turns_are_not_overcompensated(game):
+    """品切れターンの見込みが売れ残りと同じ水準（4000）なら、需要水準は変わらず、
+    値段は入でも切でも平均のまま（売れ残りを過補填しない）。"""
+    island = _flows_island(
+        game,
+        [4000] * 3 + [5000] * 3,
+        [5000] * 6,
+        [4000] * 3 + [5000] * 3,
+        [4000] * 6,
+    )
+    assert _price(game, island, on_config(game)) == _price(game, island, game.config) == 1000
+
+
+def test_plan_a_stockout_without_records_stays_excluded(game):
+    """記録の始まる前の品切れターン（見込みの記録がない）は、入でも平均に入らない。
+    記録のある売れ残りだけなら切と同じになる。"""
+    island = _flows_island(
+        game,
+        [5000] * 3 + [4000] * 3,
+        [5000] * 3 + [8000] * 3,
+        [5000] * 3 + [4000] * 3,
+        [4000] * 3,  # 記録は末尾の売れ残り 3 ターン分だけ
+    )
+    assert _price(game, island, on_config(game)) == _price(game, island, game.config) == 1000
+
+
 def test_fully_old_history_has_no_expected_key(game):
     """見込みの記録のない昔だけのセーブ: 欄そのものがない（None でなく欠落）。"""
     island = with_economy(game, make_island(game))
