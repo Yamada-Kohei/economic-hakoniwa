@@ -714,8 +714,8 @@ def test_contract_change_form_only_for_changeable_active_contracts():
 
 
 def test_contract_change_form_on_an_active_contract(client, world):
-    """有効な契約の行に変更の申し込み欄が出て、送ると propose_contract_change が入り、次のターンに
-    自分の変更の申し込みとして契約の行に出る。"""
+    """有効な契約にはページ下に変更の申し込み欄が出て、送ると propose_contract_change が入り、
+    次のターンに自分の変更の申し込みとして契約の行に出る。"""
     own, second, _ = _trading_world(client)
     body = {"orders": [{"kind": "accept_contract", "payload": {"contract": 1}}]}
     res = client.put(f"/api/islands/{own.id}/orders", body, content_type="application/json")
@@ -728,6 +728,12 @@ def test_contract_change_form_on_an_active_contract(client, world):
     assert 'data-order="propose_contract_change"' in html
     for name in ("contract", "quantity", "price", "turns", "indefinite"):
         assert f'name="{name}"' in html
+    # 変更の申し込み欄は表の中ではなく、ページ下の「二国間契約の変更」の欄にあり、
+    # 表の契約番号からその契約の欄へアンカーで飛べる
+    assert "<h2>二国間契約の変更</h2>" in html
+    assert 'id="contract-change-1"' in html
+    assert 'href="#contract-change-1"' in html
+    assert html.index('data-order="propose_contract_change"') > html.index("</table>")
 
     body = {
         "orders": [
