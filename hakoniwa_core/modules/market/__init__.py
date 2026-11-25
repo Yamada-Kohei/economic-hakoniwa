@@ -829,6 +829,71 @@ def inventory_turns(ctx, good: str) -> float:
 # 財 → 値段）。画面で「生産調整中」のわけ（W-250）を出すためだけに残す記録で、計算には使わない
 COST_FLOOR = "cost_floor"
 
+# 要望B: 操業目標の見直しの前にまとめて計算した、品切れの配分（(施設の番号, 財) → 足す量）。
+# island.scratch に置く鍵。目標を1つずつ書き換えながら配ると、余地が途中で変わって合計が
+# 買えなかった量を超え得るので、全戸分を先に固める。
+SHORTAGE_SHARES = "shortage_shares"
+
+
+def shortage_response_on(ctx: StageContext) -> bool:
+    """要望Bの切り替え（market.shortage_response）。既定は切で、無い設定でも切として読む。"""
+    try:
+        return bool(ctx.config.get("market.shortage_response"))
+    except KeyError:
+        return False
+
+
+def shortage_shares(island: IslandState, ctx: StageContext) -> dict[tuple[int, str], int]:
+    """島の買えなかった量を、増やせる施設に「増やせる余地」の割合で配った量（要望Bの最終形）。
+
+    配り先は、独立採算で、値段が1単位あたりの変動費の下限の (1 + market.expand_margin) 倍を
+    超えていて（採算が合わないのに増やさない）、まだ増やせる施設だけ。余地は「全力の産出量 −
+    見直す前の操業目標に当たる産出量」で、作れた量（生産実績）では引かない（目標100%・生産0の
+    畑は余地0）。財ごとに、配る量の島の合計は買えなかった量を超えない（proportional の性質と、
+    余地の合計が買えなかった量以下のときは余地までしか配らないことによる）。計画経済の国営施設は
+    planning.target 側で決まるので、ここでは配らない。
+    """
+    shares: dict[tuple[int, str], int] = {}
+    if not shortage_response_on(ctx):
+        return shares
+    settings = ctx.config.get("market")
+    records = {m.good: m for m in island.markets}
+    prices = island.economy.prices
+    rates = freight_rates.facility_rates(island, ctx.defs, ctx.config)
+    power = ctx.config.get("power.good")
+    planned = planning.is_planned(island, ctx.defs) and bool(planning.official(island))
+    for good, record in sorted(records.items()):
+        if good == power:
+            continue
+        unmet = record.demand - record.volume
+        if unmet <= 0:
+            continue
+        requests: list[tuple[int, int]] = []
+        for f in sorted(island.facilities, key=lambda f: f.id):
+            if planned or not f.built or not is_self_supporting(f) or is_stopped(f):
+                continue
+            full = fac.outputs_of(ctx.defs, f).get(good, 0)
+            if not full:
+                continue
+            target = f.economy.get("target", fac.FULL)
+            headroom = full - fac.scale(full, target)
+            if headroom <= 0:
+                continue
+            rate = rates.get(f.id, 0)
+            wage = f.economy.get("wage", 0)
+            floor = subsidized_floor(
+                island, ctx.defs, ctx.config, f, good, prices, wage, rate, ctx.turn
+            )
+            if floor <= 0 or prices.get(good, 0) <= floor * (1 + settings["expand_margin"]):
+                continue
+            requests.append((f.id, headroom))
+        if not requests:
+            continue
+        for fid, amount in proportional(unmet, requests).items():
+            if amount > 0:
+                shares[(fid, good)] = amount
+    return shares
+
 
 def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int:
     """操業目標（1000 分の 1）の見直し: 見込みの売れ行きと、在庫を目安に戻す分だけ作る。
@@ -903,6 +968,31 @@ def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int
             # 希望価格が高すぎて売れなかった分は、市場に買えなかった人がいれば売れたと見る
             # （次のターンに希望価格を下げて売れる。値上げで売れなかったターンに減産しない）
             sold += min(priced_out, unmet)
+        if shortage_response_on(ctx) and unmet > 0:
+            # 要望B: 品切れの足しは、島の買えなかった量を増やせる余地の割合で配った分だけに
+            # する（再開の分岐も含め、足す量の島の合計は買えなかった量を超えない）。配分は
+            # 全戸の目標を更新する前にまとめて計算したもの（scratch）を使い、無ければその場で
+            # 島全体から計算する。
+            precomputed = island.scratch.get(SHORTAGE_SHARES)
+            share = (
+                precomputed.get((f.id, good), 0)
+                if precomputed is not None
+                else shortage_shares(island, ctx).get((f.id, good), 0)
+            )
+            if offered == 0:  # 売る物がない施設の再開も、配った分だけを作り始める
+                sold = share
+            elif sold >= offered > 0:  # 売り切れた
+                sold += share
+                if prices.get(good, 0) > floor * (1 + settings["expand_margin"]):
+                    sold = max(sold, before + fac.scale(full, step))
+            # 売れ残った施設には足さない（今までどおり見込みは売れた量で決まる）
+            estimate = before + round_money((sold - before) * settings["sales_smoothing"])
+            expected[good] = estimate
+            gap = round_money(estimate * inventory_turns(ctx, good)) - held
+            amount = estimate + round_money(gap * settings["inventory_adjust"])
+            amount += offtake.committed_extra(island, f, good)
+            plan = max(plan, fac.ratio(max(0, amount), full))
+            continue
         if offered == 0 and unmet > 0:  # 売る物がなく、市場に買えなかった人がいれば作り始める
             sold = max(fac.scale(full, step), min(unmet, full))
         elif offered == 0 and profitable:  # 売る物がなくても、利益の出る値段なら少し作ってみる
@@ -1239,6 +1329,8 @@ class Market(IslandStage):
         self._update_prices(island, ctx, books_by_good, results)
         contracts.review_prices(island, defs, config)  # 土木業者の単価（IN-33）
         power = config.get("power.good")
+        # 要望B: 品切れの配分は、全戸の操業目標を更新する前にまとめて計算して固める
+        island.scratch[SHORTAGE_SHARES] = shortage_shares(island, ctx)
         if official:
             self._plan_record(island, ctx, books_by_good, official, bought)
         else:  # 公定価格がまだない計画経済の島も、電気の差と持ち越した未払いを払う（PL-60）
@@ -2193,7 +2285,10 @@ class Market(IslandStage):
                     order = Order(total - expiring, limit)
                 self._add(books_by_good, good, "sell", order, seller)
             needs = self._input_needs(ctx, f, power)
-            outbid = {g for g, why in f.economy.pop("short", {}).items() if why == "price"}
+            # 要望B（入のとき）: supply で買えなかった原料も、price のときと同じく買い上がりの
+            # 対象にする
+            outbid_reasons = ("price", "supply") if shortage_response_on(ctx) else ("price",)
+            outbid = {g for g, why in f.economy.pop("short", {}).items() if why in outbid_reasons}
             placed = f.economy.pop(BIDS, {})
             # 前のターンに出した指値だけを見る（壊れて直していた間などの古い指値で上げない）
             last = placed.get("limits", {}) if placed.get("turn") == ctx.turn - 1 else {}
