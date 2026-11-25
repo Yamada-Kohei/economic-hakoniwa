@@ -1,0 +1,32 @@
+{
+ "name": "w308-reentry-a-on-smoke-1126",
+ "commit": "9ca5044bcb334050297f181c1b1aa96536cbdcaa",
+ "pool": "any",
+ "files": [
+  "w308_reentry_probe.py"
+ ],
+ "patches": [
+  "reentry-on.diff"
+ ],
+ "runs": [
+  {
+   "name": "plan-s17-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "17",
+    "--turns",
+    "1200",
+    "--label",
+    "Aon",
+    "--out",
+    "reentry-Aon-plan-s17-t1200.json"
+   ],
+   "summary": [
+    "reentry-Aon-plan-s17-t1200.json"
+   ],
+   "large": []
+  }
+ ]
+}
