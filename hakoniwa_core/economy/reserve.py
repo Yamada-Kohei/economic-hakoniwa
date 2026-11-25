@@ -18,6 +18,12 @@
   いつもの値段を指値に、国の倉庫の買い入れの予算（budget.warehouse）から買う。契約の輸入や命令で
   倉庫が穀物を売りに出しているターンは買わない（自分の売りを買わない）。予算が 0 なら買えない
   （遊ぶ人が予算で止められる）。
+- 回転備蓄（下書き。game.yaml の food_reserve.rotate_first、既定は切。会議 #5233）: 入のときは、
+  入れ替えの組は買い足しが埋まって新しい組が倉庫に入った分（ROTATE_CREDIT）だけ売る（買ってから
+  売る。注文を出す時点ではそのターンの埋まりは分からないので、売れるのは前のターンまでに埋まった
+  分から）。埋まらなければ、日持ちの残りがある間は持ち続け、放出のときに全量の一部として出る。
+  あわせて、倉庫が目安の floor_fraction を割ったら、買い足しの指値をいつもの値段 ×
+  (1 + market.band) まで上げる（公定価格のある財は対象外）。
 
 売り買いは市場の段の国の倉庫の注文（modules/market の _warehouse_orders）として出し、代金は国庫に
 入る・国庫から出る。結果はログに出さない（毎ターン出すため）。
@@ -31,6 +37,21 @@ from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import standing
 from hakoniwa_core.state import IslandState
 from hakoniwa_core.units import to_milli
+
+# island.economy.ext: 回転備蓄（rotate_first、入のとき）で、買い足しが埋まって倉庫に入った
+# 新しい組の量のうち、まだ入れ替えの売りに使っていない分（この量まで入れ替えの組を売ってよい）
+ROTATE_CREDIT = "food_reserve_rotate_credit"
+
+
+def rotate_first_on(config: GameConfig) -> bool:
+    """回転備蓄の切り替え（food_reserve.rotate_first.enabled、既定は切）が入っているか。"""
+    spec = config.get("food_reserve")
+    return bool((spec.get("rotate_first") or {}).get("enabled"))
+
+
+def rotate_credit(island: IslandState) -> int:
+    """入れ替えを売ってよい分（買い足しが埋まって入った新しい組の、未使用の量）。"""
+    return island.economy.ext.get(ROTATE_CREDIT, 0)
 
 
 def target(island: IslandState, defs: Defs, config: GameConfig) -> int:

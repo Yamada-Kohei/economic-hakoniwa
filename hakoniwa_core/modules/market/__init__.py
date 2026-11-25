@@ -206,6 +206,14 @@ RESERVE_IMPORT = "reserve_import"
 # "home_unsold": 島の売り手の穀物の売れ残り}）。輸入で積む形に入るかを決める
 RESERVE_SEEN = "reserve_seen"
 RESERVE_REFILL = "food_reserve_refill"  # island.scratch: このターンの穀物の備蓄の買い足しの注文
+# island.scratch: このターンの穀物の備蓄の放出（qty・reason・price・base。測り用）
+RESERVE_RELEASE = "food_reserve_release"
+# island.scratch: このターンの穀物の備蓄の入れ替えの置き方と埋まり（測り用。_remember_food が
+# 埋まりを足す）
+RESERVE_ROTATE = "food_reserve_rotate"
+RESERVE_ROTATE_ORDER = "food_reserve_rotate_order"  # island.scratch: 入れ替えの売りの注文
+# island.scratch: このターンに国の倉庫から傷んで捨てられた穀物の量（測り用）
+RESERVE_SPOILED = "food_reserve_spoiled"
 # island.scratch: 物がないときの海外の食料商人の売り（注文, 削ったか, 商人の値段）
 FOOD_MERCHANT = "food_merchant"
 
@@ -4056,8 +4064,17 @@ class Market(IslandStage):
         usual = usual_price(island, good, ctx.config.get("household.usual_price_turns"))
         price = island.economy.prices.get(good, 0)
         old = reserve.rotating(island, ctx.defs, ctx.config, ctx.turn)
-        if old > 0:  # 傷む前に、今の値段で売る
-            sell(good, old, price or None)
+        # 回転備蓄（下書き。food_reserve.rotate_first、既定は切）: 入のときは、入れ替えの組は
+        # 買い足しが埋まって新しい組が入った分（reserve.ROTATE_CREDIT）だけ売る。注文を出す
+        # 時点ではこのターンの埋まりは分からないので、売れるのは前のターンまでに埋まった分
+        # から（買ってから売る、が 1 ターン遅れで効く形）。決まった注文の島の手入れ
+        # （maintenance_only）では今までどおり
+        rotate_on = reserve.rotate_first_on(ctx.config) and not maintenance_only
+        credit = reserve.rotate_credit(island) if rotate_on else 0
+        rotate_offered = min(old, credit) if rotate_on else old
+        rotate_order = None
+        if rotate_offered > 0:  # 傷む前に、今の値段で売る
+            rotate_order = sell(good, rotate_offered, price or None)
         hungry = self._anyone_hungry(island, ctx)
         # 買い足しの指値: ふだんはいつもの値段。穀物を作らない島では輸入が引き合う値段まで（W-239）
         limit = usual if maintenance_only else self._reserve_limit(island, ctx, good, usual)
@@ -4066,20 +4083,58 @@ class Market(IslandStage):
         high = scale_price(limit, 1 + spec["release"])
         release = usual > 0 and (hungry or (not maintenance_only and price >= high))
         if release:
-            sell(good, stock.total(island.warehouse, good), usual if hungry else high)
+            total = stock.total(island.warehouse, good)
+            sell(good, total, usual if hungry else high)
+            island.scratch[RESERVE_RELEASE] = {
+                "qty": total,
+                "reason": "hunger" if hungry else "price",
+                "price": price,
+                "base": usual,
+            }
+        # 測り用の記録: このターンの入れ替えの置き方（埋まりは _remember_food が足す）
+        note: dict[str, Any] = {
+            "due": old,
+            "offered": rotate_offered,
+            "credit": credit,
+            "want": 0,
+            "renew": 0,
+            "limit": 0,
+            "raised": False,
+            "placed": False,
+            "refill_filled": None,
+            "renew_filled": None,
+            "rotate_sold": None,
+        }
+        island.scratch[RESERVE_ROTATE] = note
+        if rotate_order is not None:
+            island.scratch[RESERVE_ROTATE_ORDER] = rotate_order
         if maintenance_only:
             return
         # 目安に足りない分の refill の割合と、入れ替えで売りに出した分（新しい組と入れ替える）
         short = reserve.target(island, ctx.defs, ctx.config) - stock.total(island.warehouse, good)
         renew = min(old, stock.total(island.warehouse, good))
         want = min(int(max(0, short) * spec["refill"]) + renew, short + renew)  # 目安まで
+        note["want"], note["renew"] = want, renew
+        # 回転備蓄（入）: 倉庫が目安の floor_fraction（下限）を割っていたら、買い足しの指値を
+        # いつもの値段 × (1 + market.band) まで上げる。放出の線（high）は今までどおり、
+        # 上げる前の指値から数える。公定価格のある財は今までどおり（公定価格で買う）
+        buy_limit = limit
+        if rotate_on and good not in planning.official(island):
+            goal = reserve.target(island, ctx.defs, ctx.config)
+            fraction = float((spec.get("rotate_first") or {}).get("floor_fraction", 0.5))
+            floor_qty = int(goal * fraction)
+            if stock.total(island.warehouse, good) < floor_qty:
+                buy_limit = max(limit, scale_price(usual, 1 + ctx.config.get("market.band")))
+                note["raised"] = buy_limit > limit
+        note["limit"] = buy_limit
         # 放出するターンと、輸入や命令で倉庫が穀物を売りに出しているターンは買わない（自分の売りを
         # 買わない。入れ替えの売りは少しずつなので、同じ板で一部を買い戻すことはある）。海外の
         # 食料商人が来ている間も買わない（商人の穀物を備蓄に買わない。FX-73）
         if selling > 0 or release or want <= 0 or usual <= 0 or food_merchant.active(island):
             return
+        note["placed"] = True
         buyer = Payer(ledger.GOV, WAREHOUSE)
-        plan = self._afford(island, buyer, {good: (want, limit)}, 0, 0)
+        plan = self._afford(island, buyer, {good: (want, buy_limit)}, 0, 0)
         for g, (q, lim) in plan.items():
             party = Party(STORE, ledger.GOV, buyer)
             party.reserved = gross_cost(lim, q, 0, 0)
@@ -4304,6 +4359,27 @@ class Market(IslandStage):
             "home_unsold": traders.home_supply(island, record)[1],
             "made": made,
         }
+        # 回転備蓄（下書き。food_reserve.rotate_first）: このターンの買い足しと入れ替えの売りの
+        # 埋まりを数え、測り用の記録（RESERVE_ROTATE）に足す。切り替えが入のときは、次のターンに
+        # 入れ替えを売ってよい分（reserve.ROTATE_CREDIT）も更新する: 買い足しが埋まった分を足し
+        # （1 本の注文の埋まりは、入れ替えの分 renew から先に数える。仮置き）、入れ替えの売りが
+        # 埋まった分を引く。放出があったターンは、倉庫の組が全部売りに出たので 0 に戻す
+        note = island.scratch.get(RESERVE_ROTATE)
+        if note is not None:
+            rotate_order = island.scratch.pop(RESERVE_ROTATE_ORDER, None)
+            if rotate_order is not None:
+                note["rotate_sold"] = filled(grain, rotate_order)
+            if refill is not None:
+                note["refill_filled"] = filled(grain, refill)
+                note["renew_filled"] = min(note["refill_filled"], note["renew"])
+            if reserve.rotate_first_on(ctx.config):
+                if island.scratch.get(RESERVE_RELEASE) is not None:
+                    island.economy.ext[reserve.ROTATE_CREDIT] = 0
+                else:
+                    credit = reserve.rotate_credit(island)
+                    credit += note["renew_filled"] or 0
+                    credit -= note["rotate_sold"] or 0
+                    island.economy.ext[reserve.ROTATE_CREDIT] = max(0, credit)
         if not trade.started(island):
             return
         order, cut, price = island.scratch.pop(FOOD_MERCHANT, (None, False, 0))
@@ -5157,6 +5233,9 @@ class Market(IslandStage):
                     traders.take_cost(traders.goods_of(f)[good], qty)
         for good, qty in stock.spoil(island.warehouse, ctx.turn, ctx.defs.goods).items():
             spoiled[good] = spoiled.get(good, 0) + qty
+            if good == ctx.config.get("food_reserve.good"):
+                # 測り用: 国の倉庫の穀物が傷んで捨てられた量（施設の分とは分けて残す）
+                island.scratch[RESERVE_SPOILED] = island.scratch.get(RESERVE_SPOILED, 0) + qty
         unused = services.good_of(ctx.config)  # 売れ残ったサービスは傷んだのでなく、使われなかった
         for good, qty in sorted(spoiled.items()):
             if good == unused:
