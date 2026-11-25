@@ -393,6 +393,8 @@ trade_request_failed: "命令「{order}」を貿易の処理で行えません�
 experience_faded: "{industry}の生産がこの1年ほとんどなく、経験が薄れはじめています"
 # 称号の文の {title} は、表示のときにサーバーが下の title_name_<産業> から足す（2026-10-19、史実のあだ名）
 title_gained: "「{title}」の称号を得ました（{industry}の経験が世界一）"
+# 賞を取った瞬間（国のページの年表。賞は記録を持たないので、サーバーが統計とターンログから到達ターンを導いて出す）
+award_gained: "「{award}」を取りました（{detail}）"
 title_lost: "「{title}」の称号を失いました（{industry}の経験で{country}に抜かれました）"
 title_lost_any: "「{title}」の称号を失いました（{industry}）"
 # 称号の名前（産業ごとの史実のあだ名。付くのは経験が世界一の国だけ）
