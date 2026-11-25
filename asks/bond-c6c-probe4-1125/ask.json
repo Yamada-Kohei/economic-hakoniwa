@@ -1,0 +1,96 @@
+{
+ "name": "bond-c6c-probe4-1125",
+ "commit": "cfcb8f10332ef7f8b698bab0fd1c1722972760c2",
+ "pool": "any",
+ "files": [
+  "bond_c3_run.py",
+  "bond_c_probe.py"
+ ],
+ "patches": [
+  "bonds-ca-on.diff"
+ ],
+ "runs": [
+  {
+   "name": "c6c-ind-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--pricing",
+    "--crisis",
+    "--exchange",
+    "--out",
+    "c6c-ind-s1.jsonl.gz"
+   ],
+   "summary": [
+    "c6c-ind-s1.jsonl.gz",
+    "c6c-ind-s1.gate.json",
+    "c6c-ind-s1.quick-check.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "c6c-ind-s2",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "2",
+    "--turns",
+    "500",
+    "--pricing",
+    "--crisis",
+    "--exchange",
+    "--out",
+    "c6c-ind-s2.jsonl.gz"
+   ],
+   "summary": [
+    "c6c-ind-s2.jsonl.gz",
+    "c6c-ind-s2.gate.json",
+    "c6c-ind-s2.quick-check.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "c6c-plan-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--pricing",
+    "--crisis",
+    "--exchange",
+    "--out",
+    "c6c-plan-s1.jsonl.gz"
+   ],
+   "summary": [
+    "c6c-plan-s1.jsonl.gz",
+    "c6c-plan-s1.gate.json",
+    "c6c-plan-s1.quick-check.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-c6c",
+   "args": [
+    "quick",
+    "q-c6c"
+   ],
+   "summary": [
+    "q-c6c.zip"
+   ],
+   "large": [
+    "q-c6c"
+   ]
+  }
+ ]
+}
