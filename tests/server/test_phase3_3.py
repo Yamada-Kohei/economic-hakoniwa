@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from hakoniwa_core import ledger
@@ -196,6 +198,25 @@ def test_fx_page_shows_swaps_to_the_owner(client, world):
     html = client.get(f"/islands/{second.id}/fx/").content.decode()
     assert 'id="swaps"' not in html
     assert "swaps" not in client.get(f"/api/islands/{second.id}/fx").json()
+
+
+def test_fx_page_swap_totals_appear_once_at_the_head(client, world):
+    """融通の合計（借りている額・まだ借りられる額・作って貸している額）はページ先頭の
+    表にだけ出し、末尾の「中央銀行どうしの融通」の節には相手ごとの内訳だけを残す。"""
+    own, second, _ = _trading_world(client)
+    for island, table, other in ((own, swap.OWED, second), (second, swap.LENT, own)):
+        ext = island.ext
+        ext["trade"][table] = {str(second.id): {str(other.id): 1200}}
+        m.Island.objects.filter(pk=island.pk).update(ext=ext)
+    second.owner = _login(client, "rep")
+    second.save()
+    html = client.get(f"/islands/{second.id}/fx/").content.decode()
+    assert "借りている額の合計" not in html  # 末尾の合計の表は無くした
+    assert html.count("自国の通貨を作って貸している額") == 1  # 先頭の表に集約
+    assert html.count("まだ借りられる額") == 1
+    section = re.search(r'<section class="panel" id="swaps">.*?</section>', html, re.S).group(0)
+    assert 'class="goods swaps-table"' in section  # 相手ごとの内訳は残る
+    assert '<table class="info">' not in section
 
 
 def test_bond_list_shows_foreign_holders(client, world):

@@ -119,6 +119,19 @@ def test_overview_first_and_details_in_tabs(world):
     assert json.loads(moved)["#merchant"] == f"/islands/{island.id}/trade/merchant/"
 
 
+def test_overview_stats_are_rows_of_the_overview_table(world):
+    """貿易の数（統計の行）は概要の表の行として出し、別の表やアコーディオンに分けない。
+    統計が無いときは「未集計です。」の注記だけを残す。"""
+    owner, island, _, _ = _world_with_offer(world)
+    page = _client(owner).get(f"/islands/{island.id}/trade/").content.decode()
+    overview = _section(page, "trade-overview")
+    assert overview.count("<table") == 1 and "<details" not in overview
+    assert "貿易の数をすべて見る" not in page and "未集計です。" not in overview
+    table = re.search(r'<table class="info trade-overview">.*?</table>', overview, re.S).group(0)
+    # 圏の行・概要の行（輸出・輸入・収支）・荷の行・契約の行のあとに、統計の行が続く
+    assert table.count("<tr>") >= 9
+
+
 def test_what_to_do_now_is_the_home_todo_trade_rows(world):
     """(6) いますべきことは、ホームの今月すべきことのうち貿易の種類の行と同じ。返事の命令を入れると
     消える。持ち主だけ。"""

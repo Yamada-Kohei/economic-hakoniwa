@@ -35,17 +35,11 @@
             <a href="{% url 'trade_contracts' island.id %}#contracts">{% translate "契約の一覧" %}</a></td></tr>
         {% endwith %}
         {% endif %}
+        {% for row in stats %}<tr><th>{{ row.label }}</th><td class="num">{{ row.text }}</td></tr>{% endfor %}
       </table>
       {% endwith %}
       {% if mine and not trade.todo %}<p class="muted">{% translate "いま貿易で急いですることはありません。" %}</p>{% endif %}
-      {% if stats %}
-      <details class="trade-more">
-        <summary>{% translate "貿易の数をすべて見る（1ターン）" %}</summary>
-        <table class="info">
-          {% for row in stats %}<tr><th>{{ row.label }}</th><td class="num">{{ row.text }}</td></tr>{% endfor %}
-        </table>
-      </details>
-      {% else %}
+      {% if not stats %}
       <p class="muted">{% translate "未集計です。" %}</p>
       {% endif %}
     </section>
