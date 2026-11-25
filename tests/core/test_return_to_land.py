@@ -113,12 +113,45 @@ def test_land_room_counts_the_farmers_already_there(game):  # noqa: F811
     share = fac.labor_share(game.defs, island)
     village = island.tile(*NEAR)
     room = popmod._land_room(game.defs, game.config, island, village, share)
-    per = game.config.get("population.food_per_person")
+    per = popmod.to_milli(game.config.get("population.food_per_person"))
     most = popmod._land_output(
         game.defs, game.config, island, village, fac.workers_needed(game.defs, "farm")
     )
-    sub = popmod.subsistence_persons(game.defs, island, village, share)
-    assert room == max(0, int(most // popmod.to_milli(per)) - sub)
+    unemployed = fac.labor_force(game.defs, island, village, share) - village.ext.get("employed", 0)
+    farmers = min(village.population, max(0, unemployed) / share)
+    assert room == max(0, int((most - farmers * per) // per))
+
+
+def test_land_room_does_not_round_the_farmers_away(game):  # noqa: F811
+    """PO-63 の揃え: 今の自給の人を切り捨てた人数（subsistence_persons）で引くと、端数の分だけ
+    空きが多めに出る。仕事のない働き手 1 人（割合で割り戻すと 2.04 人）のマスでは、揃えた後の
+    空きは旧式より 1 人分小さく、残りの作れる量どおりになる。"""
+    island = make_island(game)
+    island.economy.started = 0  # お金の経済が始まった島
+    home(game, island, 6, 6, village_size(game.defs) // 2, level="village")
+    island.economy.households["owners"] = {"share": 0.02}  # 働く割合が 0.5 × 0.98 = 0.49 に下がる
+    tile = island.tile(6, 6)
+    share = fac.labor_share(game.defs, island)
+    force = fac.labor_force(game.defs, island, tile, share)
+    tile.ext["employed"] = force - 1  # 仕事のない働き手は 1 人だけ
+    persons = popmod.subsistence_persons(game.defs, island, tile, share)
+    per = popmod.to_milli(game.config.get("population.food_per_person"))
+    most = popmod._land_output(
+        game.defs, game.config, island, tile, fac.workers_needed(game.defs, "farm")
+    )
+    room = popmod._land_room(game.defs, game.config, island, tile, share)
+    assert room == max(0, int((most - (1 / share) * per) // per))  # 端数つきの人数で引いた形
+    assert room == most // per - persons - 1  # 旧式（切り捨てた人数で引く）より 1 人分小さい
+
+
+def test_land_room_stays_zero_when_the_farmers_eat_the_whole_land(game, monkeypatch):  # noqa: F811
+    """PO-63 の揃え: 今の自給の人の食べる分が土地の作れる量に届いているマスは、揃えた後も
+    空き 0 のまま（空きがない所に空きを作らない）。"""
+    island, _, _ = _island(game)
+    share = fac.labor_share(game.defs, island)
+    village = island.tile(*NEAR)
+    monkeypatch.setattr(popmod, "_land_output", lambda *args: 1000)
+    assert popmod._land_room(game.defs, game.config, island, village, share) == 0
 
 
 @pytest.mark.parametrize("on", [False, True])

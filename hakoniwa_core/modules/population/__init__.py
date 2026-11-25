@@ -335,12 +335,20 @@ def _land_room(
     defs: Defs, config: GameConfig, island: IslandState, tile: Tile, share: float
 ) -> int:
     """村のマスの土地が、今の自給の人に加えて食べさせられる人数（帰農の行き先の上限。W-272 ④）。
-    畑の作れる量（農場の働き手の分まで入ったとき。_land_output）÷ 1 人の食べる量 − 今の自給の人。"""
+    畑の作れる量（農場の働き手の分まで入ったとき。_land_output）から、今の自給の人の食べる分を
+    引いた残り ÷ 1 人の食べる量。今の自給の人は、人数の切り捨て（subsistence_persons の int）を
+    通さず、仕事のない働き手から割合で割り戻した端数つきの人数で引く（PO-63 の揃え: 作れる量への
+    換算の往復で端数を落とさない。subsistence_persons 自体の数え方は変えない）。切り捨てた人数で
+    引くと、端数の分だけ空きが多めに出ていた。"""
     per = to_milli(config.get("population.food_per_person"))
     if per <= 0:
         return 0
     most = _land_output(defs, config, island, tile, fac.workers_needed(defs, "farm"))
-    return max(0, most // per - subsistence_persons(defs, island, tile, share))
+    farmers = 0.0
+    if share > 0 and _farming(defs, tile):
+        unemployed = fac.labor_force(defs, island, tile, share) - tile.ext.get("employed", 0)
+        farmers = min(tile.population, max(0, unemployed) / share)
+    return max(0, int((most - farmers * per) // per))
 
 
 def tile_jobless(defs: Defs, island: IslandState, tile: Tile, share: float | None = None) -> int:
