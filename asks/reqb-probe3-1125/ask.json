@@ -1,0 +1,275 @@
+{
+ "name": "reqb-probe3-1125",
+ "commit": "95a319396eef6c8cb2ec595af5285c23773cd7d7",
+ "pool": "any",
+ "files": [
+  "reqb_probe3.py"
+ ],
+ "patches": [],
+ "runs": [
+  {
+   "name": "p-off-plan-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "p-off-plan-s1.jsonl.gz"
+   ],
+   "summary": [
+    "p-off-plan-s1.jsonl.gz",
+    "p-off-plan-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "p-on-plan-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "p-on-plan-s1.jsonl.gz"
+   ],
+   "summary": [
+    "p-on-plan-s1.jsonl.gz",
+    "p-on-plan-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "p-off-none-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "none",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "p-off-none-s1.jsonl.gz"
+   ],
+   "summary": [
+    "p-off-none-s1.jsonl.gz",
+    "p-off-none-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "p-on-none-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "none",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "p-on-none-s1.jsonl.gz"
+   ],
+   "summary": [
+    "p-on-none-s1.jsonl.gz",
+    "p-on-none-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "p-off-independent-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "p-off-independent-s1.jsonl.gz"
+   ],
+   "summary": [
+    "p-off-independent-s1.jsonl.gz",
+    "p-off-independent-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "p-on-independent-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "p-on-independent-s1.jsonl.gz"
+   ],
+   "summary": [
+    "p-on-independent-s1.jsonl.gz",
+    "p-on-independent-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "p-off-small-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "small",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "p-off-small-s1.jsonl.gz"
+   ],
+   "summary": [
+    "p-off-small-s1.jsonl.gz",
+    "p-off-small-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "p-on-small-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "small",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "p-on-small-s1.jsonl.gz"
+   ],
+   "summary": [
+    "p-on-small-s1.jsonl.gz",
+    "p-on-small-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "p-off-open-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "open",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "p-off-open-s1.jsonl.gz"
+   ],
+   "summary": [
+    "p-off-open-s1.jsonl.gz",
+    "p-off-open-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "p-on-open-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "open",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "p-on-open-s1.jsonl.gz"
+   ],
+   "summary": [
+    "p-on-open-s1.jsonl.gz",
+    "p-on-open-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "p-off-war-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "war",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "p-off-war-s1.jsonl.gz"
+   ],
+   "summary": [
+    "p-off-war-s1.jsonl.gz",
+    "p-off-war-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "p-on-war-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "war",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "p-on-war-s1.jsonl.gz"
+   ],
+   "summary": [
+    "p-on-war-s1.jsonl.gz",
+    "p-on-war-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "report",
+   "args": [
+    "report",
+    "p-off-plan-s1.jsonl.gz",
+    "p-on-plan-s1.jsonl.gz",
+    "p-off-none-s1.jsonl.gz",
+    "p-on-none-s1.jsonl.gz",
+    "p-off-independent-s1.jsonl.gz",
+    "p-on-independent-s1.jsonl.gz",
+    "p-off-small-s1.jsonl.gz",
+    "p-on-small-s1.jsonl.gz",
+    "p-off-open-s1.jsonl.gz",
+    "p-on-open-s1.jsonl.gz",
+    "p-off-war-s1.jsonl.gz",
+    "p-on-war-s1.jsonl.gz",
+    "--out",
+    "report.md"
+   ],
+   "summary": [
+    "report.md"
+   ],
+   "large": []
+  }
+ ]
+}
