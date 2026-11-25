@@ -8,6 +8,7 @@
 {% else %}
 <p>{% blocktranslate with t=data.turn|turn_date %}{{ t }}の統計です。{% endblocktranslate %}
   {% if data.base_name %}{% blocktranslate with c=data.base_name %}お金の額は、今の為替レートで「{{ c }}」に直して比べています。{% endblocktranslate %}{% endif %}</p>
+<p class="hint">{% translate "国名の横の小さな線は、直近2年の人口（青）・GDP（赤）・1人あたり所得（緑）の推移です。線は国ごとに、期間内の最大と最小に合わせて伸縮しています。" %}</p>
 {% if data.currencies|length > 1 %}
 <form method="get" class="actions">
   <label>{% translate "比べる通貨" %} <select name="base">
@@ -27,7 +28,7 @@
       <thead><tr><th>{% translate "順位" %}</th><th>{% translate "国" %}</th><th>{% translate "値" %}</th></tr></thead>
       <tbody>
         {% for r in c.rows %}
-        <tr data-ranked="{{ r.rank|yesno:'1,0' }}"><td>{% if r.rank %}{{ r.rank }}{% else %}-{% endif %}</td><td><a href="{% url 'island_economy' r.island %}">{{ r.name }}</a></td><td>{% if r.rank %}{{ r.text }}{% else %}<span class="muted">{% translate "為替レートがなく直せない" %}</span>{% endif %}</td></tr>
+        <tr data-ranked="{{ r.rank|yesno:'1,0' }}"><td>{% if r.rank %}{{ r.rank }}{% else %}-{% endif %}</td><td><a href="{% url 'island_economy' r.island %}">{{ r.name }}</a>{% include "web/trend_lines.html" with trends=r.trends %}</td><td>{% if r.rank %}{{ r.text }}{% else %}<span class="muted">{% translate "為替レートがなく直せない" %}</span>{% endif %}</td></tr>
         {% endfor %}
       </tbody>
     </table>

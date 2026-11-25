@@ -39,6 +39,7 @@
 <h2 class="retro-h" id="islands">{% translate "島の一覧" %}</h2>
 <p class="retro-note">{% translate "GDP の多い順です（為替レートがなく直せない国は後ろ）。列の名前を押すと並べ替えます。前回比は、前のターンの GDP の順位からの上下です（前のターンの GDP も今のレートで直して比べています）。" %}{{ table_note }}。
   {% if base_name %}{% blocktranslate with c=base_name %}お金の額は、今の為替レートで「{{ c }}」に直しています。{% endblocktranslate %}{% endif %}
+  {% translate "国名の横の小さな線は、直近2年の人口（青）・GDP（赤）・1人あたり所得（緑）の推移です。線は国ごとに、期間内の最大と最小に合わせて伸縮しています。" %}
   <a href="{% url 'rankings' %}">{% translate "部門別の順位と称号" %}</a></p>
 <div class="table-scroll">
 <table class="retro-table island-table" id="island-table">
@@ -55,7 +56,7 @@
     <tr data-rank="{{ r.rank }}" data-name="{{ r.name }}"{% for name, c in r.columns.items %} data-{{ name|cut:"_" }}="{{ c.value|default_if_none:'' }}"{% endfor %}{% if r.inactive %} class="inactive"{% endif %}>
       <td class="rank">{{ r.rank }}</td>
       <td class="move">{% if r.move is None %}<span class="muted">-</span>{% elif r.move > 0 %}<span class="up">↑{{ r.move }}</span>{% elif r.move < 0 %}<span class="down">↓{{ r.move|stringformat:"d"|cut:"-" }}</span>{% else %}<span class="muted">→</span>{% endif %}</td>
-      <td class="island-name"><div class="island-name-line"><a class="country-link" href="{% url 'island' r.island %}"><img class="table-flag" src="{{ r.flag }}" alt="" width="24" height="16" loading="lazy"><span>{{ r.name }}</span></a>{% if r.ai %} {% include "web/ai_mark.html" %}{% endif %}{% if r.new %} <span class="new-mark">NEW!</span>{% endif %}</div>
+      <td class="island-name"><div class="island-name-line"><a class="country-link" href="{% url 'island' r.island %}"><img class="table-flag" src="{{ r.flag }}" alt="" width="24" height="16" loading="lazy"><span>{{ r.name }}</span></a>{% include "web/trend_lines.html" with trends=r.trends %}{% if r.ai %} {% include "web/ai_mark.html" %}{% endif %}{% if r.new %} <span class="new-mark">NEW!</span>{% endif %}</div>
         <small class="island-owner">{% if r.owner %}{{ r.owner }}{% else %}{% translate "持ち主なし" %}{% endif %}{% if r.inactive %} ・ {% translate "休止中" %}{% endif %}</small></td>
       <td class="regime">{{ r.regime|default:"-" }}</td>
       {% for name, c in r.columns.items %}<td class="num">{% if c.value is None and c.text %}<span class="muted">{{ c.text }}</span>{% elif c.text %}{{ c.text }}{% else %}<span class="muted">-</span>{% endif %}</td>{% endfor %}
