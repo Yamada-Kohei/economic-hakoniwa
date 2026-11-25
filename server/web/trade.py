@@ -704,6 +704,12 @@ def contract_rows(
                 "can_set_delivery": state == contract_states.ACTIVE
                 and view["side"] == "buy"
                 and not c.get("treaty"),
+                # 条件の変更の申し込み（FX-70）: 有効な契約だけ。物の援助・条約の契約と、
+                # やめる命令を出した契約は変えられない（core の propose_change の判定に合わせる）
+                "can_propose_change": state == contract_states.ACTIVE
+                and not c.get("aid")
+                and not c.get("treaty")
+                and c.get("cancelled_by") is None,
                 # 申し込み中の条件の変更（FX-70。相手のものだけ受けられる）
                 "changes": [
                     {

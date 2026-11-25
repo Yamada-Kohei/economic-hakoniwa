@@ -451,6 +451,22 @@ def test_mcp_tools_play_by_the_same_rules(played):
     )
     assert not error and len(json.loads(text)["orders"]) == 1
     assert Order.objects.get(island=a, status="pending").payload == {"name": "MCP の国"}
+    # 契約の条件の変更（画面の契約の行に出る欄と同じ命令）も、MCP から確かめて出せる
+    text, _ = _tool(
+        client,
+        "check_order",
+        kind="propose_contract_change",
+        payload={"contract": 1, "quantity": 2},
+    )
+    assert json.loads(text)["ok"] is True
+    text, error = _tool(
+        client,
+        "add_order",
+        kind="propose_contract_change",
+        payload={"contract": 1, "quantity": 2},
+    )
+    assert not error and json.loads(text)["added"]
+    assert Order.objects.filter(island=a, kind="propose_contract_change", status="pending").exists()
     text, error = _tool(client, "set_orders", orders=[{"kind": "no_such_order", "payload": {}}])
     assert error and "400" in text
     text, error = _tool(client, "set_orders", orders=["build"])
