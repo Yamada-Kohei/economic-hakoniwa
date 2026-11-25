@@ -143,6 +143,90 @@ def test_reserve_releases_when_the_price_spikes_or_people_go_hungry(game):
     assert "grain" not in books_by_good  # 飢えた家計があるターンは買い足さない
 
 
+def _lead_on(game, **kw):
+    """下書きの先行放出（food_reserve.price_lead）を入にする（game は module 共有なので、
+    前の試験の書き換えが残らないよう dict ごと置き換える）。"""
+    lead = {"enabled": True, "multiple": 1.15, "rise": 0.10, "rise_turns": 3, "window": 12}
+    lead.update(kw)
+    game.config.raw["food_reserve"]["price_lead"] = lead
+    return lead
+
+
+def test_reserve_price_lead_is_off_by_default(game):
+    """先行放出は既定で切: 移動中央値の 1.15 倍まで上がっても、(1 + release) の線に
+    届かなければ今までどおり出さない。"""
+    island = reserve_island(game)
+    goal = reserve.target(island, game.defs, game.config)
+    stock.add(island.warehouse, "grain", goal, 5, game.defs.goods)
+    usual = island.economy.prices["grain"]
+    island.economy.price_history["grain"] = [usual] * 12
+    island.economy.prices["grain"] = scale_price(usual, 1.15)
+    sells, _ = reserve_orders(game, island, 6)
+    assert sells == []
+    assert "food_reserve_release" not in island.scratch
+
+
+def test_reserve_price_lead_releases_on_multiple(game):
+    """倍率の線: 直近の値段が移動中央値の multiple 倍以上で、今の値段で全量を先に出す。"""
+    _lead_on(game, rise=0.99)  # 上がりの線は遠くに置き、倍率の線だけで見る
+    island = reserve_island(game)
+    goal = reserve.target(island, game.defs, game.config)
+    stock.add(island.warehouse, "grain", goal, 5, game.defs.goods)
+    usual = island.economy.prices["grain"]
+    island.economy.price_history["grain"] = [usual] * 12
+    island.economy.prices["grain"] = scale_price(usual, 1.15)
+    sells, _ = reserve_orders(game, island, 6)
+    assert sells == [("grain", goal, scale_price(usual, 1.15))]
+    note = island.scratch["food_reserve_release"]
+    assert note["reason"] == "lead_multiple" and note["qty"] == goal and note["base"] == usual
+
+
+def test_reserve_price_lead_releases_on_rise(game):
+    """上がりの速さの線: 倍率の線に届かなくても、rise_turns ターン前から rise 以上
+    上がっていれば先に出す。"""
+    _lead_on(game, multiple=1.30)  # 倍率の線は遠くに置き、上がりの速さだけで見る
+    island = reserve_island(game)
+    goal = reserve.target(island, game.defs, game.config)
+    stock.add(island.warehouse, "grain", goal, 5, game.defs.goods)
+    usual = island.economy.prices["grain"]
+    island.economy.price_history["grain"] = [usual] * 10 + [
+        scale_price(usual, 1.04),
+        scale_price(usual, 1.08),
+    ]
+    island.economy.prices["grain"] = scale_price(usual, 1.12)  # 3 ターン前から +12%
+    sells, _ = reserve_orders(game, island, 6)
+    assert sells == [("grain", goal, scale_price(usual, 1.12))]
+    assert island.scratch["food_reserve_release"]["reason"] == "lead_rise"
+
+
+def test_reserve_price_lead_median_ignores_a_spike(game):
+    """基準は移動中央値: 過去に 1 ターンだけ跳ねた値段があっても基準は跳ねない
+    （平均だと基準が跳ねて線が遠のく）。"""
+    _lead_on(game, rise=0.99)
+    island = reserve_island(game)
+    goal = reserve.target(island, game.defs, game.config)
+    stock.add(island.warehouse, "grain", goal, 5, game.defs.goods)
+    usual = island.economy.prices["grain"]
+    island.economy.price_history["grain"] = [usual] * 11 + [usual * 3]
+    island.economy.prices["grain"] = scale_price(usual, 1.2)
+    sells, _ = reserve_orders(game, island, 6)
+    assert sells == [("grain", goal, scale_price(usual, 1.2))]
+    assert island.scratch["food_reserve_release"]["base"] == usual
+
+
+def test_reserve_price_lead_quiet_when_calm(game):
+    """入でも、どちらの線にも届かなければ出さない。"""
+    _lead_on(game)
+    island = reserve_island(game)
+    goal = reserve.target(island, game.defs, game.config)
+    stock.add(island.warehouse, "grain", goal, 5, game.defs.goods)
+    usual = island.economy.prices["grain"]
+    island.economy.price_history["grain"] = [usual] * 12
+    island.economy.prices["grain"] = scale_price(usual, 1.05)
+    sells, _ = reserve_orders(game, island, 6)
+    assert sells == []
+
+
 def test_reserve_rotates_old_grain_and_refills(game):
     """日持ちの残りが rotate 以下の組は今の値段で売り、売った分と、目安に足りない分の refill の
     割合を、いつもの値段で買う（新しい組と入れ替える）。"""

@@ -206,6 +206,8 @@ RESERVE_IMPORT = "reserve_import"
 # "home_unsold": 島の売り手の穀物の売れ残り}）。輸入で積む形に入るかを決める
 RESERVE_SEEN = "reserve_seen"
 RESERVE_REFILL = "food_reserve_refill"  # island.scratch: このターンの穀物の備蓄の買い足しの注文
+# island.scratch: このターンの穀物の備蓄の放出（qty・reason・price・base。測り用）
+RESERVE_RELEASE = "food_reserve_release"
 # island.scratch: 物がないときの海外の食料商人の売り（注文, 削ったか, 商人の値段）
 FOOD_MERCHANT = "food_merchant"
 
@@ -4065,8 +4067,21 @@ class Market(IslandStage):
         # 値段になり、いつもの値段の線ではすぐ放出して買い直すことを繰り返すため）
         high = scale_price(limit, 1 + spec["release"])
         release = usual > 0 and (hungry or (not maintenance_only and price >= high))
+        # 値段の上がりで先に放出する線（下書き。food_reserve.price_lead、既定は切。切の間は
+        # price_lead が None を返すので、今までの判定と完全に同じ）
+        lead = None
+        if not release and not maintenance_only:
+            lead = reserve.price_lead(island, ctx.config, price)
+            release = lead is not None
         if release:
-            sell(good, stock.total(island.warehouse, good), usual if hungry else high)
+            total = stock.total(island.warehouse, good)
+            sell(good, total, usual if hungry else (price if lead else high))
+            island.scratch[RESERVE_RELEASE] = {
+                "qty": total,
+                "reason": "hunger" if hungry else (f"lead_{lead[0]}" if lead else "price"),
+                "price": price,
+                "base": lead[1] if lead else usual,
+            }
         if maintenance_only:
             return
         # 目安に足りない分の refill の割合と、入れ替えで売りに出した分（新しい組と入れ替える）

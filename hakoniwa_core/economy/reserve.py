@@ -12,6 +12,10 @@
   (1 + release) 倍以上になったら、市場に売りに出す。指値は、飢えた家計があればいつもの値段（計画
   経済の公定価格や値段の上限の下でも約定する）、なければ (1 + release) 倍。ふだんは売りに出さない
   （出しておくと、需要が生産を上回っても市場の売りが足りて見え、農場が建たない）。
+- 先行放出（下書き。food_reserve.price_lead、既定は切）: 入のときは、値段の上がり方だけでも
+  先に全量を今の値段で出す（price_lead 関数。基準は直近の値段の移動中央値で、倍率の線か
+  上がりの速さの線のどちらか）。飢えの線より早く出すことで、飢えが出る前に値段の上がりを
+  抑える狙い。切の間は今までと完全に同じ動き。
 - 入れ替え: 日持ち（goods.yaml の shelf_life）の残りが rotate ターン以下になった組は、傷む前に今の
   値段を指値に売る。
 - 買い足し: 放出しないターンに、目安に足りない分の refill の割合と、入れ替えで売りに出した分を、
@@ -25,12 +29,14 @@
 
 from __future__ import annotations
 
+from statistics import median
+
 from hakoniwa_core import stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import standing
 from hakoniwa_core.state import IslandState
-from hakoniwa_core.units import to_milli
+from hakoniwa_core.units import scale_price, to_milli
 
 
 def target(island: IslandState, defs: Defs, config: GameConfig) -> int:
@@ -59,6 +65,35 @@ def rotating(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> 
         for made, qty in island.warehouse.get(spec["good"], ())
         if turn - made >= life - spec["rotate"]
     )
+
+
+def price_lead(island: IslandState, config: GameConfig, price: int) -> tuple[str, int] | None:
+    """値段の上がりで先に放出するか（下書き。game.yaml の food_reserve.price_lead、既定は切）。
+
+    飢えの線と (1 + release) の線より先に、値段の上がり方だけで放出する線。判定に使う値段は、
+    注文を出す時点で決まっている直近の約定値（前のターンの値段。_reserve_orders の price）で、
+    今のターンの値段そのものはまだ無い。基準は直近 window ターンの値段の移動中央値（平均では
+    なく中央値: 上がったターン自体が基準を押し上げ、線が遠のくことを防ぐ）。倍率の線
+    （price が中央値の multiple 倍以上）か、上がりの速さの線（rise_turns ターン前からの
+    上がりが rise 以上）のどちらかで発火する。戻り値は (わけ, 基準の値段) で、発火しなければ
+    None。切の間は enabled を見てすぐ None を返すので、今までの動きは変わらない。"""
+    spec = config.get("food_reserve")
+    lead = spec.get("price_lead") or {}
+    if not lead.get("enabled"):
+        return None
+    history = island.economy.price_history.get(spec["good"], [])
+    window = int(lead.get("window", 12))
+    if price <= 0 or len(history) < 3:
+        return None
+    base = round(median(history[-window:]))
+    if base > 0 and price >= scale_price(base, float(lead.get("multiple", 1.15))):
+        return "multiple", base
+    rise_turns = int(lead.get("rise_turns", 3))
+    if len(history) > rise_turns:
+        before = history[-1 - rise_turns]
+        if before > 0 and price >= scale_price(before, 1 + float(lead.get("rise", 0.10))):
+            return "rise", base
+    return None
 
 
 def stock_up(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> None:
