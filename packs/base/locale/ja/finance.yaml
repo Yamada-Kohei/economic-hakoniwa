@@ -4,6 +4,7 @@ equity_return: 出資の払い戻し
 sale: 代金
 ship_order: 船の前注文の代金
 ship_order_refund: 船の前注文の返金
+ship_purchase: 倉庫の船の買い取り
 electricity: 電気代
 freight: 運賃
 relocation_freight: 強制移住の運賃
