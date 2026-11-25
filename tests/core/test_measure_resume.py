@@ -30,7 +30,9 @@ from hakoniwa_core.simulate import (
     load_snapshot,
     read_snapshot,
     save_snapshot,
+    snapshot_dict,
     world_digest,
+    world_from_snapshot_dict,
 )
 from hakoniwa_core.simulate import main as simulate_main
 from hakoniwa_core.state import IslandState, WorldState
@@ -304,6 +306,49 @@ def test_resuming_while_the_merchant_is_leaving_continues_the_same_world(game, t
     run(world, 3)
     run(resumed, 3)
     assert world_digest(resumed) == world_digest(world)
+
+
+def test_resuming_with_autoplan_reading_trades_continues_the_same_world(game):
+    """前のターンの約定を読む標準の計画でも、測りの写しから続けると通しと同じになる。
+
+    商人が量を減らしている間に、写しを dict にして JSON を往復させてから作り直す
+    （H-7 の包みと同じ形）。命令作りは約定だけでなく前のターンの統計・市場も読む
+    ので、写しは世界の横にこの 3 つも一緒に運ぶ（snapshot_dict）。
+    """
+    scenario = measure.SCENARIOS["small"]
+
+    def run(world, turns):
+        for _ in range(turns):
+            measure.queue_scenario_orders(world, scenario, game.defs, game.config)
+            game.engine.run_turn(world)
+            for island in world.islands.values():  # simulate と同じ（写さない物は空にする）
+                island.scratch.clear()
+                island.journal.clear()
+                island.books.clear()
+
+    world = generate_world(1, 4, game.config, game.defs)
+    run(world, 2)
+    middle = (
+        game.config.get("foreign_merchant.taper_from") + game.config.get("foreign_merchant.turns")
+    ) // 2
+    for island in world.islands.values():
+        island_state(island)["merchant_from"] = world.turn - middle
+    run(world, 2)
+    share = [trade_merchant.taper(i, game.config, world.turn + 1) for i in world.islands.values()]
+    assert all(0 < x < 1 for x in share)
+    assert any(t.seller == MERCHANT for i in world.islands.values() for t in i.trades)
+    resumed, state = world_from_snapshot_dict(through_json(snapshot_dict(world)))
+    assert state is None
+    for iid, island in world.islands.items():
+        assert resumed.islands[iid].trades == island.trades
+        assert resumed.islands[iid].markets == island.markets
+        assert resumed.islands[iid].stats == island.stats
+    run(world, 3)
+    run(resumed, 3)
+    assert world_digest(resumed) == world_digest(world)
+    for iid, island in world.islands.items():
+        for key in ("gdp", "population", "treasury", "unemployment"):
+            assert resumed.islands[iid].stats.get(key) == island.stats.get(key)
 
 
 def test_planning_never_sees_what_the_snapshot_leaves_out(tmp_path, monkeypatch):

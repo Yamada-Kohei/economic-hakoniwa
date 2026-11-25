@@ -254,3 +254,51 @@ def test_trade_by_good_pies_on_the_overview(world):
     assert data["labels"]["import.food"] == "輸入・食品"
     assert data["labels"]["export.freight"] == "輸出・他国に貸した船の運賃"
     assert data["series"]["export.grain"][-1] == 300
+
+
+def test_trade_partner_stats_table(world):
+    """相手国ごとの輸出・輸入（#5455）: 統計 partner.* から、集計ターンと直近 1 年（12 ターン）の
+    表を貿易の概要の下に出し、API（MCP と同じ trade_data）にも同じ行を出す。相手が決まらない
+    圏の市場は 1 行にまとめ、主な品目は直近 1 年の額の大きい順。"""
+    owner, island, other, _ = _world_with_offer(world)
+    turn = world.turn - 1
+    _stats(
+        island,
+        turn,
+        {
+            f"partner.{other.id}.exports": 500.0,
+            f"partner.{other.id}.exports.grain": 500.0,
+            f"partner.{other.id}.imports": 100.0,
+            f"partner.{other.id}.imports.coal": 100.0,
+            "partner.bloc.exports": 700.0,
+            "partner.bloc.exports.coal": 700.0,
+            "partner.merchant.imports": 50.0,
+            "partner.merchant.imports.food": 50.0,
+        },
+    )
+    _stats(
+        island,
+        turn - 3,
+        {
+            f"partner.{other.id}.exports": 300.0,
+            f"partner.{other.id}.exports.grain": 300.0,
+            "partner.bloc.imports": 200.0,
+            "partner.bloc.imports.grain": 200.0,
+        },
+    )
+    _stats(island, turn - 20, {f"partner.{other.id}.exports": 9000.0})  # 1 年より前は数えない
+    browser = _client(owner)
+    data = browser.get(f"/api/islands/{island.id}/trade").json()
+    rows = {row["partner"]: row for row in data["partner_stats"]}
+    assert rows[str(other.id)]["name"] == other.name
+    assert rows["bloc"]["name"] == "圏の市場（相手は混ざる）"
+    assert rows["merchant"]["name"] == "海外の商人"
+    # 集計ターンの列はそのターンだけ、直近 1 年の列は 12 ターンの合計（20 ターン前は入らない）
+    assert "500" in rows[str(other.id)]["exports_turn"]
+    assert "800" in rows[str(other.id)]["exports_year"]
+    assert "200" in rows["bloc"]["imports_year"]
+    assert [g["good"] for g in rows[str(other.id)]["goods"]] == ["grain", "coal"]
+    page = browser.get(f"/islands/{island.id}/trade/").content.decode()
+    section = _section(page, "trade-partners")
+    assert "貿易の相手国" in section and "圏の市場（相手は混ざる）" in section
+    assert other.name in section and "穀物" in section

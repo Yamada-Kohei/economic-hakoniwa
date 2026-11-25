@@ -1244,8 +1244,10 @@ class _Round:
         )
         books.add_sector(seller, books.WAREHOUSE, "sales", value)
         books.add_trade(seller, "exports", good, value)
+        books.add_partner_trade(seller, str(buyer.id), "exports", good, value)
         books.add_sector(buyer, books.WAREHOUSE, "purchases", cost)
         books.add_trade(buyer, "imports", good, cost)
+        books.add_partner_trade(buyer, str(seller.id), "imports", good, cost)
         self.islands[seller.id].exports += value
         self.islands[buyer.id].imports += cost
         self.islands[seller.id].settled(currency, amount)
@@ -1482,6 +1484,7 @@ class _Round:
         )
         books.add(carrier, shipping.id, books.SALES, value)
         books.add_trade(carrier, "exports", books.FREIGHT_ITEM, value)
+        books.add_partner_trade(carrier, str(buyer.id), "exports", books.FREIGHT_ITEM, value)
         # 貸した船の運賃の収入（船の国の通貨）と、借りた船に払った運賃（買い手の通貨）
         carrier.stats["trade.charter_income"] = carrier.stats.get("trade.charter_income", 0) + value
         buyer.stats["trade.charter_paid"] = buyer.stats.get("trade.charter_paid", 0) + cost
@@ -1491,6 +1494,7 @@ class _Round:
         else:
             books.add_sector(buyer, books.GOVERNMENT, "freight", cost)
         books.add_trade(buyer, "imports", books.FREIGHT_ITEM, cost)
+        books.add_partner_trade(buyer, str(carrier.id), "imports", books.FREIGHT_ITEM, cost)
         self.islands[carrier.id].settled(currency, amount)
         self.islands[buyer.id].settled(currency, amount)
         return cost
@@ -2466,6 +2470,7 @@ class _Round:
             books.stock_moved(seller, sf.id, good, -moved)
             books.add(seller, sf.id, books.SALES, value)
             books.add_trade(seller, "exports", good, value)
+            books.add_partner_trade(seller, books.PARTNER_BLOC, "exports", good, value)
             sold_item = traders.entry(sf, good)
             taken = traders.take_cost(sold_item, moved)
             traders.cover_price_gap(seller, sf, ask.entity, taken, value)
@@ -2485,6 +2490,7 @@ class _Round:
             # 買い手: 仕入れと輸入に数え、運ぶ途中の荷も在庫に数える
             books.add(buyer, bf.id, books.PURCHASES, cost)
             books.add_trade(buyer, "imports", good, cost)
+            books.add_partner_trade(buyer, books.PARTNER_BLOC, "imports", good, cost)
             books.stock_moved(buyer, bf.id, good, moved)
             item = traders.entry(bf, good)
             item["held"][0] += moved
@@ -2601,6 +2607,13 @@ class _Round:
                 shipping.economy["ships_short"] = history[-keep:]
                 loads = [*shipping.economy.get(ship_orders.SHORT_LOAD, []), here.ship_short_load]
                 shipping.economy[ship_orders.SHORT_LOAD] = loads[-keep:]
+            if self.config.get("trade.shipping_reentry"):
+                # 海運の再参入（W-308 の 2）の需要: このターンに船がなくて運べなかった荷（要る船の
+                # 重さ。商社の需要から、自分の船・借りた船・外国の商人で運べた分を引いた残り）を
+                # 残し、参入と撤退の段は前のターンの分で判定する。海運業がない島では施設の記録に
+                # 残らないので、貿易の状態に書く
+                state["reentry_short_prev"] = state.get("reentry_short_load", 0)
+                state["reentry_short_load"] = here.ship_short_load
             self._stats(island, here)
 
     def _keep_charter(self, island: IslandState, here: _IslandTurn) -> None:

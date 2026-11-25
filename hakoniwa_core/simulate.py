@@ -64,11 +64,16 @@ def world_digest(world: WorldState) -> str:
     return hashlib.sha256(data.encode()).hexdigest()
 
 
-def save_snapshot(
-    world: WorldState, path: str, measure_state: Mapping[str, Any] | None = None
-) -> None:
-    """世界の写しを書く。前のターンの統計・市場・約定と、測りの途中の状態も一緒に書く
-    （サーバーでは統計・市場・約定は状態の写しでなく表にある）。"""
+def snapshot_dict(
+    world: WorldState, measure_state: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
+    """測りの写しの中身（ファイルに書く前の dict）。
+
+    世界の写し（world_to_dict）の横に、前のターンの統計・市場・約定も一緒に持つ。
+    測りの命令作り（標準の計画）は前のターンのこの3つを読んで次の命令を作るので、
+    写しから続けるときは一緒に運ばないと通しとずれる。本番のバックアップの写し
+    （world_to_dict だけ）には入らない物で、そちらは変えない。
+    """
     data = {
         "world": world_to_dict(world),
         "stats": {str(i.id): i.stats for i in world.islands.values()},
@@ -77,6 +82,27 @@ def save_snapshot(
     }
     if measure_state is not None:
         data["measure"] = measure_state
+    return data
+
+
+def world_from_snapshot_dict(
+    data: Mapping[str, Any],
+) -> tuple[WorldState, dict[str, Any] | None]:
+    """snapshot_dict の中身から、世界と（あれば）測りの途中の状態を作り直す。"""
+    world = world_from_dict(data["world"])
+    for iid, island in world.islands.items():
+        island.stats = dict(data["stats"].get(str(iid), {}))
+        island.markets = [MarketRecord(**m) for m in data["markets"].get(str(iid), [])]
+        island.trades = [TradeRecord(**t) for t in data.get("trades", {}).get(str(iid), [])]
+    return world, data.get("measure")
+
+
+def save_snapshot(
+    world: WorldState, path: str, measure_state: Mapping[str, Any] | None = None
+) -> None:
+    """世界の写しを書く。前のターンの統計・市場・約定と、測りの途中の状態も一緒に書く
+    （サーバーでは統計・市場・約定は状態の写しでなく表にある）。"""
+    data = snapshot_dict(world, measure_state)
     opener = gzip.open if path.endswith(".gz") else open
     with opener(path, "wt", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
@@ -87,12 +113,7 @@ def read_snapshot(path: str) -> tuple[WorldState, dict[str, Any] | None]:
     opener = gzip.open if path.endswith(".gz") else open
     with opener(path, "rt", encoding="utf-8") as f:
         data = json.load(f)
-    world = world_from_dict(data["world"])
-    for iid, island in world.islands.items():
-        island.stats = dict(data["stats"].get(str(iid), {}))
-        island.markets = [MarketRecord(**m) for m in data["markets"].get(str(iid), [])]
-        island.trades = [TradeRecord(**t) for t in data.get("trades", {}).get(str(iid), [])]
-    return world, data.get("measure")
+    return world_from_snapshot_dict(data)
 
 
 def load_snapshot(path: str) -> WorldState:
