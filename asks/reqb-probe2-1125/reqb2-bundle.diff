@@ -1,0 +1,59 @@
+diff --git a/hakoniwa_core/modules/market/__init__.py b/hakoniwa_core/modules/market/__init__.py
+index 9669fc7..5407fb7 100644
+--- a/hakoniwa_core/modules/market/__init__.py
++++ b/hakoniwa_core/modules/market/__init__.py
+@@ -3069,11 +3069,18 @@ class Market(IslandStage):
+                 qty, full = needs.clothes_wanted(config, state, good)
+                 if qty <= 0:
+                     continue
++                # probe2 の計測用（reqb-probe2-1125）: 家計束（層）ごとの衣料の買いたい量と
++                # 注文量を scratch に貯める。ゲームの挙動は変えない（記録だけ）
++                _cell = island.scratch.setdefault("reqb2_cloth", {}).setdefault(layer, {}).setdefault(
++                    good, {"want": 0, "want_capped": 0, "ordered": 0, "offered": 0}
++                )
++                _cell["want"] += qty
+                 if offered.get(good, 0) <= 0:
+                     # 買いたい量は、衣料の分の予算で真ん中の値段で払える量まで（W-176 の車と同じ）
+                     centre = needs.centre_price(island, config, good)
+                     tax = taxes[good]
+                     qty = min(qty, qty_for(wear_budget * BASIS // (BASIS + rate + tax), centre))
++                    _cell["want_capped"] += qty
+                     wanted[good] = wanted.get(good, 0) + qty
+                     if desire is not None:
+                         desire[good] = desire.get(good, 0) + qty
+@@ -3090,6 +3097,9 @@ class Market(IslandStage):
+                     rate,
+                     taxes[good],
+                 )
++                _cell["want_capped"] += qty
++                _cell["ordered"] += sum(q for q, _lim in wear[good])
++                _cell["offered"] = 1
+             wear_cost = sum(curve_cost(t, rate, taxes[g]) for g, t in wear.items())
+             # 2. 食料: 売りに出ている量を上限に、一番安く満たす献立から、必需品の上限に収まる分だけ
+             #    好みの献立へ寄せる（好みは層の所得で変わる。LB-20）。値幅の上端を指値にする
+@@ -3116,15 +3126,24 @@ class Market(IslandStage):
+                 # 見込み需要（MK-48）の材料: 第一希望の献立（在庫の上限を外して一度だけ組む）と、
+                 # 実際に注文した食料の量を貯める。記録の demand との差し引きは _record でする
+                 first_acc = island.scratch.setdefault(EXPECTED_FIRST, {})
+-                for g, q in first_choice(need, layer_menu, food_budget, budget, hungry).items():
++                _fc = first_choice(need, layer_menu, food_budget, budget, hungry)
++                for g, q in _fc.items():
+                     first_acc[g] = first_acc.get(g, 0) + q
++                # probe2 の計測用（reqb-probe2-1125）: 家計束（層）ごとの第一希望と注文量を
++                # 貯める。ゲームの挙動は変えない（記録だけ）
++                _fb = island.scratch.setdefault("reqb2_food", {}).setdefault(layer, {})
++                for g, q in _fc.items():
++                    if q > 0:
++                        _fb.setdefault(g, {"first": 0, "placed": 0})["first"] += q
+                 placed_acc = island.scratch.setdefault(EXPECTED_PLACED, {})
+                 for g, (q, _limit) in plan.items():
+                     if q > 0:
+                         placed_acc[g] = placed_acc.get(g, 0) + q
++                        _fb.setdefault(g, {"first": 0, "placed": 0})["placed"] += q
+                 for g, q, _limit in tiers:
+                     if q > 0:
+                         placed_acc[g] = placed_acc.get(g, 0) + q
++                        _fb.setdefault(g, {"first": 0, "placed": 0})["placed"] += q
+             wish = need
+             if hungry and desire is None and layer == GENERAL:
+                 # 食べ物が買えずに畑に戻った働き手とその家族（modules/employment の back_to_fields）
