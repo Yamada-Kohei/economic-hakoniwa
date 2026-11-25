@@ -348,6 +348,33 @@ def test_a_restructure_spreads_the_maturities_over_a_ladder(game, monkeypatch):
         assert debt.holders(island, new[-1]).get(h) == rest - share * (len(new) - 1)
 
 
+def test_a_restructure_with_an_exclusion_beyond_the_longest_term_uses_one_bond(game, monkeypatch):
+    """G2 の直し（#5228 の項目4）: 締め出しが 109 以上だと、ラダー（締め出し + 12 から最長まで）が
+    空になって替える先が 0 本になり、割り算で落ちていた。ラダーは最低 1 本（最長の銘柄）に
+    して、残りをその 1 本に替える。"""
+    for exclusion in (109, 120):  # 109 が空になる境目、120 は最長ちょうど
+        monkeypatch.setitem(game.config.raw["bonds"], "default_exclusion_turns", exclusion)
+        island, ctx, bond, later, bank, payer = _restructure_setup(game, monkeypatch)
+        market = [
+            (h, f)
+            for b in island.bonds
+            for h, f in debt.holders(island, b).items()
+            if h != ledger.CB
+        ]
+        cut = sum(f // 2 for _, f in market)  # haircut 0.5
+        rests = {}
+        for h, f in market:
+            rests[h] = rests.get(h, 0) + f - f // 2
+        Bonds()._roll_over(island, ctx, payer)
+        assert [e.kind for e in island.log].count("bond_restructured") == 1
+        assert island.scratch["bond_stats"]["restructure_cut"] == cut
+        new = [b for b in island.bonds if b.issued == ctx.turn]
+        longest = max(v["turns"] for v in ctx.defs.bond_terms().values())
+        assert len(new) == 1 and new[0].term == longest  # 替える先は最長の 1 本だけ
+        for h, rest in rests.items():  # 持ち手ごとの残りが全部その 1 本に残る
+            assert debt.holders(island, new[0]).get(h, 0) == rest
+
+
 def test_a_restructure_happens_only_once_per_default_episode(game, monkeypatch):
     """G2 試験1: 組み替えは 1 回の不履行の続きに 1 回だけ。市場が開くターン（前の不履行から
     締め出しのターン数ちょうど後）でも、直近の不履行があれば組み替えず切り捨てになる。

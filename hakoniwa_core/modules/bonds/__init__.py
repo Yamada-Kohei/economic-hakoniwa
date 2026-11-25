@@ -687,7 +687,8 @@ class Bonds(WorldStage):
         """債務の組み替え（国債の会議 #3981 の G2、#4605・#4615。2012 年のギリシャの組み替え）:
         中央銀行以外の持ち手（外国の持ち手も）の国債を、満期の銘柄も含めて一度に額面を
         bonds.haircut だけ切り下げ、残りを満期のラダー（bonds.default_exclusion_turns + 12 から
-        いちばん長い期間まで 12 ターンごと。36 なら 48・60・…・120 の 7 本）に同じ額ずつ替える
+        いちばん長い期間まで 12 ターンごと。36 なら 48・60・…・120 の 7 本。締め出しが最長に
+        届いてラダーが空になるときは最長の 1 本だけ）に同じ額ずつ替える
         （満期を散らす。端数は最後の銘柄へ）。利率はその期間の市場の利回りから不履行の上乗せ δ を
         除いた値（新しい数を置かない）。中央銀行の持ち分は替えない（満期に今のとおり乗り換える）。
         このターンに出した銘柄（組み替えのターンの入札で売れた物も）も替える（替えないと、その
@@ -730,11 +731,17 @@ class Bonds(WorldStage):
             default_premium(island, ctx) - credit.premium(island, ctx.turn, ctx.config)
         )
         longest = max(v["turns"] for v in terms.values())
-        ladder = range(
-            ctx.config.get("bonds.default_exclusion_turns") + TURNS_PER_YEAR,
-            longest + 1,
-            TURNS_PER_YEAR,
+        ladder = list(
+            range(
+                ctx.config.get("bonds.default_exclusion_turns") + TURNS_PER_YEAR,
+                longest + 1,
+                TURNS_PER_YEAR,
+            )
         )
+        if not ladder:
+            # 締め出しが最長の期間に届くとラダーが空になり、替える先が 0 本で割り算で落ちる。
+            # 最低 1 本（最長の銘柄）にする
+            ladder = [longest]
         rates = [max(0, ctx.formula("bond_yield")(island, turns, ctx) - delta) for turns in ladder]
         new: list[Bond] = [
             debt.issue_bond(island, 0, turns, rate, ctx.turn)
