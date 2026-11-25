@@ -1,0 +1,149 @@
+{
+ "name": "w308-p13-k2-1125",
+ "commit": "e7b12b554c11e183446b126b6e5f1cc24f1d1d0d",
+ "pool": "any",
+ "files": [
+  "w281_probe13.py"
+ ],
+ "patches": [
+  "kprime.diff"
+ ],
+ "runs": [
+  {
+   "name": "plan-s17-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "17",
+    "--turns",
+    "1200",
+    "--out",
+    "probe13-K2-plan-s17-t1200.json"
+   ],
+   "summary": [
+    "probe13-K2-plan-s17-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s18-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "18",
+    "--turns",
+    "1200",
+    "--out",
+    "probe13-K2-plan-s18-t1200.json"
+   ],
+   "summary": [
+    "probe13-K2-plan-s18-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s19-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "19",
+    "--turns",
+    "1200",
+    "--out",
+    "probe13-K2-plan-s19-t1200.json"
+   ],
+   "summary": [
+    "probe13-K2-plan-s19-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s20-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "20",
+    "--turns",
+    "1200",
+    "--out",
+    "probe13-K2-plan-s20-t1200.json"
+   ],
+   "summary": [
+    "probe13-K2-plan-s20-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s21-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "21",
+    "--turns",
+    "1200",
+    "--out",
+    "probe13-K2-plan-s21-t1200.json"
+   ],
+   "summary": [
+    "probe13-K2-plan-s21-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s22-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "22",
+    "--turns",
+    "1200",
+    "--out",
+    "probe13-K2-plan-s22-t1200.json"
+   ],
+   "summary": [
+    "probe13-K2-plan-s22-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s23-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "23",
+    "--turns",
+    "1200",
+    "--out",
+    "probe13-K2-plan-s23-t1200.json"
+   ],
+   "summary": [
+    "probe13-K2-plan-s23-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s24-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "24",
+    "--turns",
+    "1200",
+    "--out",
+    "probe13-K2-plan-s24-t1200.json"
+   ],
+   "summary": [
+    "probe13-K2-plan-s24-t1200.json"
+   ],
+   "large": []
+  }
+ ]
+}

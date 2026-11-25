@@ -1,0 +1,461 @@
+diff --git a/game.yaml b/game.yaml
+index 6c8370cf..bbbac57f 100644
+--- a/game.yaml
++++ b/game.yaml
+@@ -325,6 +325,12 @@ trade:
+   clearance_turns: 3    # 輸出の荷が圏でこの数のターン売れ残ったら指値を外す。輸入した物の持ちすぎの値下げ（FX-64）もこのターン数から
+   entry_threshold: 0.8  # 島の商社の扱った重さが、12 ターン平均で上限のこの割合を超えたら、民営の商社が開く
+   entry_turns: 12       # 民営の商社の開業を見るターン数。商社がなくなった島は、このターン数の後に開き直す
++  # 商社の建て増し（W-308。会議 #3335・#4633）: 扱える重さで取り逃した引き合う輸入が直近 entry_turns ターンの
++  # 半分以上のターンにあり、その儲けが建て増しの費用に引き合えば、支店・倉庫と人を足して規模を 1 つ上げる
++  # （扱える重さと人数が規模の分だけ増える）。民営は持ち主が出資できなければ、国営は予算が足りなければ見送る。
++  # 計画経済の島は入れない。第 1 版は 1 社 1 回まで（trader_max_size: 2）。既定は切（測りの後に入れ替える）
++  trader_expand: true
++  trader_max_size: 2
+   contract_cancel_turns: 3  # 二国間契約をやめる命令から、やめるまでのターン数
+   # 商社と作り手の引き取り契約（W-307。掲示板 #3591。trade/offtake.py）。市場経済の島の商社が、頭打ちに
+   # する前の輸出の狙う量まで、島の作り手に期間つきの引き取り契約を申し込む。量の決め方と精算は既存の
+diff --git a/hakoniwa_core/economy/export_plan.py b/hakoniwa_core/economy/export_plan.py
+index 42342330..1bf4f35d 100644
+--- a/hakoniwa_core/economy/export_plan.py
++++ b/hakoniwa_core/economy/export_plan.py
+@@ -627,9 +627,7 @@ def _choose(
+     band = to_basis(config.get("trade.bloc_band"))
+     recent = config.get("planning.demand_turns")
+     weight_left = sum(
+-        config.get("trade.trader_capacity") * QUANTITY_SCALE
+-        - traders.first_import_weight(island, defs, f)
+-        for f in working
++        traders.capacity(config, f) - traders.first_import_weight(island, defs, f) for f in working
+     )
+     feeds = _queued_inputs(island, defs, queues)
+     sold_history = state.get("sold", {})
+@@ -825,8 +823,10 @@ def _assign(
+             item.pop(traders.PLAN_X, None)
+     if not working:
+         return
+-    full = config.get("trade.trader_capacity") * QUANTITY_SCALE
+-    room = {f.id: full - traders.first_import_weight(island, defs, f) for f in working}
++    room = {
++        f.id: traders.capacity(config, f) - traders.first_import_weight(island, defs, f)
++        for f in working
++    }
+     for good, qty in sorted(plan.items()):
+         p = found.get(good)
+         if p is None or p.export_bloc is None:
+diff --git a/hakoniwa_core/modules/firms/__init__.py b/hakoniwa_core/modules/firms/__init__.py
+index 3831bb43..41816a31 100644
+--- a/hakoniwa_core/modules/firms/__init__.py
++++ b/hakoniwa_core/modules/firms/__init__.py
+@@ -481,6 +481,7 @@ class EntryExit(IslandStage):
+             self._raise_grades(island, ctx)
+         self._bank_entry(island, ctx)
+         trade_setup.entry(island, ctx.defs, ctx.config, is_planned(ctx.defs, island), ctx.turn)
++        trade_setup.expand(island, ctx, is_planned(ctx.defs, island))  # 商社の建て増し（W-308）
+         # 土木業者の参入（W-270。埋まらなかった工事が続けば、資産を持つ層が出資して開く。IN-35）
+         contracts.settle_new(island, ctx.config)
+         contracts.entry(island, ctx.defs, ctx.config, is_planned(ctx.defs, island))
+diff --git a/hakoniwa_core/modules/trade/__init__.py b/hakoniwa_core/modules/trade/__init__.py
+index dfac7084..344f2275 100644
+--- a/hakoniwa_core/modules/trade/__init__.py
++++ b/hakoniwa_core/modules/trade/__init__.py
+@@ -247,7 +247,7 @@ class _Round:
+         # 島 → 外貨を自分の使えるお金の分しか買えなかった商社（FX-62 で取り逃しに数える）
+         self.fx_limited: dict[int, set[str]] = {}
+         # (島, 商社) → 財 → (取り逃した量, 1 単位の儲け, 1 単位の原価)（FX-62）
+-        self.missed: dict[tuple[int, int], dict[str, tuple[int, int, int]]] = {}
++        self.missed: dict[tuple[int, int], dict[str, tuple[int, int, int, int]]] = {}
+         # (島, 主体, 通貨) → 財 → 計画経済の国営の商社が、その財のために取り置いている外貨（FX-76）
+         self.fx_queue: dict[tuple[int, str, int], dict[str, int]] = {}
+         # (島, 主体, 通貨) → 計画経済の島の中央銀行がこのターンに融通で借りて国営の商社に渡した外貨
+@@ -870,7 +870,7 @@ class _Round:
+             return []
+         keep = self.config.get("fx.keep_turns")
+         found = self.found.get(island.id) or {}
+-        left = self.config.get("trade.trader_capacity") * QUANTITY_SCALE
++        left = traders.capacity(self.config, f)
+         for good, item in traders.goods_of(f).items():  # 輸出の荷も扱える重さを使う
+             if item.get("dir") == traders.EXPORT:
+                 left -= weight(self.defs, good, stock.total(f.stock, good))
+@@ -1006,6 +1006,7 @@ class _Round:
+                 missed,
+                 terms.profit,
+                 terms.cost,
++                cut_capacity,  # そのうち扱える重さで削った量（商社の建て増しの根拠。W-308）
+             )
+ 
+     def _keep_import_needs(self, island: IslandState) -> None:
+@@ -1032,19 +1033,24 @@ class _Round:
+         by_good: dict[str, int] = {}
+         for (iid, _), goods in self.missed.items():
+             if iid == island.id:
+-                for good, (qty, _, _) in goods.items():
++                for good, (qty, _, _, _) in goods.items():
+                     by_good[good] = by_good.get(good, 0) + qty
+         for f in traders_of(island, self.config):
+             goods = self.missed.get((island.id, f.id), {})
+-            profit = cost = 0
+-            for good, (qty, unit_profit, unit_cost) in sorted(goods.items()):
++            profit = cost = cap_profit = cap_cost = 0
++            for good, (qty, unit_profit, unit_cost, cut) in sorted(goods.items()):
+                 # 島の市場の本当の品不足（約定の値段以上で買えなかった量。FX-65）までに縮める
+                 unmet = traders.true_shortage(island, records.get(good))
+-                qty = qty * min(unmet, by_good[good]) // max(1, by_good[good])
+-                profit += money_of(unit_profit, qty)
+-                cost += money_of(unit_cost, qty)
++                shrunk = qty * min(unmet, by_good[good]) // max(1, by_good[good])
++                profit += money_of(unit_profit, shrunk)
++                cost += money_of(unit_cost, shrunk)
++                # 扱える重さで削った分だけ（W-308。お金の分は建て増しても解けない）
++                cut = shrunk * min(cut, qty) // max(1, qty)
++                cap_profit += money_of(unit_profit, cut)
++                cap_cost += money_of(unit_cost, cut)
+             turn = traders.state_of(f).setdefault("turn", {})
+             turn["missed"] = [profit, cost]
++            turn["missed_cap"] = [cap_profit, cap_cost]
+ 
+     def _from_reserve(self, island: IslandState, currency: int, due: int) -> _ContractFx:
+         """国の契約のこのターンの払いに要る外貨 due のうち、政府の手持ちで足りない分を、中央銀行が
+@@ -1854,7 +1860,6 @@ class _Round:
+         currency = bloc["currency"]
+         cut = to_basis(self.config.get("trade.trader_cut"))
+         clearance = self.config.get("trade.clearance_turns")
+-        cap = self.config.get("trade.trader_capacity") * QUANTITY_SCALE
+         unit = unit_weight(self.defs, good)
+         buys: list[Order] = []
+         sells: list[Order] = []
+@@ -1873,7 +1878,7 @@ class _Round:
+                 if item is None:
+                     continue
+                 entity = entity_of(self.config, f)
+-                left = budgets.setdefault(f.id + m * 10**6, cap)
++                left = budgets.setdefault(f.id + m * 10**6, traders.capacity(self.config, f))
+                 if item.get("dir") == traders.EXPORT and item.get("bx") == bloc["id"]:
+                     item.pop("why", None)
+                     item.pop(MARKET_WHY, None)
+@@ -1965,7 +1970,6 @@ class _Round:
+         残り）を同じ形で割り振る。約定しなかった分の重さは、今どおり板寄せの後に戻す（_refund）。
+         計画経済の島の商社は割り振らない（注文は前のまま）。"""
+         self.alloc = {}
+-        cap = self.config.get("trade.trader_capacity") * QUANTITY_SCALE
+         for i in self.ids:
+             island = self.world.islands[i]
+             if traders.is_planned(island):
+@@ -2029,7 +2033,7 @@ class _Round:
+                     )
+                     ranks[(f.id, good)] = rank
+             for f in traders_of(island, self.config, self.turn):
+-                left = cap
++                left = traders.capacity(self.config, f)
+                 for good, item in traders.goods_of(f).items():  # 輸出の荷も扱える重さを使う
+                     if item.get("dir") == traders.EXPORT:
+                         left -= weight(self.defs, good, stock.total(f.stock, good))
+@@ -2235,7 +2239,6 @@ class _Round:
+         ターンに圏で約定がなかった財（売りの値段が値幅に入らない・船が出ないなど）と、前のターンに
+         封鎖で船出を断られた財は数えない（入らない財のために外貨を寝かせない）。"""
+         currency = bloc["currency"]
+-        cap = self.config.get("trade.trader_capacity") * QUANTITY_SCALE
+         supply = bloc.get("supply", {})
+         volume = bloc.get("volume", {})
+         wants: dict[tuple[int, str, int], dict[str, list[int]]] = {}  # 鍵 → 財 → [量, 扱える重さ]
+@@ -2254,7 +2257,7 @@ class _Round:
+                     if want > 0:
+                         row = wants.setdefault((m, entity, currency), {}).setdefault(good, [0, 0])
+                         row[0] += want
+-                        row[1] += cap
++                        row[1] += traders.capacity(self.config, f)
+         out: dict[tuple[int, str, int], dict[str, int]] = {}
+         for key, goods in sorted(wants.items()):
+             island = self.world.islands[key[0]]
+diff --git a/hakoniwa_core/trade/setup.py b/hakoniwa_core/trade/setup.py
+index 3aa18d13..3602dab4 100644
+--- a/hakoniwa_core/trade/setup.py
++++ b/hakoniwa_core/trade/setup.py
+@@ -17,12 +17,15 @@ firms.operating_turns ターン分。国が出すときは、1つにつき国庫
+ 
+ from __future__ import annotations
+ 
++from typing import Any
++
+ from hakoniwa_core import facilities as fac
+ from hakoniwa_core import ledger, stock, stops
+ from hakoniwa_core.config import GameConfig
+ from hakoniwa_core.dates import TURNS_PER_YEAR
+ from hakoniwa_core.defs import Defs
+ from hakoniwa_core.economy import (
++    CONSTRUCTION,
+     OWNERS,
+     Payer,
+     banks,
+@@ -279,6 +282,64 @@ def entry(
+     return f
+ 
+ 
++def expand(island: IslandState, ctx: Any, planned: bool) -> Facility | None:
++    """商社の建て増し（W-308。参入と撤退の段）。島で 1 ターンに 1 社まで。
++
++    扱える重さで取り逃した引き合う輸入（trade/__init__.py の _keep_missed の missed_cap。
++    お金で買えなかった分は入れない。建て増しても解けないため）が、直近 trade.entry_turns
++    ターンの半分以上のターンにあり、その儲けを年に直して、建て増しの費用（工事の資材と人手の
++    1.1 倍）と取り逃した仕入れの自己資金の和で割った利回りが、民営工場の参入と同じ線（借りる
++    金利 + firms.entry_margin）を超え、規模が trade.trader_max_size に届いていなければ、
++    建て増しの工事を始める。民営の商社は持ち主（資産を持つ層）が暮らしの分を残した預金で工事の
++    代金を出資できなければ、国営の商社は国の建設の予算が足りなければ見送る。計画経済の島では
++    建て増さない（第 1 版）。"""
++    from hakoniwa_core.economy.households import owners_spare
++    from hakoniwa_core.economy.prices import construction_cost
++    from hakoniwa_core.modules.construction import start_expansion
++    from hakoniwa_core.trade import traders  # traders.py がこのモジュールを読まないように
++
++    config, defs = ctx.config, ctx.defs
++    if planned or not config.get("trade.trader_expand") or not started(island):
++        return None
++    kind = config.get("trade.trader_facility")
++    limit = config.get("trade.trader_max_size")
++    turns = config.get("trade.entry_turns")
++    wage = island.economy.average_wage or config.get("labor.initial_wage")
++    cost = round_money(construction_cost(defs, kind, island.economy.prices, wage))
++    amount = cost + cost // 10  # 資材の値上がりに備えて 1 割多め（民営工場の工事と同じ）
++    own_share = 1 - config.get("loans.trade_ratio")
++    line = banks.entry_rate(island, defs, config)
++    for f in sorted(traders_of(island, config), key=lambda x: x.id):
++        if f.kind != kind or not f.built or "closing" in f.economy or "foreclosed" in f.economy:
++            continue
++        if fac.size_of(f) + fac.pending_expansions(island, f) >= limit:
++            continue
++        history = traders.missed_capacity(f)
++        if len(history) < turns or sum(1 for p, _ in history if p > 0) * 2 < turns:
++            continue
++        profit = sum(p for p, _ in history) // len(history)
++        missed_cost = sum(c for _, c in history) // len(history)
++        capital = amount + round_money(missed_cost * own_share)
++        if profit * TURNS_PER_YEAR / max(1, capital) <= line:
++            continue
++        owner = owner_entity(f)
++        if f.owner == OWNER_PRIVATE:
++            have = owners_spare(island, defs, config) if owner == household(OWNERS) else 0
++            if owner != household(OWNERS):
++                have = funds.available(island, Payer(owner))
++        else:
++            have = funds.available(island, Payer(ledger.GOV, CONSTRUCTION))
++        if have < amount:
++            continue
++        site = start_expansion(island, ctx, f)
++        if f.owner == OWNER_PRIVATE:
++            # 民営の工事は持ち主が出資したお金で払う（民営工場の建て増しと同じ）
++            site.ext["private_entry"] = True
++            invest(island, owner, facility_entity(site.id), amount)
++        return site
++    return None
++
++
+ def _missed_pays(island: IslandState, defs: Defs, config: GameConfig) -> bool:
+     """取り逃した儲けでの参入（FX-62）: 島の商社が自分の担保・出資の枠か扱える重さで買えなかった
+     引き合う輸入の儲けの直近 trade.entry_turns ターンの平均を年に直し、商社を開く出資
+diff --git a/hakoniwa_core/trade/traders.py b/hakoniwa_core/trade/traders.py
+index f76834af..392de4a3 100644
+--- a/hakoniwa_core/trade/traders.py
++++ b/hakoniwa_core/trade/traders.py
+@@ -73,6 +73,7 @@ import math
+ from dataclasses import dataclass, field
+ from typing import Any
+ 
++from hakoniwa_core import facilities as fac
+ from hakoniwa_core import ledger, stock
+ from hakoniwa_core.config import GameConfig
+ from hakoniwa_core.defs import Defs
+@@ -272,10 +273,17 @@ def views(island: IslandState) -> dict[str, dict[str, Any]]:
+     return island_state(island).get("blocs", {})
+ 
+ 
+-def capacity_units(defs: Defs, config: GameConfig, good: str) -> int:
+-    """商社1社が1ターンに扱える量（財 good の 1000 分の 1 単位）。"""
++def capacity(config: GameConfig, f: Facility | None = None) -> int:
++    """商社 f が 1 ターンに扱える重さ（1000 分の 1 トン。輸出と輸入の合計）。建て増した商社は規模の
++    分だけ扱える（W-308。支店・倉庫と人を足した分）。f を渡さなければ規模 1 の商社の分。"""
++    size = fac.size_of(f) if f is not None else 1
++    return config.get("trade.trader_capacity") * QUANTITY_SCALE * size
++
++
++def capacity_units(defs: Defs, config: GameConfig, good: str, f: Facility | None = None) -> int:
++    """商社 f が1ターンに扱える量（財 good の 1000 分の 1 単位）。"""
+     unit = unit_weight(defs, good)
+-    cap = config.get("trade.trader_capacity") * QUANTITY_SCALE
++    cap = capacity(config, f)
+     if unit <= 0:
+         return cap
+     return cap * QUANTITY_SCALE // unit
+@@ -419,7 +427,7 @@ def home_orders(island: IslandState, defs: Defs, config: GameConfig, turn: int)
+     planned = is_planned(island)
+     out: list[HomeOrder] = []
+     for f in traders:
+-        budget = config.get("trade.trader_capacity") * QUANTITY_SCALE  # 扱える重さの残り
++        budget = capacity(config, f)  # 扱える重さの残り
+         if (
+             planned
+         ):  # 輸出の荷より先に、1 段の財（燃料と主食）の輸入の見込みの重さを取り置く（FX-77）
+@@ -464,7 +472,8 @@ def home_orders(island: IslandState, defs: Defs, config: GameConfig, turn: int)
+                 continue
+             assert p is not None
+             planned_x = item.get(PLAN_X, 0) if planned else 0
+-            want = min(item["x"] + planned_x, capacity_units(defs, config, good)) - item["held"][0]
++            room = capacity_units(defs, config, good, f)
++            want = min(item["x"] + planned_x, room) - item["held"][0]
+             if want <= 0:
+                 continue
+             # 計画経済は値幅の上端（公定価格）に運賃の上限を足した額まで払う
+@@ -781,7 +790,7 @@ def update_targets(
+             ):
+                 continue
+             item = entry(f, good)
+-            cap = capacity_units(defs, config, good)
++            cap = capacity_units(defs, config, good, f)
+             probe = round_money(cap * PROBE)
+             held = item["held"][0]
+             # 島で買い手のいない物は輸入せず、島の売り手が売りに出していない物は輸出しない（海外の
+@@ -1014,6 +1023,8 @@ def _keep_history(config: GameConfig, f: Facility, turn: dict[str, Any]) -> None
+     state["spent"] = [*state.get("spent", []), turn.get("spent", 0)][-keep:]
+     # 取り逃した輸入の儲けと仕入れ（FX-62。貿易の段の _keep_missed）
+     state["missed"] = [*state.get("missed", []), turn.get("missed", [0, 0])][-keep:]
++    # そのうち扱える重さで取り逃した分（商社の建て増しの根拠。W-308）
++    state["missed_cap"] = [*state.get("missed_cap", []), turn.get("missed_cap", [0, 0])][-keep:]
+     abroad = state.setdefault("abroad", {})
+     spent = turn.get("abroad", {})
+     for key in sorted(set(abroad) | set(spent)):
+@@ -1058,7 +1069,7 @@ def volume_share(config: GameConfig, f: Facility) -> float:
+     history = state_of(f).get("volume", [])
+     if not history:
+         return 0.0
+-    return sum(history) / len(history) / (config.get("trade.trader_capacity") * QUANTITY_SCALE)
++    return sum(history) / len(history) / capacity(config, f)
+ 
+ 
+ def missed_average(f: Facility) -> tuple[int, int]:
+@@ -1072,6 +1083,12 @@ def missed_average(f: Facility) -> tuple[int, int]:
+     )
+ 
+ 
++def missed_capacity(f: Facility) -> list[tuple[int, int]]:
++    """直近 trade.entry_turns ターンの、扱える重さで取り逃した輸入の儲けと仕入れ（自国通貨。
++    W-308）。"""
++    return [(p, c) for p, c in state_of(f).get("missed_cap", [])]
++
++
+ def plan_spend(island: IslandState, f: Facility) -> int:
+     """輸出の計画（PL-62）でこの商社が受け持つ量を、島の今の値段（公定価格）で買う代金（自国通貨）。
+     手元の輸出の荷は除く。"""
+@@ -1093,7 +1110,8 @@ def spend_estimate(f: Facility) -> int:
+ def workers_wanted(config: GameConfig, defs: Defs, f: Facility) -> int:
+     """商社が雇いたい人数: 定義の人数 × 直近の扱った重さの割合（少なくとも trade.staff_floor。荷が
+     ないまま圏にも入れない商社が、定義の人数の 1 割の賃金を払い続けて赤字だった。W-157）。"""
+-    full = defs.facilities[f.kind]["workers"]
++    # 建て増した商社は規模の分の人数（W-308）
++    full = defs.facilities[f.kind]["workers"] * fac.size_of(f)
+     share = max(config.get("trade.staff_floor"), min(1.0, volume_share(config, f)))
+     return max(1, round_money(full * share + 0.5))
+ 
+diff --git a/tests/core/test_trader_expand.py b/tests/core/test_trader_expand.py
+new file mode 100644
+index 00000000..10ef2761
+--- /dev/null
++++ b/tests/core/test_trader_expand.py
+@@ -0,0 +1,99 @@
++"""W-308: 商社の建て増し（扱える重さで取り逃した輸入が続き、儲けが費用に引き合えば、支店・倉庫と人を
++足して規模を 1 つ上げる。扱える重さと人数が規模の分だけ増える）。"""
++
++from __future__ import annotations
++
++import copy
++
++from hakoniwa_core import facilities as fac
++from hakoniwa_core import ledger
++from hakoniwa_core.economy import OWNERS, facility_entity, household
++from hakoniwa_core.trade import setup as trade_setup
++from hakoniwa_core.trade import traders, traders_of
++from hakoniwa_core.units import QUANTITY_SCALE
++from tests.core.test_trade import _context, game, run, traded  # noqa: F401
++
++
++def _trader(world, game):  # noqa: F811
++    island = world.islands[1]
++    working = traders_of(island, game.config, world.turn)
++    assert working
++    return island, working[0]
++
++
++def _rich_owners(island):
++    """資産を持つ層に建て増しの代金を出せる預金を作る（試験のためのお金）。"""
++    bank = ledger.bank_of(island, household(OWNERS))
++    ledger.create(island, household(OWNERS), ledger.DEPOSIT, bank, 10**15, "test_top_up")
++
++
++def _missed_every_turn(game, f, profit):  # noqa: F811
++    turns = game.config.get("trade.entry_turns")
++    traders.state_of(f)["missed_cap"] = [[profit, profit] for _ in range(turns)]
++
++
++def test_a_bigger_trader_handles_and_hires_in_proportion_to_its_size(game, traded):  # noqa: F811
++    world = copy.deepcopy(traded[0])
++    _, f = _trader(world, game)
++    one = traders.capacity(game.config, f)
++    assert one == game.config.get("trade.trader_capacity") * QUANTITY_SCALE
++    traders.state_of(f)["volume"] = [one]  # 扱える重さいっぱいに扱った
++    staff = traders.workers_wanted(game.config, game.defs, f)
++    f.ext[fac.SIZE] = 2
++    assert traders.capacity(game.config, f) == 2 * one
++    traders.state_of(f)["volume"] = [2 * one]
++    assert traders.workers_wanted(game.config, game.defs, f) == 2 * staff
++    traders.state_of(f)["volume"] = [one]  # 規模 2 で 1 社分しか扱わなければ、人も 1 社分
++    assert traders.workers_wanted(game.config, game.defs, f) == staff
++
++
++def test_a_trader_expands_when_capacity_cuts_pay_and_the_switch_is_on(game, traded, monkeypatch):  # noqa: F811
++    world = copy.deepcopy(traded[0])
++    island, f = _trader(world, game)
++    ctx = _context(game, world)
++    _rich_owners(island)
++    _missed_every_turn(game, f, 10**12)  # 引き合う輸入を扱える重さで取り逃し続けた
++    assert trade_setup.expand(island, ctx, False) is None  # 既定は切
++    monkeypatch.setitem(game.config.raw["trade"], "trader_expand", True)
++    assert trade_setup.expand(island, ctx, True) is None  # 計画経済の島では建て増さない（第 1 版）
++    site = trade_setup.expand(island, ctx, False)
++    assert site is not None and fac.expansion_of(site) == f.id
++    assert site.ext.get("private_entry") and ledger.money(island, facility_entity(site.id)) > 0
++    assert trade_setup.expand(island, ctx, False) is None  # 工事中の商社は重ねて建て増さない
++    assert fac.pending_expansions(island, f) == 1
++
++
++def test_a_trader_does_not_expand_on_money_cuts_or_past_the_size_limit(game, traded, monkeypatch):  # noqa: F811
++    monkeypatch.setitem(game.config.raw["trade"], "trader_expand", True)
++    world = copy.deepcopy(traded[0])
++    island, f = _trader(world, game)
++    ctx = _context(game, world)
++    _rich_owners(island)
++    turns = game.config.get("trade.entry_turns")
++    # 取り逃しが半分のターンに届かない（お金で買えなかった分は missed_cap に入らない）
++    traders.state_of(f)["missed_cap"] = [[0, 0]] * (turns - turns // 2 + 1) + [[10**12, 1]] * (
++        turns // 2 - 1
++    )
++    for other in traders_of(island, game.config, world.turn):
++        if other is not f:
++            traders.state_of(other)["missed_cap"] = []
++    assert trade_setup.expand(island, ctx, False) is None
++    _missed_every_turn(game, f, 10**12)
++    f.ext[fac.SIZE] = game.config.get("trade.trader_max_size")  # もう上限の規模
++    assert trade_setup.expand(island, ctx, False) is None
++
++
++def test_capacity_cuts_are_kept_apart_from_money_cuts(game, traded):  # noqa: F811
++    """扱える重さで取り逃した分（建て増しの根拠）は、お金で買えなかった分を含む取り逃しの一部。"""
++    world = copy.deepcopy(traded[0])
++    island = world.islands[1]
++    for f in traders_of(island, game.config, world.turn):
++        for item in traders.goods_of(f).values():
++            if item.get("dir") == traders.IMPORT:
++                item["m"] = item["m"] * 50 + 200 * QUANTITY_SCALE  # 扱える重さに収まらない量
++    run(game, world, 1)
++    for f in traders_of(island, game.config, world.turn):
++        state = traders.state_of(f)
++        assert len(state["missed_cap"]) == len(state["missed"])
++        (cap_profit, cap_cost), (profit, cost) = state["missed_cap"][-1], state["missed"][-1]
++        assert 0 <= cap_profit <= profit and 0 <= cap_cost <= cost
