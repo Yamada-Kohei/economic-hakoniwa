@@ -397,6 +397,7 @@ def trade_data(
         **reports.stats_part(stats, TRADE_STATS if mine else PUBLIC_TRADE_STATS),
         "blocs": [bloc_view(b, islands, goods=False) for b in member],
     }
+    data["partner_stats"] = partner_rows(island, islands, currency)
     if not mine:
         data["overview"] = overview(data, stats, currency)
         return data
@@ -507,6 +508,73 @@ def overview(data: dict[str, Any], stats: dict[str, float], currency: str) -> di
         "export_tons": round(sum(s["load"] for s in moving if s["direction"] == traders.EXPORT), 1),
         "import_tons": round(sum(s["load"] for s in moving if s["direction"] == traders.IMPORT), 1),
     }
+    return out
+
+
+# 貿易の相手ごとの統計の、島でない相手の表示名（#5455）
+PARTNER_LABELS = {"bloc": "圏の市場（相手は混ざる）", "merchant": "海外の商人"}
+
+
+def partner_rows(
+    island: m.Island, islands: dict[int, dict[str, Any]], currency: str
+) -> list[dict[str, Any]]:
+    """貿易の相手ごとの輸出・輸入（#5455）: 統計 partner.* を集計ターンと直近 1 年（12 ターン）
+    で足し上げた表。相手は島の番号か、相手が決まらない圏の市場（bloc）と海外の商人（merchant）。
+    主な品目は直近 1 年の額の大きい順に 3 つまで。記録が無い相手は行に出ない。"""
+    turn, _ = display.latest_stats(island)
+    if turn is None:
+        return []
+    rows = island.stats.filter(turn__gt=turn - 12, name__startswith="partner.").values_list(
+        "turn", "name", "value"
+    )
+    totals: dict[str, dict[str, float]] = {}
+    goods: dict[str, dict[str, float]] = {}
+    for row_turn, name, value in rows:
+        parts = name.split(".")
+        if len(parts) < 3:
+            continue
+        partner, side = parts[1], parts[2]
+        entry = totals.setdefault(partner, {"exports": 0.0, "imports": 0.0})
+        if len(parts) == 3:
+            entry[side] += value
+            if row_turn == turn:
+                entry[f"{side}_turn"] = entry.get(f"{side}_turn", 0.0) + value
+        else:
+            good = ".".join(parts[3:])
+            by_good = goods.setdefault(partner, {})
+            by_good[good] = by_good.get(good, 0.0) + value
+    defs = get_game().defs
+
+    def good_name(good: str) -> str:
+        return "運賃" if good == "freight" else defs.name("goods", good)
+
+    out = []
+    for partner, entry in totals.items():
+        top = sorted(goods.get(partner, {}).items(), key=lambda kv: -kv[1])[:3]
+        out.append(
+            {
+                "partner": partner,
+                "name": PARTNER_LABELS.get(partner)
+                or (_name(islands, int(partner)) if partner.isdigit() else partner),
+                "exports_turn": display.stat_text(
+                    "trade.exports", entry.get("exports_turn", 0.0), "money", currency
+                ),
+                "imports_turn": display.stat_text(
+                    "trade.imports", entry.get("imports_turn", 0.0), "money", currency
+                ),
+                "exports_year": display.stat_text(
+                    "trade.exports", entry["exports"], "money", currency
+                ),
+                "imports_year": display.stat_text(
+                    "trade.imports", entry["imports"], "money", currency
+                ),
+                "goods": [{"good": g, "name": good_name(g)} for g, _ in top],
+                "_total": entry["exports"] + entry["imports"],
+            }
+        )
+    out.sort(key=lambda row: -row["_total"])
+    for row in out:
+        del row["_total"]
     return out
 
 

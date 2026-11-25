@@ -216,6 +216,11 @@ class Records(IslandStage):
         for item, amount in books.sector(island, books.TRADE_GOODS).items():
             side, _, good = item.partition(".")
             stats[f"{side.removesuffix('s')}.{good}"] = amount
+        # 相手ごとの輸出と輸入の額（#5455。partner.<相手>.exports・partner.<相手>.imports と
+        # 品目ごとの partner.<相手>.exports.<財>・partner.<相手>.imports.<財>。0 は書かない。
+        # 合計は trade.exports・trade.imports に合う）
+        for item, amount in books.sector(island, books.TRADE_PARTNERS).items():
+            stats[f"partner.{item}"] = amount
         balance.write_stats(island)  # 経常収支と金融収支（フェーズ3-3）
         stats.update(_finances(island))
         stats.update(_banking(island, ctx))
