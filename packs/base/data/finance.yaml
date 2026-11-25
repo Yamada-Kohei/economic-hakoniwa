@@ -65,7 +65,7 @@ bond_interest:        {type: journal}   # 国債の利払い（政府 → 持ち
 bond_redemption:      {type: journal}   # 国債の償還（政府 → 持ち手）
 bond_trade:           {type: journal}   # 国債の売買（買い手 → 売り手）
 bond_default:         {type: journal}   # 国債の不履行（額面の切り下げ）
-bond_restructured:    {type: journal}   # 国債の組み替え（市中の持ち手の銘柄を 5 年と 10 年の国債に替える。G2）
+bond_restructured:    {type: journal}   # 国債の組み替え（市中の持ち手の銘柄を満期のラダーの国債に替える。G2）
 # 家計の層
 layer_transfer:       {type: journal}   # 層を移った人の預金の付け替え
 housing_rent:        {type: journal}   # 国の床の家賃（家計 → 政府。W-190・W-202）

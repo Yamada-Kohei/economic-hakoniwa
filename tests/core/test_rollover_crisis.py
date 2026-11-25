@@ -284,9 +284,12 @@ def _restructure_setup(game, monkeypatch):
     return island, ctx, bond, later, bank, payer
 
 
+LADDER = [48, 60, 72, 84, 96, 108, 120]  # 締め出し 36 + 12 から最長 120 まで 12 ごと
+
+
 def test_the_first_shortfall_default_restructures_the_market_debt(game, monkeypatch):
     """G2: 最初の足りない分の不履行で、市中の国債を満期の物も含めて一度に haircut だけ切り下げ、
-    残りを 5 年と 10 年の国債に同じ額ずつ替える。中央銀行の持ち分は替えない。不履行は 1 回だけ
+    残りを満期のラダーに同じ額ずつ替える。中央銀行の持ち分は替えない。不履行は 1 回だけ
     数える（_write_off の切り捨ては通らない）。"""
     island, ctx, bond, later, bank, payer = _restructure_setup(game, monkeypatch)
     cb_before = debt.holdings_of(island, ledger.CB)
@@ -299,7 +302,7 @@ def test_the_first_shortfall_default_restructures_the_market_debt(game, monkeypa
     rests = {}
     for h, f in market:
         rests[h] = rests.get(h, 0) + f - f // 2
-    yields = {t: bond_yield(island, t, ctx) for t in (60, 120)}
+    yields = {t: bond_yield(island, t, ctx) for t in LADDER}
     stage = Bonds()
     stage._roll_over(island, ctx, payer)
     kinds = [e.kind for e in island.log]
@@ -309,12 +312,12 @@ def test_the_first_shortfall_default_restructures_the_market_debt(game, monkeypa
     assert island.scratch["bond_stats"]["restructure_cut"] == cut
     assert island.scratch["bond_stats"].get("rollover_default", 0) == 0  # 二重に数えない
     assert island.economy.finance["default_turn"] == ctx.turn
+    assert island.economy.finance["last_shortfall"] == ctx.turn  # 不履行のたびに残す
     assert bond not in island.bonds and later not in island.bonds
     new = sorted((b for b in island.bonds if b.issued == ctx.turn), key=lambda b: b.term)
-    assert [b.term for b in new] == [60, 120]
-    for h, rest in rests.items():  # 持ち手ごとに残りを同じ額ずつ（端数は 10 年に）
-        assert debt.holders(island, new[0]).get(h) == rest // 2
-        assert debt.holders(island, new[1]).get(h) == rest - rest // 2
+    assert [b.term for b in new] == LADDER
+    for h, rest in rests.items():  # 持ち手ごとに残りの合計が替えた先に残る
+        assert sum(debt.holders(island, b).get(h, 0) for b in new) == rest
     assert all(ledger.CB not in debt.holders(island, b) for b in new)
     for b in new:  # 不履行の上乗せは付けない（替える前の市場の利回りのまま）
         assert b.rate == yields[b.term]
@@ -325,23 +328,64 @@ def test_the_first_shortfall_default_restructures_the_market_debt(game, monkeypa
     assert "bond_coupon_default" not in [e.kind for e in island.log]
 
 
-def test_a_lockout_is_restructured_only_once(game, monkeypatch):
-    """G2: 同じ締め出しの中では一度だけ組み替える。締め出しの途中でまだ組み替えていなければ
-    組み替えるが、締め出しは延ばさない（G1）。組み替えた後の足りない分は今までどおり切り捨てる。"""
+def test_a_restructure_spreads_the_maturities_over_a_ladder(game, monkeypatch):
+    """G2 試験2: 組み替えの後の新しい銘柄は 7 本で、満期が 48〜120 に 12 ターンおき、持ち手ごとに
+    額が同じ（端数は最後の銘柄へ）。"""
     island, ctx, bond, later, bank, payer = _restructure_setup(game, monkeypatch)
-    island.economy.finance["default_turn"] = ctx.turn - 1  # 締め出しの途中（まだ組み替えていない）
+    market = {}
+    for b in island.bonds:
+        for h, f in debt.holders(island, b).items():
+            if h != ledger.CB:
+                market[h] = market.get(h, 0) + f - f // 2  # haircut 0.5 の残り
     Bonds()._roll_over(island, ctx, payer)
-    assert [e.kind for e in island.log if e.kind == "bond_restructured"] == ["bond_restructured"]
-    assert island.economy.finance["default_turn"] == ctx.turn - 1
-    assert not any(e.kind.startswith("bond_default_penalty") for e in island.log)
+    new = sorted((b for b in island.bonds if b.issued == ctx.turn), key=lambda b: b.term)
+    assert len(new) == 7
+    assert [b.term for b in new] == LADDER
+    for h, rest in market.items():
+        share = rest // len(new)
+        for b in new[:-1]:
+            assert debt.holders(island, b).get(h) == share
+        assert debt.holders(island, new[-1]).get(h) == rest - share * (len(new) - 1)
+
+
+def test_a_restructure_happens_only_once_per_default_episode(game, monkeypatch):
+    """G2 試験1: 組み替えは 1 回の不履行の続きに 1 回だけ。市場が開くターン（前の不履行から
+    締め出しのターン数ちょうど後）でも、直近の不履行があれば組み替えず切り捨てになる。
+    締め出しのターン数だけ不履行が無かった後の不履行は、新しい続きとしてまた組み替える。"""
+    exclusion = game.config.get("bonds.default_exclusion_turns")
+    island, ctx, bond, later, bank, payer = _restructure_setup(game, monkeypatch)
+    island.economy.finance["last_shortfall"] = ctx.turn - exclusion  # 市場が開くターンに当たる
+    Bonds()._roll_over(island, ctx, payer)
+    kinds = [e.kind for e in island.log]
+    assert "bond_restructured" not in kinds
+    assert [e.kind for e in crisis(island)] == ["bond_rollover_default"]
+    assert island.economy.finance["last_shortfall"] == ctx.turn  # 切り捨てでも記録は残る
 
     island2, ctx2, bond2, _, bank2, payer2 = _restructure_setup(game, monkeypatch)
-    island2.economy.finance["default_turn"] = ctx2.turn - 1
-    island2.economy.finance["restructured"] = ctx2.turn - 1  # この締め出しはもう組み替えた
+    island2.economy.finance["last_shortfall"] = ctx2.turn - exclusion - 1  # 続きは終わっている
     Bonds()._roll_over(island2, ctx2, payer2)
-    kinds = [e.kind for e in island2.log]
-    assert "bond_restructured" not in kinds
-    assert [e.kind for e in crisis(island2)] == ["bond_rollover_default"]
+    assert [e.kind for e in island2.log if e.kind == "bond_restructured"] == ["bond_restructured"]
+    assert island2.economy.finance["last_shortfall"] == ctx2.turn
+
+
+def test_a_bond_sold_on_the_restructure_turn_is_also_swapped(game, monkeypatch):
+    """G2 試験3: 組み替えのターンに銀行が買った 1 年の国債も替える（替えないと 12 ターン後に
+    満期の市中の元本が残り、払えない不履行がまた起きる）。"""
+    island, ctx, bond, later, bank, payer = _restructure_setup(game, monkeypatch)
+    fresh = debt.underwrite(island, FACE, 12, 0, ctx.turn)  # このターンに出た 1 年の国債
+    ledger.transfer(island, ledger.bond_item(fresh.id), ledger.GOV, ledger.CB, bank, FACE, "test")
+    debt.bought(island, bank, fresh.id, FACE)
+    ledger.pay(island, ledger.GOV, household(GENERAL), FACE, "test")  # 引き受けで入った分は戻す
+    Bonds()._roll_over(island, ctx, payer)
+    assert "bond_restructured" in [e.kind for e in island.log]
+    assert fresh not in island.bonds
+    assert bank not in debt.holders(island, fresh)
+    maturing = [
+        b
+        for b in island.bonds
+        if b.maturity <= ctx.turn + 12 and any(h != ledger.CB for h in debt.holders(island, b))
+    ]
+    assert maturing == []  # 12 ターン後に満期の市中の元本は残らない
 
 
 def test_a_restructure_passes_the_ledger_check(game, monkeypatch):

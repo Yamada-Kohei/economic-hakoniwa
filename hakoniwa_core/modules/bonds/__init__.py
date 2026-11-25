@@ -13,8 +13,9 @@
    削れる支出でしのぎ、それでも払えない分だけ不履行にする（_roll_over・_short_pay。設計 BK-52）。
    bonds.rollover_pricing が入なら、利回りは 1 年の総資金需要のうち余力で埋まらない割合で上乗せし、
    銀行は見込みの損が自己資本の余りを超える分を買わない（rollover_need・holding_cap。設計 BK-53）。
-   bonds.default_exchange が入なら、締め出しの中で最初の足りない分の不履行は、切り捨ての代わりに
-   市中の国債をまとめて額面を減らした 5 年と 10 年の国債に組み替える（_restructure。設計 BK-54）。
+   bonds.default_exchange が入なら、直近 bonds.default_exclusion_turns ターンに不履行の無いときの
+   足りない分の不履行は、切り捨ての代わりに市中の国債をまとめて額面を減らした国債のラダーに
+   組み替える（_restructure。設計 BK-54）。
 5. 銘柄ごとに利子を払い、満期の銘柄は額面を返して消す。不履行は命令 set_bond_payment で選んだとき
    だけ: 中央銀行以外の額面を bonds.haircut だけ切り下げ（持ち手の損）、残りを同じ期間で出し直す。
    切り下げた額が 0 なら新しい罰は付けない。不履行の記録は
@@ -138,8 +139,8 @@ def _burden(island: IslandState, ctx: StageContext) -> float:
 
 
 NO_CAP = 10 * BASIS  # 総資金需要で測るときの利回りの上限（1000%。実質は上限なし。会議 #4021）
-RESTRUCTURED = "restructured"  # economy.finance: 組み替えた締め出しの default_turn（G2）
-RESTRUCTURE_TERMS = ("bond_5y", "bond_10y")  # 組み替えの先（同じ額ずつ）
+LAST_SHORTFALL = "last_shortfall"  # economy.finance: 最後に不履行（切り捨て・利払いの不足・
+# 組み替えのどれも）が起きたターン（G2。組み替えを 1 回の不履行の続きに 1 回だけにする目印）
 
 
 def yield_cap(config: GameConfig) -> int:
@@ -577,13 +578,17 @@ class Bonds(WorldStage):
     @staticmethod
     def _restructures(island: IslandState, ctx: StageContext) -> bool:
         """足りない分の不履行を、切り捨ての代わりに債務の組み替えにするか（bonds.default_exchange
-        が入で、今の締め出しの続きの中でまだ組み替えていない。締め出しを始めたターンも含む）。"""
+        が入で、直近 bonds.default_exclusion_turns ターンに不履行（切り捨て・利払いの不足・
+        組み替えのどれも）が無いときだけ。組み替えは 1 回の不履行の続きに 1 回だけ: 市場が開いた
+        ターン（前の不履行から締め出しのターン数ちょうど後）でも、直近の不履行として数えて
+        組み替えず切り捨てる。不履行の無いターンが締め出しのターン数だけ続いた後の不履行は、
+        新しい続きとして組み替えてよい）。"""
         if not ctx.config.get("bonds.default_exchange"):
             return False
-        finance = island.economy.finance
-        if not debt.market_closed(island, ctx.config, ctx.turn):
+        last = island.economy.finance.get(LAST_SHORTFALL)
+        if last is None:
             return True
-        return finance.get(RESTRUCTURED) != finance.get("default_turn")
+        return ctx.turn - last > ctx.config.get("bonds.default_exclusion_turns")
 
     def _restructure(
         self,
@@ -596,21 +601,22 @@ class Bonds(WorldStage):
     ) -> int:
         """債務の組み替え（国債の会議 #3981 の G2、#4605・#4615。2012 年のギリシャの組み替え）:
         中央銀行以外の持ち手（外国の持ち手も）の国債を、満期の銘柄も含めて一度に額面を
-        bonds.haircut だけ切り下げ、残りを bond_5y と bond_10y に同じ額ずつ替える。利率はその期間の
-        市場の利回りから不履行の上乗せ δ を除いた値（新しい数を置かない）。中央銀行の持ち分は
-        替えない（満期に今のとおり乗り換える）。このターンに出した銘柄は替えない。替えた銘柄の
-        このターンの利子は払わない（新しい銘柄の利払いは次のターンから）。
+        bonds.haircut だけ切り下げ、残りを満期のラダー（bonds.default_exclusion_turns + 12 から
+        いちばん長い期間まで 12 ターンごと。36 なら 48・60・…・120 の 7 本）に同じ額ずつ替える
+        （満期を散らす。端数は最後の銘柄へ）。利率はその期間の市場の利回りから不履行の上乗せ δ を
+        除いた値（新しい数を置かない）。中央銀行の持ち分は替えない（満期に今のとおり乗り換える）。
+        このターンに出した銘柄（組み替えのターンの入札で売れた物も）も替える（替えないと、その
+        銘柄が 12 ターン後に満期になって払えない不履行がまた起きる）。替えた銘柄のこのターンの
+        利子は払わない（新しい銘柄の利払いは次のターンから）。
 
-        替えた後は市中の満期が 5 年来ないので、締め出しの間に満期のたびにまた不履行になる
-        くり返しが起きない。不履行の罰は 1 回だけ付ける（締め出しを始めていなければ始める）。
-        lost はこのターンにすでに払わなかった額（同じ罰に入れる）。切り下げた額を返す。"""
+        替えた後は市中の満期がラダーの最初の満期まで来ないので、締め出しの間に満期のたびにまた
+        不履行になるくり返しが起きない。不履行の罰は 1 回だけ付ける（締め出しを始めていなければ
+        始める）。lost はこのターンにすでに払わなかった額（同じ罰に入れる）。切り下げた額を返す。"""
         haircut = to_basis(ctx.config.get("bonds.haircut"))
         terms = ctx.defs.bond_terms()
         swaps: list[tuple[Bond, str, int]] = []  # 替える銘柄・持ち手・切り下げた後の額面
         cut_total = 0
         for bond in sorted(island.bonds, key=lambda b: b.id):
-            if bond.issued >= ctx.turn:
-                continue
             for holder, face in sorted(debt.holders(island, bond).items()):
                 if holder == ledger.CB or face <= 0:
                     continue
@@ -625,14 +631,22 @@ class Bonds(WorldStage):
         delta = to_basis(
             default_premium(island, ctx) - credit.premium(island, ctx.turn, ctx.config)
         )
+        longest = max(v["turns"] for v in terms.values())
+        ladder = range(
+            ctx.config.get("bonds.default_exclusion_turns") + TURNS_PER_YEAR,
+            longest + 1,
+            TURNS_PER_YEAR,
+        )
         new: list[Bond] = []
-        for name in RESTRUCTURE_TERMS:
-            turns = terms[name]["turns"]
+        for turns in ladder:
             rate = max(0, ctx.formula("bond_yield")(island, turns, ctx) - delta)
             new.append(debt.issue_bond(island, 0, turns, rate, ctx.turn))
         for bond, holder, rest in swaps:
-            half = rest // 2
-            parts = ((new[0], half), (new[1], rest - half))
+            share = rest // len(new)
+            parts = tuple(
+                (target, share if i < len(new) - 1 else rest - share * (len(new) - 1))
+                for i, target in enumerate(new)
+            )
             held = debt.holders(island, bond)[holder]
             for target, face in parts:
                 if face <= 0:
@@ -663,8 +677,8 @@ class Bonds(WorldStage):
                     "raised": raised,
                     "amount": cut_total + swapped,
                     "cut": cut_total,
-                    "rate5": new[0].rate * 100 / BASIS,
-                    "rate10": new[1].rate * 100 / BASIS,
+                    "rate_low": new[0].rate * 100 / BASIS,
+                    "rate_high": new[-1].rate * 100 / BASIS,
                 },
             )
         )
@@ -672,8 +686,6 @@ class Bonds(WorldStage):
         stats["restructured"] = stats.get("restructured", 0) + swapped
         stats["restructure_cut"] = stats.get("restructure_cut", 0) + cut_total
         self._penalize(island, ctx, lost + cut_total, hit, shortfall=True)
-        # 締め出しを始めたのがこのターンの罰なら、その締め出しの中ではもう組み替えない
-        island.economy.finance[RESTRUCTURED] = island.economy.finance.get("default_turn")
         return cut_total
 
     def _cut(self, island: IslandState, bond: Bond, holder: str, cut: int, hit: set[str]) -> None:
@@ -829,6 +841,9 @@ class Bonds(WorldStage):
         開かなかった）。損をした銀行の貸し渋りは付ける。"""
         if lost == 0:
             return  # 市中・外国の債権者に損がなければ、新しい不履行の罰は付けない
+        # 不履行のたびに最後の不履行のターンを残す（組み替えを 1 回の続きに 1 回だけにする目印。
+        # 市場が閉じている間の不足分だけの不履行でも、締め出しを延ばさなくても記録は残す）
+        island.economy.finance[LAST_SHORTFALL] = ctx.turn
         config = ctx.config
         finance = island.economy.finance
         if shortfall and debt.market_closed(island, config, ctx.turn):
