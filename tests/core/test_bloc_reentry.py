@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 
+from hakoniwa_core import stock
 from hakoniwa_core.trade import traders, traders_of
 from tests.core.test_trade import game, traded  # noqa: F401
 
@@ -65,6 +66,74 @@ def test_one_negative_turn_keeps_export_orientation(game, traded, monkeypatch): 
             assert item.get("xneg") == turn  # 負のターンが続いた数
         else:
             assert item.get("dir") is None
+
+
+def _holding_case(world, game):  # noqa: F811
+    """輸出向きの商社に、輸出する荷を持たせる（買った荷が手元にある状態）。"""
+    island, f, good = _export_case(world, game)
+    qty = 5000
+    stock.add(f.stock, good, qty, world.turn, game.defs.goods)
+    traders.bought_home(f, good, qty, qty * 100)
+    assert traders.goods_of(f)[good]["held"][0] == qty
+    return island, f, good, qty
+
+
+def _drop_price(island, game, good, sign):  # noqa: F811
+    """島の値段を動かして輸出の差を負（sign=-1）・正（sign=+1）にする。"""
+    record = next(m for m in island.markets if m.good == good)
+    record.demand = 0  # 島に買い手がいない物にする（輸入にも向けない）
+    limit = traders.prospects(island, game.defs, game.config, good)[good].export_limit
+    island.economy.prices[good] = limit - sign * 10000
+    return record
+
+
+def test_orientation_is_frozen_while_trader_holds_stock(game, traded):  # noqa: F811
+    # 荷を持っている間は向きを変えない（売り切ってから）: 差が負になっても向きは残り、
+    # 荷が無くなったターンに落ちる。決着回し（#5175）で喪失がこの形で起きていた
+    world = copy.deepcopy(traded[0])
+    island, f, good, qty = _holding_case(world, game)
+    _drop_price(island, game, good, -1)
+    traders.update_targets(island, game.defs, game.config, {}, {}, world.turn)
+    assert traders.goods_of(f)[good].get("dir") == traders.EXPORT
+    stock.take(f.stock, good, qty)
+    traders.take_cost(traders.goods_of(f)[good], qty)
+    assert traders.goods_of(f)[good]["held"][0] == 0
+    traders.update_targets(island, game.defs, game.config, {}, {}, world.turn)
+    assert traders.goods_of(f).get(good, {}).get("dir") is None
+
+
+def test_lost_orientation_does_not_return_while_stock_remains(game, traded, monkeypatch):  # noqa: F811
+    # 決着回し（#5175）の形の固定: 切では種 1 島 37（喪失 T194・残り 307 ターン）・
+    # 種 2 島 40（T272・残り 229 ターン）・種 9 島 25（T106・残り 395 ターン）が、差が戻って
+    # 売りがあっても戻らなかった。入でも種 2 島 40（T374・残り 127 ターン）と種 9 島 32
+    # （T389・残り 112 ターン）に同じ形が残った。5 件とも、向きを失った商社の財の状態が
+    # 消えずに残り続けた（狙う量 0・向きなし）。その状態は「荷が残っている間は向きを
+    # 変えない」決まりで説明が付く: 向きのない商社は荷を売る注文を出さないので荷が
+    # 無くならず、荷がある間は向きの付け直し自体が走らない。
+    for on in (False, True):
+        if on:
+            monkeypatch.setitem(game.config.raw["trade"], "bloc_reentry", True)
+        world = copy.deepcopy(traded[0])
+        island, f, good, qty = _holding_case(world, game)
+        item = traders.goods_of(f)[good]
+        item["dir"] = None  # 向きを失った後にする
+        item["x"] = 0
+        record = _drop_price(island, game, good, +1)  # 差は戻っている
+        record.supply = 100000  # 島の売りもある
+        assert traders.exportable(
+            traders.prospects(island, game.defs, game.config, good)[good],
+            traders.home_price(island, game.config, good),
+        )
+        for _ in range(3):  # 何ターン見直しても、荷が残る間は向きは付かない
+            traders.update_targets(island, game.defs, game.config, {}, {}, world.turn)
+            assert traders.goods_of(f)[good].get("dir") is None
+        # 荷が無くなれば、向きが付く（切・入とも。入は売りが無くても戻れるのは
+        # test_reentry_places_a_buy_order_without_supply の分）
+        stock.take(f.stock, good, qty)
+        traders.take_cost(traders.goods_of(f)[good], qty)
+        traders.update_targets(island, game.defs, game.config, {}, {}, world.turn)
+        assert traders.goods_of(f)[good].get("dir") == traders.EXPORT
+        monkeypatch.undo()
 
 
 def test_reentry_places_a_buy_order_without_supply(game, traded, monkeypatch):  # noqa: F811
