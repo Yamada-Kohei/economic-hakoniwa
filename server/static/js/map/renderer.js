@@ -44,7 +44,7 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       const top = py - h;
       const f = facilityAt.get(i);
       // 施設のあるマスは地形の絵（木や山）を描かず、上面の色だけにする。施設の絵と重ならないように
-      drawBlock(ctx, px, py, h, colors, theme, f ? null : sprites.get(`terrain/${terrain}`));
+      drawBlock(ctx, px, py, h, colors, theme, f ? null : terrainSprite(sprites, terrain, x, y));
       drawFallout(ctx, map.fallout?.[i], sprites.get("overlay/contaminated"), px, top, theme);
       if (fill) {
         const color = fill.color(map, i, defs);
@@ -204,6 +204,21 @@ function drawUnits(ctx, units, px, top, theme, sprites) {
       ctx.restore();
     }
   });
+}
+
+/**
+ * 地形の絵。差分絵（terrain/plain@v2 のように @v<番号> の付いた絵）があれば、マスの座標から
+ * 決定的に 1 つ選ぶ（同じマスはいつも同じ絵で、再描画や読み込み直しで変わらない）。
+ * 差分絵がなければ名前のままの絵。座標の散らしは単純な整数の混ぜ合わせで、乱数は使わない。
+ */
+function terrainSprite(sprites, terrain, x, y) {
+  const base = `terrain/${terrain}`;
+  let count = 1;
+  while (sprites.has(`${base}@v${count + 1}`)) count++;
+  if (count === 1) return sprites.get(base);
+  const hash = ((x * 73856093) ^ (y * 19349663)) >>> 0;
+  const pick = hash % count;
+  return sprites.get(pick === 0 ? base : `${base}@v${pick + 1}`);
 }
 
 function drawBlock(ctx, px, py, h, colors, theme, sprite) {

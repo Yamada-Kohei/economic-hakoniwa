@@ -113,6 +113,8 @@ def _allowed_keys(theme: dict | None = None) -> set[str]:
             }
     return (
         {f"terrain/{t}" for t in d.terrain}
+        # 地形の差分絵（docs/map-art.md）: terrain/<地形>@v<番号>、番号は 2 から @v3 まで
+        | {f"terrain/{t}@v{v}" for t in d.terrain for v in (2, 3)}
         | {f"facility/{s}" for s in sprites}
         | {f"facility/{s}@{side}" for s in coastal for side in ("sw", "ne", "nw")}
         | graded

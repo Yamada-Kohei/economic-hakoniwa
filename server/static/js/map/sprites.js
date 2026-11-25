@@ -63,7 +63,10 @@ export function spritePriorityKeys(theme, map, defs) {
         || key === `capital/${name}` || key.startsWith(`capital/${name}-`)) keys.add(key);
     }
   };
-  for (const terrain of new Set(map.terrain || [])) add(`terrain/${terrain}`);
+  for (const terrain of new Set(map.terrain || [])) {
+    // 地形の差分絵（terrain/plain@v2 など）も先に読み始める
+    for (const key of all) if (key === `terrain/${terrain}` || key.startsWith(`terrain/${terrain}@`)) keys.add(key);
+  }
   if ((map.fallout || []).some((v) => v > 0)) add("overlay/contaminated");
   for (const zone of new Set(map.zone || [])) if (zone) add(`overlay/zone_${zone}`);
   if ((map.trench || []).some(Boolean)) { add("overlay/trench_back"); add("overlay/trench_front"); }

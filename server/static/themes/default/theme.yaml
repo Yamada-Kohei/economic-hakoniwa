@@ -102,6 +102,13 @@ sprites:
   terrain/plain: sprites/terrain/plain.svg
   terrain/forest: sprites/terrain/forest.svg
   terrain/mountain: sprites/terrain/mountain.svg
+  # 地形の差分絵（@v<番号>、番号は 2 から @v3 まで）。地図はマスの座標から決定的に選ぶ
+  terrain/plain@v2: sprites/terrain/plain@v2.svg
+  terrain/plain@v3: sprites/terrain/plain@v3.svg
+  terrain/forest@v2: sprites/terrain/forest@v2.svg
+  terrain/forest@v3: sprites/terrain/forest@v3.svg
+  terrain/mountain@v2: sprites/terrain/mountain@v2.svg
+  terrain/mountain@v3: sprites/terrain/mountain@v3.svg
   facility/aluminium_smelter: sprites/facility/aluminium_smelter.svg
   facility/auto_parts_plant: sprites/facility/auto_parts_plant.svg
   facility/automobile_plant: sprites/facility/automobile_plant.svg
