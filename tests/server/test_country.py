@@ -16,8 +16,9 @@ from django.test import Client
 from server.accounts import keys
 from server.country import png, services
 from server.country.models import Flag, Note, Profile
+from server.game import get_game
 from server.turns.models import TurnLog
-from server.turns.services import run_turn
+from server.turns.services import rollback, run_turn
 from server.world import models as m
 
 pytestmark = pytest.mark.django_db
@@ -366,6 +367,73 @@ def test_timeline_uses_the_countrys_era_and_includes_hall_events(players):
     # 持ち主でない人の国の年表は、その国の紀年で書く
     other = Client().get(f"/api/islands/{b.id}/country").json()
     assert not any(row["date"].startswith("天明") for row in other["timeline"])
+
+
+def test_timeline_has_periods_and_milestones(players):
+    """案28: 年表は紀年ごとに区切り（period）、節目の出来事には印（milestone）が付く。"""
+    (ca, a), (_, b) = players
+    run_turn(force=True)
+    TurnLog.objects.create(island=a, turn=1, kind="island_founded", args={"name": a.name})
+    TurnLog.objects.create(
+        island=a, turn=2, kind="island_renamed", args={"old": "ア", "new": "新ア"}
+    )
+    TurnLog.objects.create(
+        island=a,
+        turn=4,
+        kind="war_declared",
+        args={"hall": True, "a": a.name, "b": b.name, "turn": 5, "text": ""},
+    )
+    services.set_era(a, "regnal", "天明")
+    Profile.objects.filter(island=a).update(
+        eras=[{"name": "天明", "start_turn": 1}, {"name": "大正", "start_turn": 3}]
+    )
+    data = Client().get(f"/api/islands/{a.id}/country").json()
+    rows = {row["turn"]: row for row in data["timeline"]}
+    assert rows[1]["period"] == "天明" and rows[2]["period"] == "天明"
+    assert rows[4]["period"] == "大正"  # 改元したターンから、次の元号の区切り
+    assert rows[1]["milestone"] and rows[4]["milestone"]  # 建国と宣戦は節目
+    assert not rows[2]["milestone"]  # 改名は節目にしない
+    text = data["timeline_text"]
+    assert text.index("== 天明 ==") < text.index("== 大正 ==")
+    assert any(line.startswith("* 天明") for line in text.splitlines())
+    page = ca.get(f"/islands/{a.id}/country/").content.decode()
+    assert 'class="timeline-period"' in page and "timeline-milestone" in page
+    # 世界の暦のままの国は、暦の年が区切りになる
+    TurnLog.objects.create(
+        island=b, turn=2, kind="island_renamed", args={"old": "イ", "new": "新イ"}
+    )
+    other = Client().get(f"/api/islands/{b.id}/country").json()
+    calendar = get_game().calendar
+    row_b = {row["turn"]: row for row in other["timeline"]}[2]
+    assert row_b["period"] == f"{calendar.name}{calendar.date(2)[0]}年"
+
+
+def test_rollback_trims_future_eras_and_note_turns(world):
+    """W-93: 巻き戻すと、戻した先より後に始まる元号は消え、一言のターンは戻した先にそろう。
+    消えた元号が、再び進んだ先の日付によみがえることもない。"""
+    a, b = m.Island.objects.order_by("id")[:2]
+    for island in (a, b):
+        island.owner = User.objects.create_user(f"r{island.id}", password="a-long-pass-123")
+        island.save(update_fields=["owner"])
+    run_turn(force=True)
+    run_turn(force=True)  # ターン 2（バックアップ 0・1）
+    services.set_era(a, "regnal", "天明")
+    run_turn(force=True)
+    run_turn(force=True)  # ターン 4（バックアップ 2・3）
+    a.refresh_from_db()
+    profile = services.new_era(a, "大正")
+    assert [e["name"] for e in profile.eras] == ["天明", "大正"]
+    note = services.post_note(b.owner, a, "未来からのあいさつ")
+    assert note.turn == 4
+
+    rollback(2)
+
+    world.refresh_from_db()
+    assert world.turn == 2
+    profile = Profile.objects.get(island=a)
+    assert [e["name"] for e in profile.eras] == ["天明"]
+    assert Note.objects.get(pk=note.pk).turn == 2
+    assert services.date_text(a, profile, 4).startswith("天明")
 
 
 def test_summary_and_changes_carry_the_country_page(players):

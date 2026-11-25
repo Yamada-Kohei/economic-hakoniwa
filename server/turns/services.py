@@ -287,6 +287,16 @@ def rollback(to_turn: int) -> WorldState:
     from server.hall.models import Statement
 
     Statement.objects.filter(world=world, turn__gt=to_turn).update(turn=to_turn)
+    # 国のページの記録（元号・一言）は世界の写しに入っていないので、戻した時点にそろえる（W-93）:
+    # 戻した先より後に始まる元号は消し、一言のターンは戻した先に寄せる（会議場の発言と同じ扱い）
+    from server.country.models import Note, Profile
+
+    Note.objects.filter(world=world, turn__gt=to_turn).update(turn=to_turn)
+    for profile in Profile.objects.filter(island__world=world):
+        eras = [e for e in profile.eras if e["start_turn"] <= to_turn]
+        if eras != profile.eras:
+            profile.eras = eras
+            profile.save(update_fields=["eras"])
     m.StatRecord.objects.filter(island__world=world, turn__gt=to_turn).delete()
     delete_records_after(world, to_turn)
     Backup.objects.filter(world=world, turn__gt=to_turn).delete()
