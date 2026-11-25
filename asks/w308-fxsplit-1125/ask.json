@@ -1,0 +1,47 @@
+{
+ "commit": "e7b12b554c11e183446b126b6e5f1cc24f1d1d0d",
+ "files": [
+  "w308_fxsplit_probe.py"
+ ],
+ "name": "w308-fxsplit-1125",
+ "patches": [
+  "wk-on.diff"
+ ],
+ "pool": "any",
+ "runs": [
+  {
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "17",
+    "--turns",
+    "1200",
+    "--out",
+    "fxsplit-WK-plan-s17-t1200.json"
+   ],
+   "large": [],
+   "name": "plan-s17-t1200",
+   "summary": [
+    "fxsplit-WK-plan-s17-t1200.json"
+   ]
+  },
+  {
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "18",
+    "--turns",
+    "1200",
+    "--out",
+    "fxsplit-WK-plan-s18-t1200.json"
+   ],
+   "large": [],
+   "name": "plan-s18-t1200",
+   "summary": [
+    "fxsplit-WK-plan-s18-t1200.json"
+   ]
+  }
+ ]
+}
