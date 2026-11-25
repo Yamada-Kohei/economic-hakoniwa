@@ -3309,8 +3309,10 @@ class Market(IslandStage):
     ) -> None:
         """商業・サービス業が、雇った人が出せるサービスを在庫に置き、希望価格（ほかの施設と同じく、
         売れ残れば下げ、売り切れて買えなかった人がいれば上げる。_update_prices）を指値に売る（計画経済の
-        島は公定価格。運賃はかからない）。売れ残った分はそのターンのうちに消えるので、変動費の下限は
-        付けない（雇った人の賃金はもう払ってある。人数は売上に合わせて services.plan で減らす）。"""
+        島は公定価格。運賃はかからない）。売れ残った分はそのターンのうちに消えるので、ふだんは
+        変動費の下限を付けない（雇った人の賃金はもう払ってある。人数は services.plan で調整）。
+        下書きの切り替え（services.cost_floor）が入のときだけ、ほかの施設と同じく注文の時点で
+        下限を重ねる（services.cost_floor。値幅の上端で止まるのも seller_limit と同じ）。"""
         defs, config = ctx.defs, ctx.config
         if not services.produce(island, config, defs, ctx.turn):
             return
@@ -3323,7 +3325,9 @@ class Market(IslandStage):
         )
         price = island.economy.prices.get(good, 1)
         low, high = auction.band(price, to_basis(config.get("market.band")))
-        ask = max(low, min(high, f.economy.get("ask", {}).get(good, price)))
+        ask = f.economy.get("ask", {}).get(good, price)
+        ask = max(ask, services.cost_floor(config, f.economy.get("wage", 0)))
+        ask = max(low, min(high, ask))
         limit = 0 if good in official else ask
         self._add(books_by_good, good, "sell", Order(stock.total(f.stock, good), limit), seller)
 
@@ -5547,6 +5551,11 @@ class Market(IslandStage):
                     rate,
                     ctx.turn,
                 )
+                if services.is_services(ctx.config, f):
+                    # 商業・サービス業は作り方を持たないので subsidized_floor は 0 になる。
+                    # 下書きの切り替え（services.cost_floor）が入のときだけ、賃金だけの
+                    # 下限を重ねる（切のときは 0 で、今までと完全に同じ）
+                    floor = max(floor, services.cost_floor(ctx.config, wage))
                 asks[good] = max(ask, floor)
 
 
