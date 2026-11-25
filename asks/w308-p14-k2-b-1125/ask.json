@@ -1,0 +1,81 @@
+{
+ "name": "w308-p14-k2-b-1125",
+ "commit": "e7b12b554c11e183446b126b6e5f1cc24f1d1d0d",
+ "pool": "any",
+ "files": [
+  "w281_probe14.py"
+ ],
+ "patches": [
+  "kprime.diff"
+ ],
+ "runs": [
+  {
+   "name": "plan-s19-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "19",
+    "--turns",
+    "1200",
+    "--out",
+    "probe14-K2-plan-s19-t1200.json"
+   ],
+   "summary": [
+    "probe14-K2-plan-s19-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s20-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "20",
+    "--turns",
+    "1200",
+    "--out",
+    "probe14-K2-plan-s20-t1200.json"
+   ],
+   "summary": [
+    "probe14-K2-plan-s20-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s21-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "21",
+    "--turns",
+    "1200",
+    "--out",
+    "probe14-K2-plan-s21-t1200.json"
+   ],
+   "summary": [
+    "probe14-K2-plan-s21-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s22-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "22",
+    "--turns",
+    "1200",
+    "--out",
+    "probe14-K2-plan-s22-t1200.json"
+   ],
+   "summary": [
+    "probe14-K2-plan-s22-t1200.json"
+   ],
+   "large": []
+  }
+ ]
+}
