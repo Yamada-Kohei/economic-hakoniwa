@@ -9,7 +9,7 @@ import { overlayList } from "./overlays/index.js";
 import { lift, tileToWorld, worldToTile } from "./projection.js";
 import { drawIsland } from "./renderer.js";
 import { drawRuler, readRulerShown, writeRulerShown } from "./ruler.js";
-import { loadSprites, spritePriorityKeys } from "./sprites.js";
+import { loadFlag, loadSprites, spritePriorityKeys } from "./sprites.js";
 import { OrderQueue } from "../island/orders.js";
 import { TilePanel } from "../island/panel.js";
 import { MissileTarget } from "../island/missiles.js";
@@ -54,7 +54,7 @@ const storage = (() => {
 })();
 const state = {
   selected: null, marked: new Set(), overlay: null, overlayMode: readOverlayMode(storage),
-  sprites: new Map(), undergroundLabel: words().hidden,
+  sprites: new Map(), flag: null, undergroundLabel: words().hidden,
   ruler: readRulerShown(storage), // 縁の目盛りと座標（UI-85）。既定は出さない
 };
 let pending = false;
@@ -345,6 +345,9 @@ if (map.mine) {
 // 絵は 1 枚読めるごとに描き直す（読み込むまでは色の箱で描く）。この島で使う絵を先に読み、
 // 残りはあとに回す。redraw は requestAnimationFrame でまとめられるので描き直しは増えすぎない
 loadSprites(theme, { into: state.sprites, priority: spritePriorityKeys(theme, map, defs), onLoad: () => redraw() });
+
+// 首都のマスに立てる旗（その国の旗の画像）。読めたら描き直す
+if (canvas.dataset.flag) loadFlag(canvas.dataset.flag, (flag) => { state.flag = flag; redraw(); });
 
 // ターンログのリンクなどから ?x=..&y=.. で来たら、そのマスを選ぶ
 const params = new URLSearchParams(location.search);
