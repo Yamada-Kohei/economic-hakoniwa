@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.economy.prices import expected_price
 from tests.core.test_rules import game as game  # noqa: F401  （試験の部品を使い回す）
@@ -178,3 +180,63 @@ def test_a_mill_short_of_cotton_still_needs_what_its_sales_call_for(game):
     assert p() > 1000
     mill.economy["expected"] = {"clothing": full * 4_000 // need}  # 服の売れ行きが落ちた
     assert p() == 1000
+
+
+# --- 案 A の 1 行証拠（#5014）: 記録のある品切れターンを見込みで平均に入れる --------
+
+
+def _on_config(game):
+    raw = {
+        **game.config.raw,
+        "market": {**game.config.raw["market"], "expected_demand": True},
+    }
+    return dataclasses.replace(game.config, raw=raw)
+
+
+def _flows(game, demand, supply, sold, expected):
+    island = with_economy(game, make_island(game))
+    island.economy.price_history[GOOD] = [1000] * 6
+    island.economy.finance.update(
+        {
+            "demand": {GOOD: list(demand)},
+            "supply": {GOOD: list(supply)},
+            "sold": {GOOD: list(sold)},
+            "expected_demand": {GOOD: list(expected)},
+        }
+    )
+    return island
+
+
+def test_plan_a_price_rises_monotonically_with_recorded_stockout_length(game):
+    """品切れ（見込み 9000）のターンが なし → 短い → 長い で、入の見込みの値段は単調に
+    上がる。切はどの長さでも同じ。"""
+    on, off = _on_config(game), game.config
+    prices = []
+    for k in (0, 3, 6):
+        island = _flows(
+            game,
+            [4000] * (6 - k) + [5000] * k,
+            [5000] * 6,
+            [4000] * (6 - k) + [5000] * k,
+            [4000] * (6 - k) + [9000] * k,
+        )
+        assert expected_price(island, GOOD, 3, game.defs, off) == 1000
+        prices.append(expected_price(island, GOOD, 3, game.defs, on))
+    assert prices[0] == 1000 < prices[1] < prices[2]
+
+
+def test_plan_a_zero_expected_erases_the_on_off_difference(game):
+    """見込みが 0 の財では、全ターン品切れでも入と切で差は出ない。"""
+    island = _flows(game, [6000] * 6, [6000] * 6, [6000] * 6, [0] * 6)
+    on = expected_price(island, GOOD, 3, game.defs, _on_config(game))
+    off = expected_price(island, GOOD, 3, game.defs, game.config)
+    assert on == off
+
+
+def test_plan_a_leftover_only_turns_are_unchanged(game):
+    """売れ残りのターン（売りに出た量 > 売れた量）だけの島では、入にしても値段は
+    切と同じ（売れ残りの平均の仕方は変えない）。"""
+    island = _flows(game, [4000] * 6, [8000] * 6, [4000] * 6, [4000] * 6)
+    on = expected_price(island, GOOD, 3, game.defs, _on_config(game))
+    off = expected_price(island, GOOD, 3, game.defs, game.config)
+    assert on == off == 1000

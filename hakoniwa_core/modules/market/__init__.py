@@ -3064,6 +3064,7 @@ class Market(IslandStage):
             #    注文する（指値は値幅の上端まで）。食料の後に注文するが、食料の質を上げる予算からは
             #    先に引いておく
             wear: dict[str, list[tuple[int, int]]] = {}
+            wear_first: dict[str, int] = {}  # 見込み需要の材料: 財 → 本来ほしかった量（要望B 案B）
             wear_budget = round_money(cap * settings["clothing"]["share"])
             for good in clothing:
                 qty, full = needs.clothes_wanted(config, state, good)
@@ -3077,6 +3078,21 @@ class Market(IslandStage):
                     wanted[good] = wanted.get(good, 0) + qty
                     if desire is not None:
                         desire[good] = desire.get(good, 0) + qty
+                    if expected_on:
+                        # 見込み需要（MK-48）の材料: 売りに出ていない衣料も、買いたい量と
+                        # 本来ほしかった量を貯める（要望B 案B。食料と同じ差し引きを _record で
+                        # する）。本来の量は、残りの衣料の分の予算で真ん中の値段で買える量まで
+                        spent = sum(curve_cost(t, rate, taxes[g]) for g, t in wear.items())
+                        wanted_acc = island.scratch.setdefault(EXPECTED_WANTED, {})
+                        wanted_acc[good] = wanted_acc.get(good, 0) + qty
+                        first_acc = island.scratch.setdefault(EXPECTED_FIRST, {})
+                        first_acc[good] = first_acc.get(good, 0) + min(
+                            full,
+                            qty_for(
+                                max(0, wear_budget - spent) * BASIS // (BASIS + rate + tax),
+                                centre,
+                            ),
+                        )
                     continue
                 spent = sum(curve_cost(t, rate, taxes[g]) for g, t in wear.items())
                 wear[good] = elastic_orders(
@@ -3090,6 +3106,16 @@ class Market(IslandStage):
                     rate,
                     taxes[good],
                 )
+                if expected_on:
+                    # 本来ほしかった量（残りの予算で真ん中の値段で買える量まで）を覚えておき、
+                    # 注文の量とあわせて、注文が決まった後で貯める（要望B 案B）
+                    wear_first[good] = min(
+                        full,
+                        qty_for(
+                            max(0, wear_budget - spent) * BASIS // (BASIS + rate + taxes[good]),
+                            needs.centre_price(island, config, good),
+                        ),
+                    )
             wear_cost = sum(curve_cost(t, rate, taxes[g]) for g, t in wear.items())
             # 2. 食料: 売りに出ている量を上限に、一番安く満たす献立から、必需品の上限に収まる分だけ
             #    好みの献立へ寄せる（好みは層の所得で変わる。LB-20）。値幅の上端を指値にする
@@ -3182,6 +3208,15 @@ class Market(IslandStage):
                     for g, t in wear.items()
                 }
                 wear_cost = sum(curve_cost(t, rate, taxes[g]) for g, t in wear.items())
+            if expected_on and wear:
+                # 見込み需要（MK-48）の材料: 衣料で実際に出した注文の量（食費に押されて
+                # 縮んだ後は、その量）と、本来ほしかった量を貯める（要望B 案B。記録の
+                # demand との差し引きは _record でする）
+                placed_acc = island.scratch.setdefault(EXPECTED_PLACED, {})
+                first_acc = island.scratch.setdefault(EXPECTED_FIRST, {})
+                for good, curve in wear.items():
+                    placed_acc[good] = placed_acc.get(good, 0) + sum(q for q, _limit in curve)
+                    first_acc[good] = first_acc.get(good, 0) + wear_first[good]
             for good, (qty, limit) in sorted(plan.items()):
                 tax = taxes[good]
                 self._household_food(

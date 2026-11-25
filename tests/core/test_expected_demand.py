@@ -16,14 +16,28 @@ from __future__ import annotations
 
 import dataclasses
 
+from hakoniwa_core.economy import GENERAL, Payer, needs
 from hakoniwa_core.economy.prices import expected_price, expected_series
+from hakoniwa_core.market.auction import Order
 from hakoniwa_core.modules.firms import EntryExit, _demand_view
-from hakoniwa_core.modules.market import FoodMenu, Market, first_choice, food_orders
+from hakoniwa_core.modules.market import (
+    CLEARING,
+    EXPECTED_FIRST,
+    EXPECTED_PLACED,
+    EXPECTED_WANTED,
+    FACILITY,
+    Book,
+    FoodMenu,
+    Market,
+    Party,
+    first_choice,
+    food_orders,
+)
 from hakoniwa_core.state import MarketRecord, WorldState
 from hakoniwa_core.state.serialize import world_from_dict, world_to_dict
 from hakoniwa_core.turn.context import StageContext
 from tests.core.test_rules import game as game  # noqa: F401  （試験の部品を使い回す）
-from tests.core.test_rules import make_island, with_economy
+from tests.core.test_rules import home, make_island, with_economy
 
 FISH, MEAT = "fish", "meat"
 NEED = 10_000  # 栄養 10（魚も肉も 1 単位の栄養 1.0。魚 10 単位でちょうど満たす）
@@ -320,3 +334,120 @@ def test_fully_old_history_has_no_expected_key(game):
     assert "expected_demand" not in loaded.economy.finance
     # 読み手は全行を買いたい量で補う
     assert expected_series(loaded.economy.finance, MEAT) == [6_000]
+
+
+# --- 案 B: 衣料の第一希望も見込みの材料にする（#5007(2)・#5062・#5065） -------------
+
+CLOTHING = "clothing"
+
+
+def _clothing_island(game, config, held, offered_qty, centre=100):
+    """衣料だけを見る島: 1000 人の層が衣料を held だけ持っている（None なら記録なし =
+    目安どおり）。centre はいつもの値段（price_history）で、売りに出ている量が
+    offered_qty（None なら売りなし）。家計の注文まで回して、島と板と（買いたい量・
+    本来ほしかった量）を返す。"""
+    island = make_island(game)
+    home(game, island, 4, 4, 1000, "village")
+    with_economy(game, island)
+    state = island.economy.households[GENERAL]
+    if held is not None:
+        state[needs.CLOTHES] = {CLOTHING: held}
+    if centre is not None:
+        island.economy.price_history[CLOTHING] = [centre] * 12
+        island.economy.prices[CLOTHING] = centre
+    qty, full = needs.clothes_wanted(config, state, CLOTHING)
+    books: dict[str, Book] = {}
+    offered: dict[str, int] = {}
+    if offered_qty is not None:
+        seller = Party(FACILITY, "fac:a", Payer("fac:a"))
+        books = {CLOTHING: Book([], [(Order(offered_qty, centre), seller)])}
+        offered = {CLOTHING: offered_qty}
+    Market()._household_orders(island, context(game, config), books, 0, offered)
+    return island, books, qty, full
+
+
+def _clothing_record(game, config, island, books):
+    """板寄せ（払いはしない）と記録まで回し、衣料の市場の記録を返す。"""
+    market = Market()
+    results: dict = {}
+    if books:
+        island.scratch[CLEARING] = (None, None)
+        market._settle = lambda *args, **kwargs: {}  # type: ignore[method-assign]
+        persons = {n: h["persons"] for n, h in island.economy.households.items()}
+        market._clear(island, context(game, config), CLOTHING, books, {}, persons, results, {})
+    market._record(island, context(game, config), books, results, {})
+    return next(r for r in island.markets if r.good == CLOTHING)
+
+
+def test_plan_b_stockout_clothing_expected_reflects_the_full_amount(game):
+    """品切れ（売り 50 < 注文）: 記録の demand は出した注文の量のまま、見込みは
+    本来ほしかった量（目安まで全部）になる。注文の材料（PLACED）は板に出た注文の
+    合計と一致する。"""
+    config = on_config(game)
+    island, books, qty, full = _clothing_island(game, config, 0, 50)
+    assert 0 < qty < full  # 差のある層（傷み分と埋める分の一部だけ注文する）
+    placed = island.scratch[EXPECTED_PLACED][CLOTHING]
+    assert placed == sum(o.quantity for o, _p in books[CLOTHING].buys) == qty
+    assert island.scratch[EXPECTED_FIRST][CLOTHING] == full
+    record = _clothing_record(game, config, island, books)
+    assert record.demand == qty
+    assert record.expected_demand == full
+
+
+def test_plan_b_unoffered_clothing_expected_reflects_the_full_amount(game):
+    """売りに出ていない衣料も、買いたい量を差し引いて本来ほしかった量が見込みになる
+    （食料の売りに出ていない分と同じ形）。"""
+    config = on_config(game)
+    island, books, qty, full = _clothing_island(game, config, 0, None)
+    assert island.scratch[EXPECTED_WANTED][CLOTHING] == qty
+    assert island.scratch[EXPECTED_FIRST][CLOTHING] == full
+    record = _clothing_record(game, config, island, books)
+    assert record.demand == qty
+    assert record.expected_demand == full
+
+
+def test_plan_b_no_gap_means_no_difference(game):
+    """目安どおり持っている層（unmet_first = 0: 本来の量 = 注文の量）では、見込みは
+    記録の demand と同じ（反応が出ない）。"""
+    config = on_config(game)
+    island, books, qty, full = _clothing_island(game, config, None, 10**9)
+    assert qty == full > 0  # 傷んだ分の買い替えだけ
+    first = island.scratch[EXPECTED_FIRST][CLOTHING]
+    placed = island.scratch[EXPECTED_PLACED][CLOTHING]
+    assert max(0, first - placed) == 0  # unmet_first
+    record = _clothing_record(game, config, island, books)
+    assert record.expected_demand == record.demand == qty
+
+
+def test_plan_b_first_is_the_budget_capped_amount_added_once(game):
+    """本来ほしかった量は、衣料の分の予算で買える量に絞った値をちょうど 1 回だけ足す
+    （二重計算で膨れない）。真ん中の値段が高い場面では、買いたい量の絞りと同じ値になる。"""
+    config = on_config(game)
+    island, _books, qty, full = _clothing_island(game, config, 0, None, centre=None)
+    wanted = island.scratch["wanted"][CLOTHING]
+    assert 0 < wanted < qty  # 予算の絞りが効いている場面であること
+    assert island.scratch[EXPECTED_WANTED][CLOTHING] == wanted
+    assert island.scratch[EXPECTED_FIRST][CLOTHING] == wanted  # 絞った値を 1 回だけ
+
+
+def test_plan_b_reaction_grows_monotonically_with_the_gap(game):
+    """不足の深さ（目安どおり → 半分 → ゼロ）で、見込みの反応（見込み − 記録の demand）
+    は単調に大きくなる。不足がなければ反応は 0。"""
+    config = on_config(game)
+    reactions = []
+    for held in (None, 600, 0):
+        island, books, qty, full = _clothing_island(game, config, held, 10**9)
+        record = _clothing_record(game, config, island, books)
+        assert record.expected_demand - record.demand == full - qty
+        reactions.append(record.expected_demand - record.demand)
+    assert reactions[0] == 0 < reactions[1] < reactions[2]
+
+
+def test_plan_b_switch_off_records_nothing_for_clothing(game):
+    """切り替えが切なら、衣料の材料は貯まらず、記録の見込みも残らない（従来どおり）。"""
+    island, books, _qty, _full = _clothing_island(game, game.config, 0, 50)
+    assert EXPECTED_FIRST not in island.scratch
+    assert EXPECTED_PLACED not in island.scratch
+    assert EXPECTED_WANTED not in island.scratch
+    record = _clothing_record(game, game.config, island, books)
+    assert record.expected_demand is None
