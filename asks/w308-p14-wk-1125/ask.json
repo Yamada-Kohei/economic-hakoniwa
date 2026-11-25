@@ -1,0 +1,47 @@
+{
+ "name": "w308-p14-wk-1125",
+ "commit": "e7b12b554c11e183446b126b6e5f1cc24f1d1d0d",
+ "pool": "any",
+ "files": [
+  "w281_probe14.py"
+ ],
+ "patches": [
+  "wk-on.diff"
+ ],
+ "runs": [
+  {
+   "name": "plan-s17-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "17",
+    "--turns",
+    "1200",
+    "--out",
+    "probe14-WK-plan-s17-t1200.json"
+   ],
+   "summary": [
+    "probe14-WK-plan-s17-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s18-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "18",
+    "--turns",
+    "1200",
+    "--out",
+    "probe14-WK-plan-s18-t1200.json"
+   ],
+   "summary": [
+    "probe14-WK-plan-s18-t1200.json"
+   ],
+   "large": []
+  }
+ ]
+}
