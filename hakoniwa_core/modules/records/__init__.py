@@ -14,7 +14,7 @@ import math
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger, stock
+from hakoniwa_core import ledger, milestones, stock
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
@@ -103,6 +103,8 @@ class Records(IslandStage):
         if island.has_economy:
             self._economy(island, ctx)
             self._check(island, ctx)
+        # 節目（建国記念日・人口・GDP。案27）: 統計がそろったので、迎えた節目をログに残す
+        milestones.celebrate(island, ctx.turn)
 
     # --- 人と物 -------------------------------------------------------------------
 

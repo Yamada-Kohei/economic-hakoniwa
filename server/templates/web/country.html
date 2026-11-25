@@ -10,8 +10,9 @@
   <img class="country-flag" src="{{ c.flag.url }}" alt="{% blocktranslate with name=island.name %}{{ name }}の国旗{% endblocktranslate %}"{% if c.flag.width %} width="{{ c.flag.width }}" height="{{ c.flag.height }}"{% endif %}>
   <div class="country-head-body">
     <h2>{{ c.head.name }}{% if c.head.inactive %} <small class="muted">{% translate "（休止中）" %}</small>{% endif %}</h2>
-    {% if c.awards or c.titles %}
+    {% if c.awards or c.titles or c.anniversary %}
     <div class="country-honours" aria-label="{% translate '賞・称号' %}">
+      {% if c.anniversary %}<span class="title-badge">{% blocktranslate with years=c.anniversary.years %}建国{{ years }}年{% endblocktranslate %}</span>{% endif %}
       {% for a in c.awards %}{% include "web/award_badge.html" with name=a.name detail=a.detail %}{% endfor %}
       {% for t in c.titles %}<span class="title-badge">{{ t }}</span>{% endfor %}
     </div>

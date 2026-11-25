@@ -516,6 +516,11 @@ rain_dry: "今年は雨が少なく（平年の {percent}%）、水力発電所�
 island_founded: "{name}が建国されました"
 economy_started: "中央銀行と銀行が開業し、通貨と市場による経済が始まりました"
 
+# 節目（建国記念日・人口・GDP。hakoniwa_core/milestones.py）
+anniversary_founding: "建国{years}年の記念日を迎えました"
+milestone_population: "人口が{count:,}人に達しました"
+milestone_gdp: "GDP（1ターン）が{amount:,}に達しました"
+
 # お金と国債
 bonds_issued: "{term}を {amount:,} 発行しました（利回り {rate:.2f}%）"
 bonds_redeemed: "{term}を {amount:,} 償還しました"

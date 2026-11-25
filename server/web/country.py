@@ -12,6 +12,7 @@ from typing import Any
 from django.db.models import Q
 from django.urls import reverse
 
+from hakoniwa_core import milestones
 from server.country import services
 from server.country.models import Flag, Note, Profile
 from server.turns.models import TurnLog
@@ -119,6 +120,8 @@ def country_data(island: m.Island, mine: bool, viewer: m.Island | None = None) -
     head = overview.island_head(island)
     _, stats = display.latest_stats(island)
     rows = timeline(island, profile)
+    # 建国記念日の年（満○年を迎えた後の1年間）なら、その年数（案27。それ以外は None）
+    anniversary = milestones.anniversary_years(services.founded_turn(island), island.world.turn)
     intro_hidden = bool(profile and profile.intro_hidden)
     data: dict[str, Any] = {
         "flag": flag_info(island, mine),
@@ -136,6 +139,7 @@ def country_data(island: m.Island, mine: bool, viewer: m.Island | None = None) -
             "inactive": island.inactive,
         },
         "era": era_info(island, profile, mine),
+        "anniversary": {"years": anniversary} if anniversary is not None else None,
         "awards": awards.holders(island.world, only=island.id).get(island.id, []),
         "titles": rankings.island_strengths(island, stats)["titles"],
         "intro": "" if (intro_hidden or not profile) else profile.intro,
