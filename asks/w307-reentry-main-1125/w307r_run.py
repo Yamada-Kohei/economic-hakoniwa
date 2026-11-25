@@ -1,0 +1,11 @@
+"""W-307 別件（輸出の抜けの粘りと戻り）の比べの入口（asks の枝から回す）。1 つ目の引数で分ける:
+  reentry <bloc_reentry_trace.py の引数...>"""
+
+import os
+import subprocess
+import sys
+
+here = os.path.dirname(os.path.abspath(__file__))
+env = dict(os.environ, PYTHONPATH=os.getcwd())
+script = {"reentry": "bloc_reentry_trace.py"}[sys.argv[1]]
+sys.exit(subprocess.call([sys.executable, "-X", "utf8", os.path.join(here, script), *sys.argv[2:]], env=env))
