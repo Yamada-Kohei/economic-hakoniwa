@@ -28,7 +28,9 @@ shortage・wage・avg_wage・wage_price・workers・seats・labor_short・ask）
 - unmet: 家計が買いたかったのに買えなかった量 = demand − sold（市場の記録の
   demand は注文しなかった分 unplaced を含む。指値が約定価格に届かなかった段も
   含むので、modules/market の `_services_unmet` より広い近似。切/入の比べは
-  同じ物差しでする）
+  同じ物差しでする）。なおこれは近似であり、「サービス業特有の不足」ではなく
+  市場板の不足を数えたもので、別経路で補われた分も混ざり得る（#5245 の指摘。
+  検算のときはこの前提で読む）
 - profit: そのターンの店の儲け（island.books の、そのターンの帳簿の PROFIT）
 - cpi: そのターン終わりの物価指数（economy.cpi_history の最後）
 - gate（.gate.json）: 崩れの数。店そのものは設計上倒産しない（economy/services.py）
@@ -72,6 +74,9 @@ shortage・wage・avg_wage・wage_price・workers・seats・labor_short・ask）
 - plan は公定価格が既に原価＋1 割で、売り手の指値は公定価格に置き換わるため、
   切/入の差は小さいはず。大きな差が出たら、効果ではなく測りか実装の疑いとして
   先に確かめる。
+- 判定は種の中央値で取るが、異常に大きい個々のシードが出たら、plan の場合に
+  限らず、その行を集計で潰さず個別に残す（後で説明できる形にする。#5245 の
+  指摘）。
 
 ## 確かめたこと（置く前に記す）
 
