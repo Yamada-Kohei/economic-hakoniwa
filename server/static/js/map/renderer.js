@@ -2,12 +2,14 @@
 // 重ね表示の棒（UI-79）は島を描いたあとにもう一度奥から手前へ描き、建物に隠れず、半透明で奥の棒も透けて見える。
 
 import { barPixels, barsBackToFront, drawsBars, solidColor } from "./overlays/bars.js";
+import { CHANGE_COLORS } from "./changes.js";
 import { lift, tileToWorld } from "./projection.js";
 import { drawSprite } from "./sprites.js";
 
 /**
  * 島を描く。
  * options: selected（選んだマス {x, y}）、marked（印を付けるマスの Set "x,y"）、
+ *          changeMarks（前のターンから変わったマスの Map "x,y" → 種類。changes.js）、
  *          overlay（重ねて表示する情報。overlays/ のモジュール）、
  *          overlayMode（"bars" で量のある重ね表示を棒にする。ほかは塗り分け。UI-79）、
  *          sprites（sprites.js の loadSprites が返す絵。ないものは色の箱で描く）、
@@ -80,6 +82,8 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
         else outlineTop(ctx, px, top, theme, "#c34b38");
       }
       if (unitsAt.has(i)) drawUnits(ctx, unitsAt.get(i), px, top, theme, sprites);
+      const changeKind = options.changeMarks?.get(`${x},${y}`);
+      if (changeKind) drawChangeMark(ctx, changeKind, px, top, theme);
       if (options.marked?.has(`${x},${y}`)) outlineTop(ctx, px, top, theme, "#ff5722");
       if (options.selected && options.selected.x === x && options.selected.y === y) {
         outlineTop(ctx, px, top, theme, "#ffeb3b");
@@ -383,6 +387,59 @@ export function drawCapitalFlag(ctx, flag, px, base, theme) {
   ctx.moveTo(px, base);
   ctx.lineTo(px, poleTop);
   ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * 前のターンから変わったマスの印（案3 の静止版）: 種類の色の静止枠と、上の頂点に色丸＋白い記号。
+ * 記号は 建設=＋、撤去=×、段階=◆。色は changes.js の CHANGE_COLORS（凡例と同じ色）。
+ * top はマスの上面の上の頂点。丸は枠の角に重ね、白い縁を付けて建物や地形の絵に埋もれないようにする。
+ * 止まった施設の赤い点（マスの真ん中）とは置く場所を分け、重なっても両方読めるようにする。
+ */
+function drawChangeMark(ctx, kind, px, top, theme) {
+  const color = CHANGE_COLORS[kind];
+  if (!color) return;
+  const hw = theme.tile_width / 2;
+  const hh = theme.tile_height / 2;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.5;
+  diamondPath(ctx, px, top, hw, hh);
+  ctx.stroke();
+  const r = Math.max(5, hh * 0.42);
+  ctx.beginPath();
+  ctx.arc(px, top, r, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  const g = r * 0.52;
+  ctx.save();
+  ctx.strokeStyle = "#fff";
+  ctx.fillStyle = "#fff";
+  ctx.lineWidth = 2;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  if (kind === "built") {
+    ctx.moveTo(px - g, top);
+    ctx.lineTo(px + g, top);
+    ctx.moveTo(px, top - g);
+    ctx.lineTo(px, top + g);
+    ctx.stroke();
+  } else if (kind === "removed") {
+    ctx.moveTo(px - g, top - g);
+    ctx.lineTo(px + g, top + g);
+    ctx.moveTo(px + g, top - g);
+    ctx.lineTo(px - g, top + g);
+    ctx.stroke();
+  } else {
+    ctx.moveTo(px, top - g);
+    ctx.lineTo(px + g, top);
+    ctx.lineTo(px, top + g);
+    ctx.lineTo(px - g, top);
+    ctx.closePath();
+    ctx.fill();
+  }
   ctx.restore();
 }
 

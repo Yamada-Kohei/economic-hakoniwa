@@ -37,6 +37,7 @@ from server.orders.models import Order
 from server.turns import services as turn_services
 from server.web import budget_guide, display, order_confirm, overview, rankings, reports
 from server.web import chain as chain_views
+from server.web import changes as changes_views
 from server.web import country as country_views
 from server.web import diplomacy as diplomacy_views
 from server.web import facility_page as facility_views
@@ -347,6 +348,7 @@ def island_map(request, island_id: int):
     infra は種類ごとの整備度（%）の並び、infra_queue はインフラの工事の列（[種類, x, y]）。
     ?freight=1 のときだけ、陸のマスごとの拠点までの運賃の率（freight、1万分の1。海は null）も返す
     （計算が重いので、重ね表示で選んだときだけ読む）。
+    ?changes=1 のときだけ、持ち主に、前のターンから変わったマス（changed）も返す。
     """
     island = get_object_or_404(m.Island, pk=island_id)
     columns = ["terrain", "population", "zone", "infra", "pollution", "ext"]
@@ -396,6 +398,10 @@ def island_map(request, island_id: int):
     data["infra_why"] = display.works_why(island.economy)
     if request.GET.get("freight"):
         data.update(_freight(island))
+    if request.GET.get("changes") and mine:
+        # 前のターンから変わったマスの印（案3 の静止版）。前のターンの写しと比べるので、
+        # 切り替えたときだけ読む。持ち主の地図だけに出す（他国の施設の変化は見せない）
+        data["changed"] = changes_views.changed_cells(island)
     # 部隊の印は、見ている国に見えるものだけ（自分の部隊と、見える範囲に入った相手の部隊。
     # 陣地と占領は誰にでも見える）
     data["units"] = military_views.island_units(island, letter_services.own_island(request.user))

@@ -20,6 +20,7 @@
 <link rel="modulepreload" href="{% static 'js/map/renderer.js' %}">
 <link rel="modulepreload" href="{% static 'js/map/sprites.js' %}">
 <link rel="modulepreload" href="{% static 'js/map/ruler.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/changes.js' %}">
 <link rel="modulepreload" href="{% static 'js/island/orders.js' %}">
 <link rel="modulepreload" href="{% static 'js/calendar.js' %}">
 <link rel="modulepreload" href="{% static 'js/island/api.js' %}">
@@ -64,6 +65,11 @@
       {# 量のある重ね表示を、マスの上の半透明の棒で見せるか、マスの塗り分けで見せるか（UI-79。選んだ形はブラウザに覚える） #}
       <label><input type="checkbox" id="overlay-bars" checked> {% translate "棒で表示" %}</label>
       <span id="overlay-legend" class="hint" aria-live="polite"></span>
+      {% if mine %}
+      {# 前のターンから変わったマスの印（案3 の静止版）。出すかどうかはブラウザに覚える #}
+      <label><input type="checkbox" id="map-changes"> {% translate "変わったマス" %}</label>
+      <span id="changes-legend" class="hint" hidden>{% translate "前のターンの更新で変わったマスです。" %}<span class="change-swatch built">＋</span> {% translate "建った" %}　<span class="change-swatch removed">×</span> {% translate "無くなった" %}　<span class="change-swatch stage">◆</span> {% translate "姿が変わった（段階・地形）" %}</span>
+      {% endif %}
     </div>
     <p id="map-help" class="hint">{% translate "地図はドラッグで移動、Ctrl＋ホイールか＋－ボタンで拡大縮小できます。スマートフォンでは2本指で拡大縮小できます。通常のホイールはページをスクロールします。" %}</p>
     <p class="hint">{% translate "赤みのあるマスは反乱軍の占領です。" %}{% if mine %} {% translate "赤い輪の反乱軍には兵の数を添えています。" %}{% endif %}</p>
