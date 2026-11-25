@@ -323,6 +323,8 @@ table.ranking-table td:nth-child(2), table.ranking-table th:nth-child(2),
 table.titles-table td:nth-child(-n+4), table.titles-table th:nth-child(-n+4),
 table.foreign-bonds-table td:nth-child(2), table.foreign-bonds-table th:nth-child(2) { text-align: left; }
 table.ranking-table td:nth-child(3), table.titles-table th, table.titles-table td { white-space: nowrap; }
+/* 国名の横の小さな推移グラフ（人口・GDP・1人あたり所得の直近2年） */
+.trend-lines { vertical-align: middle; margin-left: 6px; }
 .plain-list { padding-left: 1.2em; margin: 4px 0; }
 /* 統計と命令を縦に並べ、横長の表は表の中だけ横に送る。 */
 .report-layout { min-width: 0; }

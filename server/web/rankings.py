@@ -23,7 +23,7 @@ from hakoniwa_core.trade import fx as fxrates
 from hakoniwa_core.units import BASIS, from_milli
 from server.accounts import keys
 from server.game import get_game
-from server.web import awards, display
+from server.web import awards, display, trends
 from server.web.trade import directory, trading_islands, world_state
 from server.world import models as m
 from server.world.repository import island_from_row
@@ -132,6 +132,7 @@ def ranking_data(world: m.World, base: int | None) -> dict[str, Any]:
     islands = directory(world)
     stats = _latest(world)
     factors = _factors(world, base)
+    trend_map = trends.trend_data(world, factors)
     symbol = islands.get(base, {}).get("symbol", "") if base is not None else ""
     categories = []
     for name, label, unit in CATEGORIES:
@@ -143,13 +144,15 @@ def ranking_data(world: m.World, base: int | None) -> dict[str, Any]:
             if name in MONEY:
                 factor = factors.get(island_id)
                 if factor is None:
-                    unranked.append(_row(islands, island_id, None, "直せない"))
+                    unranked.append(
+                        _row(islands, island_id, None, "直せない", trend_map.get(island_id))
+                    )
                     continue
                 value *= factor
             ranked.append((value, island_id))
         ranked.sort(key=lambda r: (-r[0], r[1]))
         rows = [
-            _row(islands, i, rank, display.stat_text(name, v, unit, symbol))
+            _row(islands, i, rank, display.stat_text(name, v, unit, symbol), trend_map.get(i))
             for rank, (v, i) in enumerate(ranked, start=1)
         ]
         categories.append({"name": name, "label": label, "rows": rows + unranked})
@@ -163,7 +166,7 @@ def ranking_data(world: m.World, base: int | None) -> dict[str, Any]:
         "categories": categories,
         "industries": industry_rows(world, islands),
         "firms": world_firms(world, islands),
-        "table": island_table(world, base, islands, stats, factors),
+        "table": island_table(world, base, islands, stats, factors, trend_map),
         "records": records(world, islands),
         "world_summary": world_summary(world, base, islands, stats, factors),
         "fx": fx_table(world, base, islands, factors),
@@ -184,9 +187,19 @@ def top_data(
 
 
 def _row(
-    islands: dict[int, dict[str, Any]], island_id: int, rank: int | None, text: str
+    islands: dict[int, dict[str, Any]],
+    island_id: int,
+    rank: int | None,
+    text: str,
+    series: dict[str, list[float | None]] | None = None,
 ) -> dict[str, Any]:
-    return {"rank": rank, "island": island_id, "name": islands[island_id]["name"], "text": text}
+    return {
+        "rank": rank,
+        "island": island_id,
+        "name": islands[island_id]["name"],
+        "text": text,
+        "trends": trends.trend_lines(series),
+    }
 
 
 def _experience(world: m.World) -> dict[str, list[tuple[int, int]]]:
@@ -311,6 +324,7 @@ def island_table(
     islands: dict[int, dict[str, Any]] | None = None,
     stats: dict[int, dict[str, float]] | None = None,
     factors: dict[int, float] | None = None,
+    trend_map: dict[int, dict[str, list[float | None]]] | None = None,
 ) -> list[dict[str, Any]]:
     """島の一覧の表（GDP の多い順）。1行に島の名前・体制・直近の統計・称号。
 
@@ -320,6 +334,7 @@ def island_table(
     islands = islands if islands is not None else directory(world)
     stats = stats if stats is not None else _latest(world)
     factors = factors if factors is not None else _factors(world, base)
+    trend_map = trend_map if trend_map is not None else trends.trend_data(world, factors)
     symbol = islands.get(base, {}).get("symbol", "") if base is not None else ""
     titles = ((world.ext or {}).get(experience.RANKINGS) or {}).get("titles", {})
     held: dict[int, list[str]] = {}
@@ -357,6 +372,7 @@ def island_table(
                     if regime.get(axis) in defs.regimes
                 ),
                 "columns": columns,
+                "trends": trends.trend_lines(trend_map.get(island.id)),
                 "titles": held.get(island.id, []),
                 "flag": reverse("island_flag", args=[island.id]),
                 "awards": [a["name"] for a in prizes.get(island.id, [])],
