@@ -4067,21 +4067,40 @@ class Market(IslandStage):
         # 値段になり、いつもの値段の線ではすぐ放出して買い直すことを繰り返すため）
         high = scale_price(limit, 1 + spec["release"])
         release = usual > 0 and (hungry or (not maintenance_only and price >= high))
-        # 値段の上がりで先に放出する線（下書き。food_reserve.price_lead、既定は切。切の間は
-        # price_lead が None を返すので、今までの判定と完全に同じ）
+        # 値段の上がりで先に放出する線（下書き第 2 版。food_reserve.price_lead、既定は切。
+        # 切の間は price_lead が None を返すので、今までの判定と完全に同じ）。第 2 版では
+        # 全量でなく、基準に戻すのに足りる分までの小出しにし、割合の上限と倉庫の下限を
+        # 同時に効かせる（reserve.price_lead_amount）。下限まで来て量が 0 なら出さない
         lead = None
+        lead_plan: tuple[int, dict] | None = None
         if not release and not maintenance_only:
             lead = reserve.price_lead(island, ctx.config, price)
-            release = lead is not None
+            if lead is not None:
+                lead_plan = reserve.price_lead_amount(island, ctx.defs, ctx.config, lead[1], price)
+                release = lead_plan[0] > 0
         if release:
             total = stock.total(island.warehouse, good)
-            sell(good, total, usual if hungry else (price if lead else high))
-            island.scratch[RESERVE_RELEASE] = {
-                "qty": total,
-                "reason": "hunger" if hungry else (f"lead_{lead[0]}" if lead else "price"),
-                "price": price,
-                "base": lead[1] if lead else usual,
-            }
+            if lead is not None and lead_plan is not None:
+                qty, plan = lead_plan
+                sell(good, qty, price)
+                island.scratch[RESERVE_RELEASE] = {
+                    "qty": qty,
+                    "reason": f"lead_{lead[0]}",
+                    "price": price,
+                    "base": lead[1],
+                    "need": plan["need"],
+                    "floor": plan["floor"],
+                    "cap": plan["cap"],
+                    "stock": total,
+                }
+            else:
+                sell(good, total, usual if hungry else high)
+                island.scratch[RESERVE_RELEASE] = {
+                    "qty": total,
+                    "reason": "hunger" if hungry else "price",
+                    "price": price,
+                    "base": usual,
+                }
         if maintenance_only:
             return
         # 目安に足りない分の refill の割合と、入れ替えで売りに出した分（新しい組と入れ替える）
@@ -5202,12 +5221,28 @@ class Market(IslandStage):
         supply = {}
         prices = island.economy.prices
         wanted = dict(island.scratch.get("wanted", {}))  # 売りに出ていなくて注文しなかった量
+        # 先行放出（第 2 版）の見積もり用: 穀物の買えなかった量を、次のターンの
+        # price_lead_amount が読めるよう economy.ext に残す（市場の記録はターンの初めに
+        # 消えるため）。入のときだけ残し、切のときは消すので、切では今までと完全に同じ
+        reserve_spec = ctx.config.get("food_reserve")
+        lead_on = bool((reserve_spec.get("price_lead") or {}).get("enabled"))
+
+        def keep_unmet(good: str, record: MarketRecord) -> None:
+            if good != reserve_spec["good"]:
+                return
+            if lead_on:
+                island.economy.ext[reserve.LAST_UNMET] = max(0, record.demand - record.volume)
+            else:
+                island.economy.ext.pop(reserve.LAST_UNMET, None)
+
         for good in sorted(set(results) | set(wanted)):
             result = results.get(good)
             if result is None:  # 売りも買いの注文もなかったが、あれば買いたい人がいた
                 carried = Market._within_controls(island, ctx, good, prices.get(good, 1))
                 prices[good] = carried
-                island.markets.append(MarketRecord(good, carried, 0, wanted[good], 0, PRICE_CARRY))
+                record = MarketRecord(good, carried, 0, wanted[good], 0, PRICE_CARRY)
+                island.markets.append(record)
+                keep_unmet(good, record)
                 continue
             signal = Market._consumption_result(books_by_good.get(good), result)
             own = signal.demand - Market._out_of_money(books_by_good.get(good), result)
@@ -5224,6 +5259,7 @@ class Market(IslandStage):
                 record.buyers = _by_group(ctx.config, book.buys, result.bought)
                 record.sellers = _by_group(ctx.config, book.sells, result.sold)
             island.markets.append(record)
+            keep_unmet(good, record)
             supply[good] = result.supply
             if own > 0 and result.supply > 0:  # 約定しなくても気配で値段が動く
                 prices[good] = price

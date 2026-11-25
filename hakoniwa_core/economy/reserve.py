@@ -12,10 +12,14 @@
   (1 + release) 倍以上になったら、市場に売りに出す。指値は、飢えた家計があればいつもの値段（計画
   経済の公定価格や値段の上限の下でも約定する）、なければ (1 + release) 倍。ふだんは売りに出さない
   （出しておくと、需要が生産を上回っても市場の売りが足りて見え、農場が建たない）。
-- 先行放出（下書き。food_reserve.price_lead、既定は切）: 入のときは、値段の上がり方だけでも
-  先に全量を今の値段で出す（price_lead 関数。基準は直近の値段の移動中央値で、倍率の線か
-  上がりの速さの線のどちらか）。飢えの線より早く出すことで、飢えが出る前に値段の上がりを
-  抑える狙い。切の間は今までと完全に同じ動き。
+- 先行放出（下書き第 2 版。food_reserve.price_lead、既定は切）: 入のときは、値段の上がり方
+  だけでも先に出す（price_lead 関数。基準は直近の値段の移動中央値で、倍率の線か上がりの
+  速さの線のどちらか）。第 1 版は全量を一度に出し、倉庫が先に細って後半の跳ね止めが弱く
+  なったため、第 2 版では出す量を「値段を基準に戻すのに足りる分」（前のターンの市場の記録の
+  買えなかった量を price/base で割り増した見積もり）までにし、1 ターンの割合上限と倉庫の
+  下限（住民の食べる量の floor_turns ターン分。先行放出だけに適用し、飢えの線の放出は
+  今までどおり全量で下限も使う）を同時に効かせる（price_lead_amount 関数）。飢えの線より
+  早く出すことで、飢えが出る前に値段の上がりを抑える狙い。切の間は今までと完全に同じ動き。
 - 入れ替え: 日持ち（goods.yaml の shelf_life）の残りが rotate ターン以下になった組は、傷む前に今の
   値段を指値に売る。
 - 買い足し: 放出しないターンに、目安に足りない分の refill の割合と、入れ替えで売りに出した分を、
@@ -94,6 +98,53 @@ def price_lead(island: IslandState, config: GameConfig, price: int) -> tuple[str
         if before > 0 and price >= scale_price(before, 1 + float(lead.get("rise", 0.10))):
             return "rise", base
     return None
+
+
+# island.economy.ext の置き場: 前のターンの穀物の買えなかった量（demand − volume）。
+# 市場の記録（island.markets）はターンの初めに消える（turn/engine）ので、市場の段の
+# 終わり（modules/market の _record）が、先行放出が入のときだけここに残す。
+LAST_UNMET = "food_reserve_last_unmet"
+
+
+def price_lead_amount(
+    island: IslandState, defs: Defs, config: GameConfig, base: int, price: int
+) -> tuple[int, dict]:
+    """先行放出の量（下書き第 2 版）: 「値段を基準に戻すのに足りる分」を上限に、1 ターンの
+    割合上限と倉庫の下限とを同時に効かせた小出しの量。
+
+    足りる分の見積もりは、前のターンの市場の記録の買えなかった量（demand − volume。
+    記録そのものはターンの初めに消えるので、_record が economy.ext の LAST_UNMET に
+    残した値を読む）。値段を押し上げているのはこの不足分で、記録の demand は今の値段での
+    買いたい量なので、基準の値段で買えた量に直すため price/base を掛けて割り増す（同じ
+    予算で買える量は値段に反比例する）。これは見積もりであり、値段は 1 ターンに市場の
+    値幅（market.band）までしか動かないので、1 回で基準まで戻すのではなく、線が続く間は
+    毎ターン小出しにして近づける形にする。残した値がなければ見積もりは立たないので、
+    割合上限と下限だけで決める。
+    割合上限（max_fraction）は 1 ターンに倉庫の量のこの割合まで。下限（floor_turns）は
+    住民の食べる量のこのターン分で、先行放出では残す（目安 target が food_reserve.turns
+    ターン分なので、下限 = 目安 × floor_turns / turns）。飢えの線の放出は今までどおり
+    全量で下限も使うので、この関数は先行放出だけに使う。
+    戻り値は (量, 内訳)。内訳は need（見積もり。残した値がなければ None）・floor（下限の
+    量）・cap（どの上限で決まったか: need / fraction / floor）。量が 0 なら出さない。"""
+    spec = config.get("food_reserve")
+    lead = spec.get("price_lead") or {}
+    good = spec["good"]
+    total = stock.total(island.warehouse, good)
+    turns = int(spec.get("turns", 0))
+    floor_turns = int(lead.get("floor_turns", 1))
+    floor = target(island, defs, config) * floor_turns // turns if turns > 0 else 0
+    room = max(0, total - floor)
+    fraction = int(total * float(lead.get("max_fraction", 0.25)))
+    need: int | None = None
+    unmet = island.economy.ext.get(LAST_UNMET)
+    if unmet is not None:
+        need = unmet * price // base if base > 0 else unmet
+    qty, cap = room, "floor"
+    if fraction < qty:
+        qty, cap = fraction, "fraction"
+    if need is not None and need < qty:
+        qty, cap = need, "need"
+    return max(0, qty), {"need": need, "floor": floor, "cap": cap}
 
 
 def stock_up(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> None:

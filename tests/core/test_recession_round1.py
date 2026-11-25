@@ -146,7 +146,15 @@ def test_reserve_releases_when_the_price_spikes_or_people_go_hungry(game):
 def _lead_on(game, **kw):
     """下書きの先行放出（food_reserve.price_lead）を入にする（game は module 共有なので、
     前の試験の書き換えが残らないよう dict ごと置き換える）。"""
-    lead = {"enabled": True, "multiple": 1.15, "rise": 0.10, "rise_turns": 3, "window": 12}
+    lead = {
+        "enabled": True,
+        "multiple": 1.15,
+        "rise": 0.10,
+        "rise_turns": 3,
+        "window": 12,
+        "max_fraction": 0.25,
+        "floor_turns": 1,
+    }
     lead.update(kw)
     game.config.raw["food_reserve"]["price_lead"] = lead
     return lead
@@ -167,7 +175,9 @@ def test_reserve_price_lead_is_off_by_default(game):
 
 
 def test_reserve_price_lead_releases_on_multiple(game):
-    """倍率の線: 直近の値段が移動中央値の multiple 倍以上で、今の値段で全量を先に出す。"""
+    """倍率の線: 直近の値段が移動中央値の multiple 倍以上で先に出す。第 2 版では全量でなく、
+    割合上限（max_fraction）までの小出し（市場の記録がなければ見積もりは立たず、上限と
+    下限だけで決まる）。"""
     _lead_on(game, rise=0.99)  # 上がりの線は遠くに置き、倍率の線だけで見る
     island = reserve_island(game)
     goal = reserve.target(island, game.defs, game.config)
@@ -176,9 +186,12 @@ def test_reserve_price_lead_releases_on_multiple(game):
     island.economy.price_history["grain"] = [usual] * 12
     island.economy.prices["grain"] = scale_price(usual, 1.15)
     sells, _ = reserve_orders(game, island, 6)
-    assert sells == [("grain", goal, scale_price(usual, 1.15))]
+    qty = int(goal * 0.25)
+    assert sells == [("grain", qty, scale_price(usual, 1.15))]
     note = island.scratch["food_reserve_release"]
-    assert note["reason"] == "lead_multiple" and note["qty"] == goal and note["base"] == usual
+    assert note["reason"] == "lead_multiple" and note["qty"] == qty and note["base"] == usual
+    assert note["cap"] == "fraction" and note["floor"] == goal // 2 and note["stock"] == goal
+    assert note["need"] is None
 
 
 def test_reserve_price_lead_releases_on_rise(game):
@@ -195,7 +208,7 @@ def test_reserve_price_lead_releases_on_rise(game):
     ]
     island.economy.prices["grain"] = scale_price(usual, 1.12)  # 3 ターン前から +12%
     sells, _ = reserve_orders(game, island, 6)
-    assert sells == [("grain", goal, scale_price(usual, 1.12))]
+    assert sells == [("grain", int(goal * 0.25), scale_price(usual, 1.12))]
     assert island.scratch["food_reserve_release"]["reason"] == "lead_rise"
 
 
@@ -210,7 +223,7 @@ def test_reserve_price_lead_median_ignores_a_spike(game):
     island.economy.price_history["grain"] = [usual] * 11 + [usual * 3]
     island.economy.prices["grain"] = scale_price(usual, 1.2)
     sells, _ = reserve_orders(game, island, 6)
-    assert sells == [("grain", goal, scale_price(usual, 1.2))]
+    assert sells == [("grain", int(goal * 0.25), scale_price(usual, 1.2))]
     assert island.scratch["food_reserve_release"]["base"] == usual
 
 
@@ -225,6 +238,62 @@ def test_reserve_price_lead_quiet_when_calm(game):
     island.economy.prices["grain"] = scale_price(usual, 1.05)
     sells, _ = reserve_orders(game, island, 6)
     assert sells == []
+
+
+def test_reserve_price_lead_amount_uses_unmet_need(game):
+    """第 2 版の量: 前のターンの買えなかった量（demand − volume）を price/base で割り増した
+    見積もりが、割合上限より小さければその量だけ出す。"""
+    _lead_on(game, rise=0.99)
+    island = reserve_island(game)
+    goal = reserve.target(island, game.defs, game.config)
+    stock.add(island.warehouse, "grain", goal, 5, game.defs.goods)
+    usual = island.economy.prices["grain"]
+    island.economy.price_history["grain"] = [usual] * 12
+    price = scale_price(usual, 1.15)
+    island.economy.prices["grain"] = price
+    unmet = 1_000
+    island.economy.ext[reserve.LAST_UNMET] = unmet  # _record が前のターンに残した値
+    sells, _ = reserve_orders(game, island, 6)
+    need = unmet * price // usual
+    assert sells == [("grain", need, price)]
+    note = island.scratch["food_reserve_release"]
+    assert note["cap"] == "need" and note["need"] == need and note["qty"] == need
+
+
+def test_reserve_price_lead_respects_floor(game):
+    """第 2 版の下限: 先行放出は下限（住民の食べる量の floor_turns ターン分）を割らない。
+    倉庫が下限ちょうどなら出さず、下限より少しだけ多ければ、その余りだけ出す。"""
+    _lead_on(game, rise=0.99, max_fraction=0.9)  # 割合上限は緩めて、下限だけで見る
+    island = reserve_island(game)
+    goal = reserve.target(island, game.defs, game.config)
+    floor = goal // 2  # 目安は turns=2 ターン分、下限は floor_turns=1 ターン分
+    usual = island.economy.prices["grain"]
+    island.economy.price_history["grain"] = [usual] * 12
+    island.economy.prices["grain"] = scale_price(usual, 1.15)
+    stock.add(island.warehouse, "grain", floor, 5, game.defs.goods)
+    sells, _ = reserve_orders(game, island, 6)
+    assert sells == [] and "food_reserve_release" not in island.scratch
+    stock.add(island.warehouse, "grain", 1000, 5, game.defs.goods)
+    sells, _ = reserve_orders(game, island, 6)
+    assert sells == [("grain", 1000, scale_price(usual, 1.15))]
+    note = island.scratch["food_reserve_release"]
+    assert note["cap"] == "floor" and note["floor"] == floor
+
+
+def test_reserve_price_lead_floor_does_not_block_hunger(game):
+    """下限は先行放出だけのもの: 飢えの線の放出は、倉庫が下限ちょうどでも今までどおり
+    全量をいつもの値段で出す。"""
+    _lead_on(game)
+    island = reserve_island(game)
+    goal = reserve.target(island, game.defs, game.config)
+    floor = goal // 2
+    stock.add(island.warehouse, "grain", floor, 5, game.defs.goods)
+    usual = island.economy.prices["grain"]
+    island.economy.price_history["grain"] = [usual] * 12
+    island.economy.households["general"][FED] = 500
+    sells, _ = reserve_orders(game, island, 6)
+    assert sells == [("grain", floor, usual)]
+    assert island.scratch["food_reserve_release"]["reason"] == "hunger"
 
 
 def test_reserve_rotates_old_grain_and_refills(game):
