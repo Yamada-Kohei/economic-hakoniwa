@@ -112,7 +112,7 @@ def _rand_round(value: float, rng: random.Random) -> int:
 FARMING = "farming"
 # マスの ext: 印を決めたときの住宅地の段階（refresh_farming。段階が変わったマスだけ決め直すため）
 FARMING_LEVEL = "farming_level"
-# 島の ext: 一度だけの戻しを済ませた印と、戻した人数（refresh_farming の _restore_flipped_farming）
+# 島の ext: 一度だけの戻しを済ませた印と、戻した人数（移し替えの段の restore_flipped_farming）
 FARMING_RESTORED = "farming_restored"
 
 
@@ -155,11 +155,6 @@ def refresh_farming(defs: Defs, config: GameConfig, island: IslandState) -> None
     homes = {
         (f.x, f.y): f for f in island.facilities if fac.is_housing(config, f) and fac.on_map(f)
     }
-    if FARMING_RESTORED not in island.ext:
-        restored = _restore_flipped_farming(defs, island, homes)
-        island.ext[FARMING_RESTORED] = restored
-        if restored > 0:
-            island.log.append(LogEntry("farming_restored", {"count": restored}))
     for tile in island.tiles:
         home = homes.get((tile.x, tile.y))
         if home is not None:
@@ -181,12 +176,21 @@ def refresh_farming(defs: Defs, config: GameConfig, island: IslandState) -> None
             tile.ext[FARMING] = _farming_by_size(defs, tile.population)
 
 
-def _restore_flipped_farming(defs: Defs, island: IslandState, homes: dict[Pos, Facility]) -> int:
+def restore_flipped_farming(defs: Defs, config: GameConfig, island: IslandState) -> None:
     """一度だけの戻し（掲示板 #6011）: 既定を入にしたときの数え替えで倒れたマスを村の印に戻す。
 
     倒れたマスは「人数は村の大きさ・建った段階は町以上・印は False」の形で残っている。そのマスを
-    村の印（True）に戻し、戻した人数（そのマスの人口の合計）を返す。済ませた印と人数は島の ext
-    （FARMING_RESTORED）に残し、二度はやらない。"""
+    村の印（True）に戻し、戻した人数（そのマスの人口の合計）を島の ext（FARMING_RESTORED）と
+    ターンログに残す。一度だけの処理なので毎ターンの refresh_farming には置かず、移し替えの段
+    （modules/upgrade）から呼ぶ（#6188）。済ませた島と、設定が切の島（印そのものを使わないので、
+    後で入にしたときに改めて効くよう印も残さない）では何もしない。"""
+    if not config.get("population.farming_by_housing"):
+        return
+    if FARMING_RESTORED in island.ext:
+        return
+    homes = {
+        (f.x, f.y): f for f in island.facilities if fac.is_housing(config, f) and fac.on_map(f)
+    }
     restored = 0
     for tile in island.tiles:
         home = homes.get((tile.x, tile.y))
@@ -195,7 +199,9 @@ def _restore_flipped_farming(defs: Defs, island: IslandState, homes: dict[Pos, F
         if _farming_by_size(defs, tile.population) and not _built_farming(defs, home):
             tile.ext[FARMING] = True
             restored += tile.population
-    return restored
+    island.ext[FARMING_RESTORED] = restored
+    if restored > 0:
+        island.log.append(LogEntry("farming_restored", {"count": restored}))
 
 
 def _housed_farming(defs: Defs, home: Facility, tile: Tile) -> bool:

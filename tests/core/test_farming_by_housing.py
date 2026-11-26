@@ -170,8 +170,9 @@ def test_only_tiles_whose_stage_changed_are_redetermined(game, switch):  # noqa:
 
 def test_flipped_tiles_are_restored_once(game, switch):  # noqa: F811
     """一度だけの戻し（#6011）: 数え替えで倒れたマス（人数は村・建った段階は町・印 False）を
-    村の印に戻し、戻した人数を島の ext とターンログに 1 行残す。二度はやらない。"""
-    from hakoniwa_core.modules.population import FARMING_RESTORED
+    村の印に戻し、戻した人数を島の ext とターンログに 1 行残す。二度はやらない。戻しは移し替えの
+    段（restore_flipped_farming）の仕事で、毎ターンの refresh_farming では起きない（#6188）。"""
+    from hakoniwa_core.modules.population import FARMING_RESTORED, restore_flipped_farming
 
     town = village_size(game.defs) + 1
     switch()
@@ -184,7 +185,17 @@ def test_flipped_tiles_are_restored_once(game, switch):  # noqa: F811
     island.tile(10, 10).ext[FARMING] = False  # 人数も町なので倒れていない
     home(game, island, 12, 12, 1000, level="village")
     island.tile(12, 12).ext[FARMING] = True  # 村のまま
+    # 毎ターンの印の書き直しだけでは戻らない（移行の段に分けたので）
     refresh_farming(game.defs, game.config, island)
+    assert island.tile(6, 6).ext[FARMING] is False
+    assert FARMING_RESTORED not in island.ext
+    # 設定が切の間は戻さず、済んだ印も残さない（入にしたら改めて効く）
+    switch(False)
+    restore_flipped_farming(game.defs, game.config, island)
+    assert island.tile(6, 6).ext[FARMING] is False
+    assert FARMING_RESTORED not in island.ext
+    switch()
+    restore_flipped_farming(game.defs, game.config, island)
     assert island.tile(6, 6).ext[FARMING] is True
     assert island.tile(8, 8).ext[FARMING] is True
     assert island.tile(10, 10).ext[FARMING] is False
@@ -194,7 +205,30 @@ def test_flipped_tiles_are_restored_once(game, switch):  # noqa: F811
     assert len(logs) == 1 and logs[0].args["count"] == 1500
     # 二度はやらない: 戻したマスの印を手で倒しても、もう戻らない
     island.tile(6, 6).ext[FARMING] = False
-    refresh_farming(game.defs, game.config, island)
+    restore_flipped_farming(game.defs, game.config, island)
     assert island.tile(6, 6).ext[FARMING] is False
     assert island.ext[FARMING_RESTORED] == 1500
     assert len([e for e in island.log if e.kind == "farming_restored"]) == 1
+
+
+def test_demolished_housing_tile_follows_the_no_housing_rule(game, switch):  # noqa: F811
+    """住宅地が取り壊されたマスは、住宅地のないマスの扱いになる（#6188）。町の印は人がいる間は
+    残り、人がいなくなれば消える。村の印は人数で決め直す。"""
+    switch()
+    town = village_size(game.defs) + 1
+    island = make_island(game)
+    home(game, island, 6, 6, town + 10, level="town")
+    home(game, island, 8, 8, 1000, level="village")
+    refresh_farming(game.defs, game.config, island)
+    assert island.tile(6, 6).ext[FARMING] is False  # 人数で町
+    assert island.tile(8, 8).ext[FARMING] is True  # 人数で村
+    island.facilities.remove(island.facility_at(6, 6))  # 取り壊し
+    island.facilities.remove(island.facility_at(8, 8))
+    island.tile(6, 6).population = town - 1  # 人数が村の大きさに戻っても
+    island.tile(8, 8).population = town + 10  # 人数が町の大きさになれば
+    refresh_farming(game.defs, game.config, island)
+    assert island.tile(6, 6).ext[FARMING] is False  # 町の印は人がいる間は残る
+    assert island.tile(8, 8).ext[FARMING] is False  # 村の印は人数で町に決め直す
+    island.tile(6, 6).population = 0
+    refresh_farming(game.defs, game.config, island)
+    assert FARMING not in island.tile(6, 6).ext  # 人がいなくなれば印を消す
