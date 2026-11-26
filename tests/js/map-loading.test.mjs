@@ -50,6 +50,9 @@ function environment({ failedUrl, failedDraw = false } = {}) {
     drawMinimap() {}, drawRuler() {}, readRulerShown: () => false, writeRulerShown() {},
     changeMarks: () => new Map(), readChangesShown: () => false, writeChangesShown() {},
     readFlagShown: () => true, writeFlagShown() {},
+    GLOW_SECONDS: 2.4, glowAlpha: () => 0,
+    readSmokeShown: () => false, writeSmokeShown() {},
+    readLightMode: () => true, writeLightMode() {},
     loadSprites: async () => new Map(),
     spritePriorityKeys: () => new Set(),
   };

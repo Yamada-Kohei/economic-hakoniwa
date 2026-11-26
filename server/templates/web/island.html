@@ -22,6 +22,7 @@
 <link rel="modulepreload" href="{% static 'js/map/ruler.js' %}">
 <link rel="modulepreload" href="{% static 'js/map/changes.js' %}">
 <link rel="modulepreload" href="{% static 'js/map/flagtoggle.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/anim.js' %}">
 <link rel="modulepreload" href="{% static 'js/island/orders.js' %}">
 <link rel="modulepreload" href="{% static 'js/calendar.js' %}">
 <link rel="modulepreload" href="{% static 'js/island/api.js' %}">
@@ -68,6 +69,10 @@
       <span id="overlay-legend" class="hint" aria-live="polite"></span>
       {# 首都の旗（案23）の表示の切り替え（案44 の旗の分）。出すかどうかはブラウザに覚える #}
       <label><input type="checkbox" id="map-flag"> {% translate "首都の旗" %}</label>
+      {# 第2波の表示の切り替え（案44）: 煙（案1）・軽量モード（案47）。出すかどうかはブラウザに覚える #}
+      <label><input type="checkbox" id="map-smoke"> {% translate "煙" %}</label>
+      <span id="smoke-legend" class="hint" hidden><span class="smoke-swatch">●</span> {% translate "煙は、動いている工場と火力発電所から出ます。止まると出ません。" %}</span>
+      <label><input type="checkbox" id="map-light"> {% translate "軽量モード" %}</label>
       {% if mine %}
       {# 前のターンから変わったマスの印（案3 の静止版）。出すかどうかはブラウザに覚える #}
       <label><input type="checkbox" id="map-changes"> {% translate "変わったマス" %}</label>
