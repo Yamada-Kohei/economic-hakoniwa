@@ -331,3 +331,21 @@ def test_trade_partner_stats_table(world):
     assert '<small class="muted route-note">' in section
     # 金額の桁が長くスマホ幅に収まらないので、表は横スクロールの入れ物で包む
     assert '<div class="table-scroll">' in section
+
+
+def test_trade_partner_route_stat_with_a_bad_name_fails_loudly(world):
+    """partner_route.* の統計名の形が違う（経路の節が無い）ときは、黙って捨てずに落とす
+    （#6188。記録側の不具合を試験で気づけるように）。"""
+    owner, island, other, _ = _world_with_offer(world)
+    turn = world.turn - 1
+    _stats(
+        island,
+        turn,
+        {
+            f"partner.{other.id}.exports": 500.0,
+            f"partner_route.{other.id}.exports": 10.0,  # 経路の節が無い壊れた名前
+        },
+    )
+    browser = _client(owner)
+    with pytest.raises(ValueError):
+        browser.get(f"/api/islands/{island.id}/trade")

@@ -518,6 +518,16 @@ PARTNER_LABELS = {"bloc": "圏の市場（相手は混ざる）", "merchant": "�
 ROUTE_LABELS = {"bloc": "圏の市場", "contract": "二国間契約", "merchant": "海外の商人"}
 
 
+def _partner_route_parts(name: str) -> tuple[str, str, str]:
+    """統計名 partner_route.<相手>.<輸出入>.<経路> を (相手, 輸出入, 経路) に分ける。形の違う
+    名前は記録側（books.add_partner_trade）の不具合なので、黙って捨てずに ValueError にして
+    試験で気づけるようにする（#6188）。"""
+    parts = name.split(".")
+    if len(parts) != 4:
+        raise ValueError(f"partner_route の統計名の形が違います: {name!r}")
+    return parts[1], parts[2], parts[3]
+
+
 def partner_rows(
     island: m.Island, islands: dict[int, dict[str, Any]], currency: str
 ) -> list[dict[str, Any]]:
@@ -555,10 +565,7 @@ def partner_rows(
     ).values_list("name", "value")
     routes: dict[str, dict[str, dict[str, float]]] = {}
     for name, value in route_rows:
-        parts = name.split(".")
-        if len(parts) != 4:
-            continue
-        _, partner, side, route = parts
+        partner, side, route = _partner_route_parts(name)
         by_route = routes.setdefault(partner, {}).setdefault(
             route, {"exports": 0.0, "imports": 0.0}
         )
