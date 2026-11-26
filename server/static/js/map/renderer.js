@@ -1,7 +1,7 @@
 // 描画: 奥のマスから手前のマスへ（x + y の小さい順に）描き、高いものが奥を自然に隠すようにする。
 // 重ね表示の棒（UI-79）は島を描いたあとにもう一度奥から手前へ描き、建物に隠れず、半透明で奥の棒も透けて見える。
 
-import { detailLevel, isSmokeSource, phaseFor, SMOKE_CYCLE, smokePuffs } from "./anim.js";
+import { detailLevel, isSmokeSource, phaseFor, SMOKE_CYCLE, SMOKE_RGB, smokePuffs } from "./anim.js";
 import { barPixels, barsBackToFront, drawsBars, solidColor } from "./overlays/bars.js";
 import { CHANGE_COLORS } from "./changes.js";
 import { lift, tileToWorld } from "./projection.js";
@@ -477,8 +477,9 @@ function facilityTopY(f, defs, map, ground, theme, sprites) {
 }
 
 /**
- * 煙（案1）: 稼働中の工場・火力発電所の建物の上から、粒が昇って広がりながら
- * 薄くなる。奥の施設から手前へ描く。粒の決め方は anim.js（位相・詳しさ）。
+ * 煙（案1）: 稼働中の工場・火力発電所の煙突から、粒がもくもくと湧き出して
+ * 昇り、広がりながら薄れていく。奥の施設から手前へ描く。粒の決め方は
+ * anim.js（位相・詳しさ）。色は一段濃い灰色（anim.js の SMOKE_RGB）。
  * 軽量モード（options.light）では時刻を位相ぶんだけ進めて止め、静止した姿にする。
  */
 function drawSmoke(ctx, map, defs, view, options) {
@@ -500,8 +501,9 @@ function drawSmoke(ctx, map, defs, view, options) {
       const cy = topY + puff.dy * theme.tile_height;
       const r = Math.max(1.5, puff.r * theme.tile_width);
       const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-      grad.addColorStop(0, `rgba(232, 238, 245, ${puff.alpha})`);
-      grad.addColorStop(1, "rgba(232, 238, 245, 0)");
+      grad.addColorStop(0, `rgba(${SMOKE_RGB}, ${puff.alpha})`);
+      grad.addColorStop(0.5, `rgba(${SMOKE_RGB}, ${puff.alpha * 0.72})`);
+      grad.addColorStop(1, `rgba(${SMOKE_RGB}, 0)`);
       ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);

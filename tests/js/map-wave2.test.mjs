@@ -107,24 +107,32 @@ test("ズーム別の詳しさ: 近く・中・遠くの3段", () => {
   assert.equal(detailLevel(0.25), "far");
 });
 
-test("煙の粒: 詳しさで数が変わり、昇るほど大きく薄くなる", () => {
+test("煙の粒: 詳しさで数が変わり、湧き出して昇るほど広がり薄れる", () => {
   const f = { x: 4, y: 6 };
-  assert.equal(smokePuffs(f, 0, "near").length, 3);
-  assert.equal(smokePuffs(f, 0, "mid").length, 2);
-  assert.equal(smokePuffs(f, 0, "far").length, 1);
+  assert.equal(smokePuffs(f, 0, "near").length, 6);
+  assert.equal(smokePuffs(f, 0, "mid").length, 4);
+  assert.equal(smokePuffs(f, 0, "far").length, 2);
   const sorted = [...smokePuffs(f, 1.2, "near")].sort((a, b) => a.rise - b.rise);
   for (const puff of sorted) {
     assert.ok(puff.rise >= 0 && puff.rise < 1);
-    assert.ok(puff.alpha >= 0 && puff.alpha <= 0.3);
+    assert.ok(puff.alpha >= 0 && puff.alpha <= 0.78);
     assert.ok(puff.dy < 0); // てっぺんより上
-    // 粒の大きさは半径でマス幅の 0.045〜0.122（直径 6〜9px 程度の小ささ。#6090）
-    assert.ok(puff.r >= 0.045 && puff.r <= 0.122, `粒の半径 ${puff.r}`);
+    // 粒の大きさは半径でマス幅の 0.05〜0.22（出発点は直径 6〜9px 級の小ささ。#6090）
+    assert.ok(puff.r >= 0.05 && puff.r <= 0.22, `粒の半径 ${puff.r}`);
   }
   for (let k = 1; k < sorted.length; k++) {
     assert.ok(sorted[k].r > sorted[k - 1].r, "昇るほど広がる");
+    assert.ok(sorted[k].dy < sorted[k - 1].dy, "昇るほど上へ");
   }
+  // 湧き出しから中ほどはしっかり濃く（湯気でなく煙に見える濃さ）、上では薄れる
+  const mid = sorted[Math.floor(sorted.length / 2)];
+  const top = sorted[sorted.length - 1];
+  assert.ok(mid.alpha >= 0.35, `中ほどの濃さ ${mid.alpha}`);
+  assert.ok(top.alpha < mid.alpha, "上では薄れる");
   // 同じ時刻では同じ姿（静止表示の土台）
   assert.deepEqual(smokePuffs(f, 2.5, "near"), smokePuffs(f, 2.5, "near"));
+  // 時刻が進めば姿が変わる（動く）
+  assert.notDeepEqual(smokePuffs(f, 0.4, "near"), smokePuffs(f, 1.6, "near"));
 });
 
 test("変化マスの光: 一度だけ強くなって、終われば 0", () => {
