@@ -59,6 +59,8 @@ facility_fallback: {color: "#bbbbbb", height: 1.5}
 capital_roof: "#c9a227"   # 首都の建物の屋根の色
 construction: "#ffffff"   # 工事中の枠の色
 power_line: "#333333"     # 送電線
+road_line: "#8a6d4b"      # 道路の線（案2）
+rail_line: "#3d4852"      # 鉄道の線（案2）
 no_development: "rgba(255, 255, 255, 0.45)"  # 開発を止めたマスの斜線
 office: "rgba(90, 120, 200, 0.35)"           # オフィス街のマス
 industrial: "rgba(230, 140, 40, 0.45)"       # 工業団地のマス

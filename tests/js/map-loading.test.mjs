@@ -54,6 +54,9 @@ function environment({ failedUrl, failedDraw = false } = {}) {
     shipCounts: () => ({ merchantKnown: false, merchantTotal: 0, merchantPlaced: 0, fleetTotal: 0, fleetPlaced: 0 }),
     readMerchantShown: () => true, writeMerchantShown() {},
     readFleetShown: () => true, writeFleetShown() {},
+    transportSegments: () => new Map(),
+    readRoadShown: () => true, writeRoadShown() {},
+    readRailShown: () => true, writeRailShown() {},
     loadSprites: async () => new Map(),
     spritePriorityKeys: () => new Set(),
   };

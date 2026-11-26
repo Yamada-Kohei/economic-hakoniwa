@@ -10,6 +10,7 @@ import { BARS, FILL, overlayLegend, readOverlayMode, writeOverlayMode } from "./
 import { overlayList } from "./overlays/index.js";
 import { lift, tileToWorld, worldToTile } from "./projection.js";
 import { drawIsland } from "./renderer.js";
+import { readRailShown, readRoadShown, transportSegments, writeRailShown, writeRoadShown } from "./roads.js";
 import { drawRuler, readRulerShown, writeRulerShown } from "./ruler.js";
 import { placeShips, readFleetShown, readMerchantShown, shipCounts, writeFleetShown, writeMerchantShown } from "./ships.js";
 import { loadFlag, loadSprites, spritePriorityKeys } from "./sprites.js";
@@ -63,6 +64,8 @@ const state = {
   flagShown: readFlagShown(storage), // 首都の旗（案23）を出すか。既定は出す
   merchantShown: readMerchantShown(storage), // 港の商船（案6）を出すか。既定は出す
   fleetShown: readFleetShown(storage), // 母港の艦隊（W-100）を出すか。既定は出す
+  roadShown: readRoadShown(storage), // 道路の線（案2）を出すか。既定は出す
+  railShown: readRailShown(storage), // 鉄道の線（案2）を出すか。既定は出す
 };
 let pending = false;
 
@@ -77,10 +80,14 @@ function redraw() {
     pending = false;
     try {
       const shipsShown = { merchant: state.merchantShown, fleet: state.fleetShown };
+      const transport = new Map();
+      if (state.roadShown) transport.set("road", transportSegments(map, "road"));
+      if (state.railShown) transport.set("rail", transportSegments(map, "rail"));
       drawIsland(ctx, map, defs, view, {
         ...state,
         flag: state.flagShown ? state.flag : null,
         ships: placeShips(map, defs, shipsShown),
+        transport,
       });
       refreshShipsLegend(shipCounts(map, defs, shipsShown));
       if (state.ruler) drawRuler(ctx, map, view, theme);
@@ -391,6 +398,39 @@ if (shipsFleetToggle) {
   });
 }
 applyShipsLegend();
+
+// 道路・鉄道の線（案2）の表示の切り替え。出すかどうかは種類ごとに覚え、
+// 次に開いたときも使う（港の船と同じ流儀）。凡例は、出している種類の分だけ出す
+const roadToggle = document.getElementById("map-road-lines");
+const railToggle = document.getElementById("map-rail-lines");
+const transportLegend = document.getElementById("transport-legend");
+const transportRoadPart = document.getElementById("transport-road-part");
+const transportRailPart = document.getElementById("transport-rail-part");
+function refreshTransportLegend() {
+  if (!transportLegend) return;
+  if (transportRoadPart) transportRoadPart.hidden = !state.roadShown;
+  if (transportRailPart) transportRailPart.hidden = !state.railShown;
+  transportLegend.hidden = !(state.roadShown || state.railShown);
+}
+if (roadToggle) {
+  roadToggle.checked = state.roadShown;
+  roadToggle.addEventListener("change", () => {
+    state.roadShown = roadToggle.checked;
+    writeRoadShown(storage, state.roadShown);
+    refreshTransportLegend();
+    redraw();
+  });
+}
+if (railToggle) {
+  railToggle.checked = state.railShown;
+  railToggle.addEventListener("change", () => {
+    state.railShown = railToggle.checked;
+    writeRailShown(storage, state.railShown);
+    refreshTransportLegend();
+    redraw();
+  });
+}
+refreshTransportLegend();
 
 // 棒と塗り分けの切り替え（UI-79）。選んだ表し方は覚え、次に開いたときも使う
 if (barsToggle) {

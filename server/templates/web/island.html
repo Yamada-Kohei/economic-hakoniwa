@@ -72,6 +72,10 @@
       <label><input type="checkbox" id="map-ships-merchant"> {% translate "港の商船" %}</label>
       <label><input type="checkbox" id="map-ships-fleet"> {% translate "母港の艦隊" %}</label>
       <span id="ships-legend" class="hint" hidden>{% translate "港や軍港の近くの海に停泊中の船です。" %}<span id="ships-merchant-part"><span class="ship-swatch merchant"></span> {% translate "停泊中の商船（推計）" %}<span id="ships-merchant-total">0</span>{% translate "隻／地図に" %}<span id="ships-merchant-placed">0</span>{% translate "隻" %}</span>　<span id="ships-fleet-part"><span class="ship-swatch fleet"></span> {% translate "艦隊（母港に繋留中）" %}</span> <span id="ships-omit-note" hidden>{% translate "空きマスが足りない船は省略" %}</span></span>
+      {# 道路・鉄道の線（案2）の表示の切り替え。出すかどうかはブラウザに覚える #}
+      <label><input type="checkbox" id="map-road-lines"> {% translate "道路の線" %}</label>
+      <label><input type="checkbox" id="map-rail-lines"> {% translate "鉄道の線" %}</label>
+      <span id="transport-legend" class="hint" hidden><span id="transport-road-part"><span class="road-swatch"></span> {% translate "道路" %}</span> <span id="transport-rail-part"><span class="rail-swatch"></span> {% translate "鉄道" %}</span> {% translate "線は整備したマスの並びで、太さは整備度です。つながっていないマスは短い線だけになります" %}</span>
       {% if mine %}
       {# 前のターンから変わったマスの印（案3 の静止版）。出すかどうかはブラウザに覚える #}
       <label><input type="checkbox" id="map-changes"> {% translate "変わったマス" %}</label>

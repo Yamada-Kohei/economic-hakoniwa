@@ -15,7 +15,9 @@ import { drawSprite } from "./sprites.js";
  *          sprites（sprites.js の loadSprites が返す絵。ないものは色の箱で描く）、
  *          flag（その国の旗の画像 { img, w, h }。sprites.js の loadFlag が返す。
  *                あれば首都のマスに小さく立てる）、
- *          ships（停泊中の船の置き場所。ships.js の placeShips が返す "x,y" → 船の並び）
+ *          ships（停泊中の船の置き場所。ships.js の placeShips が返す "x,y" → 船の並び）、
+ *          transport（道路・鉄道の線の引き方。roads.js の transportSegments が返す
+ *                     種類 → マス番号 → { level, links, stub } の Map）
  */
 export function drawIsland(ctx, map, defs, view, options = {}) {
   const theme = defs.theme;
@@ -63,6 +65,12 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       // 区域の指定（工業団地・オフィス街・商業地）: まだ何も建っていないマスに柵と看板（docs/map-art.md）
       if (!f && ZONE_LOTS.has(map.zone?.[i])) drawOverlay(ctx, sprites.get(`overlay/zone_${map.zone[i]}`), px, top, theme);
       if (map.power_line?.[i] && !facilityAt.has(i)) drawPowerLine(ctx, map, x, y, px, top, theme, facilityAt);
+      if (options.transport && !facilityAt.has(i)) {
+        for (const [kind, cells] of options.transport) {
+          const entry = cells.get(i);
+          if (entry) drawTransportLine(ctx, kind, entry, px, top, theme);
+        }
+      }
       const shipsHere = options.ships?.get(`${x},${y}`);
       if (shipsHere) drawShips(ctx, shipsHere, px, top, theme, sprites);
       // 陣地（塹壕）: 奥の2辺を施設・住宅より先に、手前の2辺をあとに描く（docs/map-art.md）
@@ -510,6 +518,60 @@ function drawPowerLine(ctx, map, x, y, px, top, theme, facilityAt) {
     ctx.fillStyle = theme.power_line;
     ctx.fillRect(cx - 1.5, cy - 1.5, 3, 3);
   }
+}
+
+/** 道路・鉄道の線（案2）: 引き方は roads.js の transportSegments が決めた entry で描く。
+ * つながりの記録が無いデータなので破線にし、太さと濃さは整備度で変える。
+ * 鉄道は横木（線に直交する短い線）を足して道路と見分ける。 */
+function drawTransportLine(ctx, kind, entry, px, top, theme) {
+  const hw = theme.tile_width / 2;
+  const hh = theme.tile_height / 2;
+  const cx = px;
+  const cy = top + hh;
+  const rail = kind === "rail";
+  const segs = [];
+  if (entry.stub) {
+    // つなぐ隣が無いマスは、マスの中に短い線だけ（x 方向の軸に沿わせる）
+    segs.push([cx - hw * 0.35, cy - hh * 0.35, cx + hw * 0.35, cy + hh * 0.35]);
+  } else {
+    for (const [dx, dy] of entry.links) {
+      // x が増えると右下、y が増えると左下（送電線と同じ式でマスの縁の真ん中まで）
+      segs.push([cx, cy, cx + (dx - dy) * hw * 0.5, cy + (dx + dy) * hh * 0.5]);
+    }
+  }
+  ctx.save();
+  ctx.strokeStyle = rail ? theme.rail_line : theme.road_line;
+  ctx.globalAlpha = 0.45 + 0.55 * (entry.level / 100);
+  ctx.lineWidth = 1 + (entry.level / 100) * 2;
+  ctx.lineCap = "round";
+  ctx.setLineDash([5, 4]);
+  ctx.beginPath();
+  for (const [x1, y1, x2, y2] of segs) {
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+  }
+  ctx.stroke();
+  if (rail) {
+    // 横木: 線の途中に、線と直交する短い線を 2 本（破線にはしない）
+    ctx.setLineDash([]);
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for (const [x1, y1, x2, y2] of segs) {
+      const vx = x2 - x1;
+      const vy = y2 - y1;
+      const len = Math.hypot(vx, vy) || 1;
+      const nx = (-vy / len) * 3.5;
+      const ny = (vx / len) * 3.5;
+      for (const t of [0.35, 0.7]) {
+        const mx = x1 + vx * t;
+        const my = y1 + vy * t;
+        ctx.moveTo(mx - nx, my - ny);
+        ctx.lineTo(mx + nx, my + ny);
+      }
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawHatch(ctx, px, top, theme) {

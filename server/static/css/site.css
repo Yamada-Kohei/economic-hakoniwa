@@ -261,6 +261,10 @@ pre.prompt { white-space: pre-wrap; overflow-wrap: anywhere; }
 .ship-swatch { display: inline-block; width: 16px; height: 10px; vertical-align: middle; }
 .ship-swatch.merchant { background: #9c4a2f; }
 .ship-swatch.fleet { background: #7e8a94; clip-path: polygon(0 50%, 30% 0, 100% 50%, 30% 100%); }
+/* 道路・鉄道の線の凡例（案2）: どちらも破線で、鉄道は下に横木の刻みを足す */
+.road-swatch, .rail-swatch { display: inline-block; width: 18px; vertical-align: middle; }
+.road-swatch { border-top: 3px dashed #8a6d4b; }
+.rail-swatch { height: 6px; border-top: 2px dashed #3d4852; background: repeating-linear-gradient(90deg, #3d4852 0 2px, transparent 2px 6px); background-size: 100% 3px; background-position: 0 4px; background-repeat: repeat-x; }
 
 /* 統計の画面 */
 .stat-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 12px 0; }
