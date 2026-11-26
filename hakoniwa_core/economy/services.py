@@ -78,6 +78,22 @@ def unit_price(config: GameConfig, wage: float) -> int:
     return max(1, round_money(wage / settings(config)["per_worker"] * markup + 0.5))
 
 
+def cost_floor(config: GameConfig, wage: int) -> int:
+    """サービスの売り手の希望価格の下限（下書き。game.yaml の services.cost_floor、既定は切）。
+
+    サービスの変動費は賃金だけだが、商業・サービス業は作り方（レシピ）を持たないので、
+    ほかの施設の変動費の下限（economy/prices.py の unit_floor）は産出が無くて 0 になり、
+    売り手に下限が付いてこなかった。切り替えが入のときだけ、変動費そのもの
+    （賃金 ÷ 1人の量、上乗せなし）を下限にする。前の下書き（原価＋1割、unit_price と
+    同じ物差し）は、値段が上がって約定しない量が増え、店の儲けを悪くした
+    （掲示板 #6007・#6009 の分解）ので、上乗せを置かない形に作り直した。
+    切のときと、賃金の記録が無いときは 0（下限なし。今までどおり）。
+    """
+    if wage <= 0 or not settings(config).get("cost_floor"):
+        return 0
+    return max(1, round_money(wage / settings(config)["per_worker"] + 0.5))
+
+
 def prepare(island: IslandState, defs: Defs, config: GameConfig) -> Facility | None:
     """お金の経済の島に、まだなければ商業・サービス業を置く（建国したばかりの島も、前のフェーズ
     から続く島も、移し替えの段で1度だけ）。置いたときは、サービスの値段を今の平均賃金から決め直す
