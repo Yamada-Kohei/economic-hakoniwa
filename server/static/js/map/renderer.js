@@ -68,7 +68,8 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       // 陣地（塹壕）: 奥の2辺を施設・住宅より先に、手前の2辺をあとに描く（docs/map-art.md）
       const trench = map.trench?.[i];
       if (trench) drawOverlay(ctx, sprites.get("overlay/trench_back"), px, top, theme);
-      if (f) drawFacility(ctx, f, map, defs, px, top, theme, sprites, options.flag);
+      const changeKind = options.changeMarks?.get(`${x},${y}`);
+      if (f) drawFacility(ctx, f, map, defs, px, top, theme, sprites, options.flag, changeKind === "decline");
       // 首都のマスに建物がないときは、地面に直接旗を立てる
       if (!f && options.flag && map.capital && map.capital[0] === x && map.capital[1] === y) {
         drawCapitalFlag(ctx, options.flag, px, top + theme.tile_height / 2, theme);
@@ -85,7 +86,6 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
         else outlineTop(ctx, px, top, theme, "#c34b38");
       }
       if (unitsAt.has(i)) drawUnits(ctx, unitsAt.get(i), px, top, theme, sprites);
-      const changeKind = options.changeMarks?.get(`${x},${y}`);
       if (changeKind) drawChangeMark(ctx, changeKind, px, top, theme);
       if (options.marked?.has(`${x},${y}`)) outlineTop(ctx, px, top, theme, "#ff5722");
       if (options.selected && options.selected.x === x && options.selected.y === y) {
@@ -326,12 +326,14 @@ function coastalSprite(f, defs, map, name, sprites) {
 }
 
 /** 施設: 絵があれば絵、なければ色付きの箱。住宅の高さは住宅地の段階、工事中は枠だけ。
- * 首都の建物が建っていて旗の画像（flag）があれば、建物の上に旗を立てる。 */
-function drawFacility(ctx, f, map, defs, px, ground, theme, sprites, flag) {
+ * 首都の建物が建っていて旗の画像（flag）があれば、建物の上に旗を立てる。
+ * declined（衰退＝住宅の段階が下がったマス。案10 の第二段）は、絵そのものを
+ * 暗く・くすませて描く。新しい絵は描かず、元の絵に効果をかけた写しを使う。 */
+function drawFacility(ctx, f, map, defs, px, ground, theme, sprites, flag, declined = false) {
   const isCapital = map.capital && map.capital[0] === f.x && map.capital[1] === f.y;
   const sprite = facilitySprite(f, defs, map, isCapital, sprites, theme);
   if (sprite) {
-    drawSprite(ctx, sprite, px, ground + theme.tile_height);
+    drawSprite(ctx, declined ? darkenedSprite(sprite) : sprite, px, ground + theme.tile_height);
     if (f.built) drawStopped(ctx, f, defs, px, ground, theme.tile_height / 2);
     if (isCapital && f.built && flag) {
       // 絵の上の余白ぶん、竿の下端を屋根に少し沈める
@@ -367,9 +369,9 @@ function drawFacility(ctx, f, map, defs, px, ground, theme, sprites, flag) {
     ctx.setLineDash([]);
     return;
   }
-  const color = style.color;
+  const color = declined ? shade(style.color, DECLINE_BOX_SHADE) : style.color;
   sides(ctx, px, top, base, hw, hh, shade(color, 0.78), shade(color, 0.62));
-  ctx.fillStyle = isCapital ? theme.capital_roof : color;
+  ctx.fillStyle = isCapital && !declined ? theme.capital_roof : color;
   diamondPath(ctx, px, top, hw, hh);
   ctx.fill();
   drawStopped(ctx, f, defs, px, top, hh);
@@ -413,6 +415,36 @@ export function drawCapitalFlag(ctx, flag, px, base, theme) {
   ctx.lineTo(px, poleTop);
   ctx.stroke();
   ctx.restore();
+}
+
+// 衰退した家の暗さ（案10 の第二段。本人の決め: 新しい絵は描かず、既存の絵に
+// そのマスだけ効果をかける）。元の絵にくすんだ暗色を重ねたときの色と濃さで、
+// 明るい壁は元の明るさの半分ほどまで沈み、色味もくすむ。強さはこの値で決める。
+export const DECLINE_DARKEN = "rgba(34, 29, 48, 0.52)";
+// 絵のないマス（色の箱）で衰退を描くときの暗さ（元の色に掛ける割合）
+export const DECLINE_BOX_SHADE = 0.55;
+
+const darkenedSprites = new WeakMap();
+
+/**
+ * 絵を暗く・くすませた写し（衰退したマス用）。元の絵は壊さず、写しは絵ごとに
+ * 1 回だけ作って使い回す。暗色の重ねは source-atop（絵のある所にだけ重なる）で、
+ * 透明な所は透明なままにする。
+ */
+export function darkenedSprite(sprite) {
+  let dark = darkenedSprites.get(sprite);
+  if (dark) return dark;
+  const canvas = document.createElement("canvas");
+  canvas.width = sprite.img.naturalWidth || sprite.img.width;
+  canvas.height = sprite.img.naturalHeight || sprite.img.height;
+  const c = canvas.getContext("2d");
+  c.drawImage(sprite.img, 0, 0);
+  c.globalCompositeOperation = "source-atop";
+  c.fillStyle = DECLINE_DARKEN;
+  c.fillRect(0, 0, canvas.width, canvas.height);
+  dark = { img: canvas, w: sprite.w, h: sprite.h, ax: sprite.ax, ay: sprite.ay };
+  darkenedSprites.set(sprite, dark);
+  return dark;
 }
 
 /**
