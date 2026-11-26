@@ -354,6 +354,8 @@ table.ranking-table td:nth-child(3), table.titles-table th, table.titles-table t
 table.facilities .facility-hint { display: block; max-width: 30em; white-space: normal; }
 /* 生産調整中・生産停止中のわけ（W-250）: 地図の窓・施設の一覧・帳簿 */
 table.facilities .slowdown-reason { display: block; max-width: 30em; white-space: normal; }
+/* 作付けの切り替えの文（#34 の 5）: 状態欄で折り返し、表が横に伸びないようにする */
+table.facilities .transition-note { display: block; max-width: 30em; white-space: normal; }
 .slowdown { margin: 8px 0; }
 .slowdown h4 { margin: 6px 0 4px; }
 .slowdown-reasons { margin: 0 0 4px; padding-left: 1.2em; }

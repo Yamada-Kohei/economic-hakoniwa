@@ -34,7 +34,7 @@ def test_seven_entries_and_tabs(client, world):
         f"/islands/{island.id}/home/": ("ホーム", None),
         f"/islands/{island.id}/": ("地図", None),
         f"/islands/{island.id}/chain/": ("施設", "産業の鎖"),
-        f"/islands/{island.id}/market/": ("資源・市場", None),
+        f"/islands/{island.id}/market/": ("資源・市場", None),  # この島は計画の画面が無い体制
         f"/islands/{island.id}/fx/": ("貿易", "為替"),
         f"/islands/{island.id}/finance/": ("経済", "金融"),
         f"/islands/{island.id}/military/": ("国", "軍"),
@@ -81,3 +81,6 @@ def test_nav_skips_plan_and_diary_when_absent():
     groups = dict(island_nav.GROUPS)
     assert [g for g, _ in island_nav.GROUPS] == ENTRIES
     assert groups["国"][0][0] == "diplomacy"
+    # 計画／値段の規制は資源・市場の下（#34 の 5）
+    assert [key for key, _, _ in groups["資源・市場"]] == ["market", "plan"]
+    assert "plan" not in [key for key, _, _ in groups["国"]]

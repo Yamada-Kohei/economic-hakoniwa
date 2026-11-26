@@ -2106,11 +2106,35 @@ def admin_power(island: m.Island, stats: dict[str, float]) -> int:
     return politics.adjust_admin(island_from_row(island), get_game().defs, config, low, low, high)
 
 
-def summary(stats: dict[str, float], currency: str = "") -> list[dict[str, Any]]:
-    """国勢の表の行。currency はお金の額に付ける通貨記号。"""
+# ホームの国勢に出す今月の数字（#34 の 5）。全指標の一覧は経済の画面の「国勢の一覧」に出す
+HOME_SUMMARY_KEYS = (
+    "population",
+    "labor",
+    "employed",
+    "subsistence",
+    "unemployment",
+    "happiness",
+    "food.ratio",
+    "power.shortage",
+    "gdp",
+    "cpi",
+    "wage.average",
+    "treasury",
+    "debt",
+    "admin_power",
+    "facilities",
+)
+_SUMMARY_BY_KEY = {key: (key, label, unit) for key, label, unit in SUMMARY_STATS}
+HOME_SUMMARY_STATS = [_SUMMARY_BY_KEY[key] for key in HOME_SUMMARY_KEYS]
+
+
+def summary(
+    stats: dict[str, float], currency: str = "", rows: list | None = None
+) -> list[dict[str, Any]]:
+    """国勢の表の行。currency はお金の額に付ける通貨記号。rows は出す行（既定は全行）。"""
     return [
         {"key": key, "label": label, "text": stat_text(key, stats[key], unit, currency)}
-        for key, label, unit in SUMMARY_STATS
+        for key, label, unit in (SUMMARY_STATS if rows is None else rows)
         if key in stats
     ]
 

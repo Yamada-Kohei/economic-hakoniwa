@@ -25,19 +25,24 @@
 {% if mine %}<p class="home-orders"><a href="{% url 'island_orders' island.id %}">{% translate "命令の列を見る" %}</a></p>{% endif %}
 <div class="island-stats">
   <section class="panel">
-    <h2>{% translate "国勢" %}</h2>
+    <h2>{% translate "国勢" %}{% if stats_turn is not None %} <small class="heading-date">{{ stats_turn|turn_date }}</small>{% endif %}</h2>
     {% include "web/stat_definitions.html" %}
-    {% if summary %}
-      <table class="info">
-        {% for row in summary %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
-        {% if trade %}<tr><th>{% translate "貿易（1ターン）" %}</th><td>{{ trade.text }} <a href="{% url 'island_trade' island.id %}">{% translate "貿易の画面へ" %}</a></td></tr>{% endif %}
-        {% if strengths.strengths %}<tr><th>{% translate "得意産業" %}</th><td>{% for x in strengths.strengths %}{{ x.name }}{% if x.rank %} <small class="muted">{% blocktranslate with r=x.rank %}世界 {{ r }} 位{% endblocktranslate %}</small>{% endif %}{% if not forloop.last %}・{% endif %}{% endfor %}</td></tr>{% endif %}
-        {% if strengths.titles %}<tr><th>{% translate "称号" %}</th><td>{{ strengths.titles|join:"・" }}</td></tr>{% endif %}
-        {% if awards %}<tr><th>{% translate "賞" %}</th><td>{% for a in awards %}{% include "web/award_badge.html" with name=a.name detail=a.detail %}{% endfor %}</td></tr>{% endif %}
-      </table>
-    {% else %}
-      <p class="muted">{% translate "未集計です。最初のターンの更新後に表示されます。" %}</p>
-    {% endif %}
+    <table class="info">
+      <tr><th>{% translate "持ち主" %}</th><td>{% if island.owner %}{{ island.owner.username }}{% else %}{% translate "持ち主なし" %}{% endif %}{% if own_island and not mine and island.owner %} <a href="{% url 'letter_new' %}?to={{ island.id }}">{% translate "この国に公電を送る" %}</a>{% endif %}</td></tr>
+      {% if capital_name %}<tr><th>{% translate "首都" %}</th><td>{{ capital_name }}</td></tr>{% endif %}
+      {% for r in regime %}<tr><th>{{ r.axis }}</th><td>{{ r.name }}</td></tr>{% endfor %}
+      {% if resources %}<tr><th>{% translate "地下資源" %}</th><td>{{ resources|join:"、" }}</td></tr>{% endif %}
+      {% if exploration.current %}<tr><th>{% translate "探鉱" %}</th><td>{% blocktranslate with good=exploration.current.name percent=exploration.current.percent %}{{ good }}を探鉱中（{{ percent }}%）{% endblocktranslate %}</td></tr>{% endif %}
+      {% if exploration.none %}<tr><th>{% translate "探鉱で見つからなかった資源" %}</th><td>{{ exploration.none|join:"、" }}</td></tr>{% endif %}
+      {% if climate %}<tr><th>{% translate "気候" %}</th><td>{{ climate }}</td></tr>{% endif %}
+      {% for row in summary %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
+      {% if trade %}<tr><th>{% translate "貿易（1ターン）" %}</th><td>{{ trade.text }} <a href="{% url 'island_trade' island.id %}">{% translate "貿易の画面へ" %}</a></td></tr>{% endif %}
+      {% if strengths.strengths %}<tr><th>{% translate "得意産業" %}</th><td>{% for x in strengths.strengths %}{{ x.name }}{% if x.rank %} <small class="muted">{% blocktranslate with r=x.rank %}世界 {{ r }} 位{% endblocktranslate %}</small>{% endif %}{% if not forloop.last %}・{% endif %}{% endfor %}</td></tr>{% endif %}
+      {% if strengths.titles %}<tr><th>{% translate "称号" %}</th><td>{{ strengths.titles|join:"・" }}</td></tr>{% endif %}
+      {% if awards %}<tr><th>{% translate "賞" %}</th><td>{% for a in awards %}{% include "web/award_badge.html" with name=a.name detail=a.detail %}{% endfor %}</td></tr>{% endif %}
+    </table>
+    {% if not summary %}<p class="muted">{% translate "未集計です。最初のターンの更新後に表示されます。" %}</p>{% endif %}
+    <p class="hint">{% translate "すべての指標は" %} <a href="{% url 'island_economy' island.id %}#summary">{% translate "経済の画面の「国勢の一覧」" %}</a> {% translate "にあります。" %}</p>
   </section>
   <section class="panel">
     <h2>{% translate "資源（国の倉庫の在庫・当ターンの生産量と市場）" %}</h2>

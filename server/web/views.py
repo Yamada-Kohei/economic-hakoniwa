@@ -109,7 +109,8 @@ def _island_context(request, island_id: int, page: str) -> dict:
         "mine": mine,
         "ai": keys.is_ai_island(island),
         "stats_turn": turn,
-        "summary": display.summary(stats, currency),
+        # ホームの国勢は今月の数字だけ（#34 の 5。全行は経済の画面の「国勢の一覧」）
+        "summary": display.summary(stats, currency, display.HOME_SUMMARY_STATS),
         # 気をつけたほうがよいこと（国の要約の alerts と同じ文。飢えている層とそのわけも）
         "alerts": alerts,
         # 建国から1年、持ち主に出す「次にすること」（国の要約の next_steps と同じ）

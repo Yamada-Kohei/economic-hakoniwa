@@ -65,7 +65,8 @@ def test_politics_forms_follow_the_regime(client, world):
 
 def test_plan_page_for_a_planned_economy(client, world):
     island = _own(client, "planned")
-    nav = client.get(f"/islands/{island.id}/diplomacy/").content.decode()  # 国の入口のタブ
+    # 資源・市場の入口のタブ（#34 の 5 で国から移した）
+    nav = client.get(f"/islands/{island.id}/market/").content.decode()
     assert f'href="/islands/{island.id}/plan/"' in nav and ">計画<" in nav
     data = client.get(f"/api/islands/{island.id}/plan").json()
     assert data["planned"] and data["rows"]

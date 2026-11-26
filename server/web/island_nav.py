@@ -19,7 +19,11 @@ GROUPS: list[tuple[str, list[tuple[str, str, str | None]]]] = [
         "施設",
         [("facilities", "island_facilities", "施設の一覧"), ("chain", "island_chain", "産業の鎖")],
     ),
-    ("資源・市場", [("market", "island_market", "市場")]),
+    (
+        "資源・市場",
+        # 計画／値段の規制は値段と市場の話なので、国でなくここに置く（#34 の 5）
+        [("market", "island_market", "市場"), ("plan", "island_plan", None)],
+    ),
     (
         "貿易",
         [
@@ -45,7 +49,6 @@ GROUPS: list[tuple[str, list[tuple[str, str, str | None]]]] = [
             ("diplomacy", "island_diplomacy", "外交の状態"),
             ("military", "island_military", "軍"),
             ("politics", "island_politics", "政治"),
-            ("plan", "island_plan", None),
             ("country", "island_country", "国の紹介"),
             ("diary", "diary", "日誌"),
             ("log", "turn_log", "ターンログ"),
