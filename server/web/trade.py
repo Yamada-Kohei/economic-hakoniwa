@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 from django.db.models import Sum
+from django.utils.translation import gettext
 
 from hakoniwa_core import ledger
 from hakoniwa_core.economy import is_stopped
@@ -524,7 +525,9 @@ def _partner_route_parts(name: str) -> tuple[str, str, str]:
     試験で気づけるようにする（#6188）。"""
     parts = name.split(".")
     if len(parts) != 4:
-        raise ValueError(f"partner_route の統計名の形が違います: {name!r}")
+        raise ValueError(
+            gettext("partner_route の統計名の形が違います: {name}").format(name=repr(name))
+        )
     return parts[1], parts[2], parts[3]
 
 
