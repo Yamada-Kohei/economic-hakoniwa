@@ -245,6 +245,9 @@ sprites:
   facility/missile_plant@s2: sprites/facility/missile_plant@s2.svg
   facility/missile_plant@s3: sprites/facility/missile_plant@s3.svg
   facility/missile_plant@s4: sprites/facility/missile_plant@s4.svg
+  facility/police@s2: sprites/facility/police@s2.svg
+  facility/police@s3: sprites/facility/police@s3.svg
+  facility/police@s4: sprites/facility/police@s4.svg
   facility/refinery@s2: sprites/facility/refinery@s2.svg
   facility/refinery@s3: sprites/facility/refinery@s3.svg
   facility/refinery@s4: sprites/facility/refinery@s4.svg
