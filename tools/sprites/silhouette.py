@@ -2389,8 +2389,9 @@ for _name, _shape in (
 # --- 軍事のサンプル（第1部。theme.yaml への登録は施設の実装時に行う）----------------------
 
 
-def radar_dish(uc: float, vc: float, z: float) -> Prim:
-    """斜めに傾いた皿。楕円の縁と浅い内面を、平らな多角形だけで描く。"""
+def radar_dish(uc: float, vc: float, z: float, k: float = 1.0) -> Prim:
+    """斜めに傾いた皿。楕円の縁と浅い内面を、平らな多角形だけで描く。
+    k は皿の大きさの倍率（建て増しの段で大きな皿を描くときに使う）。"""
     cx, cy = iso(uc, vc, z)
     angle = math.radians(-32)
 
@@ -2404,12 +2405,12 @@ def radar_dish(uc: float, vc: float, z: float) -> Prim:
         ]
 
     return Prim(
-        (uc - 0.12, vc - 0.12, uc + 0.12, vc + 0.12),
+        (uc - 0.12 * k, vc - 0.12 * k, uc + 0.12 * k, vc + 0.12 * k),
         z,
         [
-            Face("right", ROOF_STEEL, ellipse(11, 6, 1, 1.6)),
-            Face("top", METAL, ellipse(11, 6, 0, 0)),
-            Face("left", CONCRETE, ellipse(8.6, 4.3, -0.5, -0.3)),
+            Face("right", ROOF_STEEL, ellipse(11 * k, 6 * k, 1 * k, 1.6 * k)),
+            Face("top", METAL, ellipse(11 * k, 6 * k, 0, 0)),
+            Face("left", CONCRETE, ellipse(8.6 * k, 4.3 * k, -0.5 * k, -0.3 * k)),
         ],
     )
 
@@ -4673,6 +4674,121 @@ SHAPES.update(
 )
 
 
+def radar_tiers(t):
+    """レーダーの建て増し（FM-47）。名前のままの絵の姿（岩の台に交差した梁の塔と頂部の皿）を
+    保ちながら、段が上がるほど皿が大きく数が増え、探知施設としての格が上がって見えるようにする。
+    主役は皿と大型アンテナで、警察署の段 3・4 にある丸屋根（ドーム）とは輪郭で見分ける
+    （掲示板 #5933 の合意）。
+    段 2 は塔が高くなって皿が一回り大きくなり、むちアンテナが 2 本になる。
+    段 3 は皿がさらに大きくなり、塔の脇に小さい皿と、岩の上にアンテナの副マストが増える。
+    段 4 は足元を広げた一番高い塔に一番大きな皿が乗り、両脇に小さい皿が並び、
+    副マストも高くなって横桟が増える。"""
+
+    def tower(top, c0, levels):
+        # 岩の台と土台、交差した梁の塔、頂部の台。top は頂部の台の下端、c0 は脚の下の角。
+        # 交差した梁は高さの段ごとに描く段を分ける（梁どうし・脚・頂部の台と描く順が
+        # 循環しないようにするため）。戻り値は (部品, 皿を描く段) 。
+        c1 = 1 - c0
+
+        def at(c, z):
+            # 高さ z での脚の位置（脚は上へすぼまる）
+            return c + (0.5 + (c - 0.5) * 0.42 - c) * (z - 5) / (top + 1 - 5)
+
+        prims = [
+            crag(0.16, 0.18, 0.84, 0.84, 6, ROCK),
+            box(c0 - 0.02, c0 - 0.02, c1 + 0.02, c1 + 0.02, 3, 2, CONCRETE),
+            *[
+                strut(
+                    (u, v, 5),
+                    (0.5 + (u - 0.5) * 0.42, 0.5 + (v - 0.5) * 0.42, top + 1),
+                    1.4,
+                    IRON,
+                )
+                for u, v in ((c0, c0), (c1, c0), (c1, c1), (c0, c1))
+            ],
+            box(0.41, 0.41, 0.59, 0.59, top, 2, ROOF_STEEL),
+        ]
+        for i, z in enumerate(levels):
+            lo, hi = at(c0, z + 5.5), at(c1, z + 5.5)
+            prims += tiered(
+                2 + i,
+                *[
+                    strut(a, b, 0.8, METAL)
+                    for a, b in (
+                        ((lo, hi, z), (hi - 0.05, hi - 0.05, z + 11)),
+                        ((hi, hi, z), (lo + 0.05, hi - 0.05, z + 11)),
+                        ((hi, lo, z), (hi - 0.05, hi - 0.05, z + 11)),
+                        ((hi, hi, z), (hi - 0.05, lo + 0.05, z + 11)),
+                    )
+                ],
+            )
+        return prims, 2 + len(levels)
+
+    if t == 2:
+        prims, dt = tower(32, 0.34, [5, 19])
+        return [
+            *prims,
+            # マストは皿と一緒に、梁よりあとの段に描く
+            *tiered(
+                dt,
+                strut((0.5, 0.5, 34), (0.5, 0.5, 38), 2, IRON),
+                radar_dish(0.5, 0.5, 40, 1.3),
+            ),
+            *tiered(
+                dt + 1,
+                strut((0.5, 0.5, 40), (0.38, 0.52, 44), 0.9, IRON),
+                strut((0.5, 0.5, 40), (0.62, 0.48, 44), 0.9, IRON),
+            ),
+        ]
+    if t == 3:
+        prims, dt = tower(36, 0.34, [5, 21])
+        return [
+            *prims,
+            # 岩の上のアンテナの副マスト（横桟 2 本）
+            strut((0.78, 0.30, 2), (0.78, 0.30, 24), 1.6, IRON),
+            box(0.71, 0.294, 0.85, 0.306, 17, 0.7, METAL),
+            box(0.73, 0.294, 0.83, 0.306, 21, 0.7, METAL),
+            cylinder(0.78, 0.30, 0.011, 24, 1.4, c=RED),
+            # マストと小さい皿の腕は、皿と一緒に梁よりあとの段に描く
+            *tiered(
+                dt,
+                strut((0.42, 0.54, 34), (0.24, 0.60, 35), 1.2, IRON),
+                strut((0.5, 0.5, 38), (0.5, 0.5, 43), 2.2, IRON),
+                radar_dish(0.20, 0.62, 36, 0.75),
+                radar_dish(0.5, 0.5, 45, 1.55),
+            ),
+            *tiered(dt + 1, strut((0.5, 0.5, 45), (0.38, 0.52, 49), 0.9, IRON)),
+        ]
+    # 段 4: 足元を広げた一番高い塔に一番大きな皿、両脇に小さい皿
+    prims, dt = tower(40, 0.30, [5, 17, 29])
+    return [
+        *prims,
+        # 岩の上のアンテナの副マスト（段 3 より高く、横桟 3 本）
+        strut((0.78, 0.30, 2), (0.78, 0.30, 29), 1.8, IRON),
+        box(0.70, 0.294, 0.86, 0.306, 19, 0.7, METAL),
+        box(0.72, 0.294, 0.84, 0.306, 23.5, 0.7, METAL),
+        box(0.74, 0.294, 0.82, 0.306, 27.5, 0.7, METAL),
+        cylinder(0.78, 0.30, 0.011, 29, 1.6, c=RED),
+        # マストと小さい皿の腕は、皿と一緒に梁よりあとの段に描く
+        *tiered(
+            dt,
+            strut((0.42, 0.55, 34), (0.27, 0.59, 34.5), 1.2, IRON),
+            strut((0.55, 0.42, 34), (0.59, 0.27, 34.5), 1.2, IRON),
+            strut((0.5, 0.5, 42), (0.5, 0.5, 48), 2.4, IRON),
+            radar_dish(0.24, 0.61, 35, 0.7),
+            radar_dish(0.61, 0.24, 35, 0.7),
+            radar_dish(0.5, 0.5, 50, 1.8),
+        ),
+        *tiered(
+            dt + 1,
+            strut((0.5, 0.5, 50), (0.36, 0.54, 54), 0.9, IRON),
+            strut((0.5, 0.5, 50), (0.64, 0.46, 54), 0.9, IRON),
+            cylinder(0.36, 0.54, 0.011, 54, 1.4, c=RED),
+            cylinder(0.64, 0.46, 0.011, 54, 1.4, c=RED),
+        ),
+    ]
+
+
 SIZE_TIERS = {
     "steel_mill": steel_mill,
     "machinery_plant": machinery_plant,
@@ -4689,6 +4805,7 @@ SIZE_TIERS = {
     "copper_smelter": copper_smelter,
     "electronics_plant": electronics_plant,
     "missile_plant": missile_plant,
+    "radar": radar_tiers,
 }
 for _name, _tiers in SIZE_TIERS.items():
     for _t in (2, 3, 4):
