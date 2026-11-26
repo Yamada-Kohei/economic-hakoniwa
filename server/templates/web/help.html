@@ -39,6 +39,7 @@
     <li><a href="#hidden-facilities">{% translate "隠した施設" %}</a></li>
     <li><a href="#war-refugees">{% translate "戦争の難民" %}</a></li>
     <li><a href="#country-pages">{% translate "国のページ・記念碑・賞" %}</a></li>
+    <li><a href="#map-history">{% translate "地図の記録" %}</a></li>
     <li><a href="#settlements">{% translate "町の段階" %}</a></li>
     <li><a href="#orders">{% translate "命令と行政力" %}</a></li>
     <li><a href="#units">{% translate "資源の単位" %}</a></li>
@@ -848,6 +849,19 @@
     <tr><th>{% translate "検証の碑" %}</th><td>{% blocktranslate with turns=awards.verification_turns %}建国から {{ turns }} ターン以上{% endblocktranslate %}</td></tr>
   </table>
   </div>
+</section>
+
+<section class="panel" id="map-history">
+  <h2>{% translate "地図の記録" %}</h2>
+  <p>{% translate "自分の島の地図には、過去の姿と、大きな出来事の跡が残ります。ここに出てくる切り替えは、自分の島の地図の画面だけにあります。" %}</p>
+  <dl class="rules">
+    <dt>{% translate "地図の変遷と変化レンズ" %}</dt>
+    <dd>{% translate "節目のターン（建国記念日・人口やGDPの節目）に、そのときの地形と施設の見た目が写しとして残ります（最大16枚、いちばん古い1枚は落としません）。地図の画面の「地図の変遷」で写しを選ぶと、同じ位置・大きさのまま昔の地図を見られます。「変化レンズ」を入れると、選んだ写しと今の違いが今の地図に重なります（▲は新しくできた物、▼は無くなった・衰えた物、◇は姿が変わった物）。" %}</dd>
+    <dt>{% translate "記憶の刻印" %}</dt>
+    <dd>{% translate "位置のある大きな出来事（災害・ミサイル・反乱・暴動・占領）は、そのマスに刻印として残ります（最大120件）。切り替え「記憶の刻印」を入れると、小さな石の印で出ます（災害の跡と、戦いや騒ぎの跡で色が違います）。自作の記念碑の絵も、島の地図に出ます。" %}</dd>
+    <dt>{% translate "衰退の印" %}</dt>
+    <dd>{% translate "「変わったマス」の表示を出すと、前のターンから住宅の段階が下がったマスには▼の印（紫の枠）が付き、そのマスの家は暗くくすんで描かれます。段階が下がった家を見つけるときの目印です。" %}</dd>
+  </dl>
 </section>
 
 <section class="panel" id="settlements">
