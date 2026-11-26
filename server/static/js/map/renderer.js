@@ -1,6 +1,7 @@
 // 描画: 奥のマスから手前のマスへ（x + y の小さい順に）描き、高いものが奥を自然に隠すようにする。
 // 重ね表示の棒（UI-79）は島を描いたあとにもう一度奥から手前へ描き、建物に隠れず、半透明で奥の棒も透けて見える。
 
+import { detailLevel, isSmokeSource, phaseFor, SMOKE_CYCLE, SMOKE_RGB, smokePuffs } from "./anim.js";
 import { barPixels, barsBackToFront, drawsBars, solidColor } from "./overlays/bars.js";
 import { CHANGE_COLORS } from "./changes.js";
 import { lift, tileToWorld } from "./projection.js";
@@ -14,7 +15,10 @@ import { drawSprite } from "./sprites.js";
  *          overlayMode（"bars" で量のある重ね表示を棒にする。ほかは塗り分け。UI-79）、
  *          sprites（sprites.js の loadSprites が返す絵。ないものは色の箱で描く）、
  *          flag（その国の旗の画像 { img, w, h }。sprites.js の loadFlag が返す。
- *                あれば首都のマスに小さく立てる）
+ *                あれば首都のマスに小さく立てる）、
+ *          smoke（煙を出すか。案1）、animTime（アニメの時刻（秒）。anim.js）、
+ *          light（軽量モード。煙を静止した姿で出す。案47）、
+ *          glow（変化マスの光の強さ 0〜1。初回表示で一度だけ。案3 の動き）
  */
 export function drawIsland(ctx, map, defs, view, options = {}) {
   const theme = defs.theme;
@@ -83,7 +87,9 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       }
       if (unitsAt.has(i)) drawUnits(ctx, unitsAt.get(i), px, top, theme, sprites);
       const changeKind = options.changeMarks?.get(`${x},${y}`);
-      if (changeKind) drawChangeMark(ctx, changeKind, px, top, theme);
+      if (changeKind) {
+        drawChangeMark(ctx, changeKind, px, top, theme, options.glow || 0, detailLevel(view.scale));
+      }
       if (options.marked?.has(`${x},${y}`)) outlineTop(ctx, px, top, theme, "#ff5722");
       if (options.selected && options.selected.x === x && options.selected.y === y) {
         outlineTop(ctx, px, top, theme, "#ffeb3b");
@@ -91,6 +97,7 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
     }
   }
   if (bars) drawBars(ctx, map, defs, options.overlay, options.selected);
+  if (options.smoke) drawSmoke(ctx, map, defs, view, options);
 }
 
 // 棒の透け具合（上面と側面）。側面は黒を重ねて暗くし、角柱に見せる
@@ -392,20 +399,32 @@ export function drawCapitalFlag(ctx, flag, px, base, theme) {
 }
 
 /**
- * 前のターンから変わったマスの印（案3 の静止版）: 種類の色の静止枠と、上の頂点に色丸＋白い記号。
+ * 前のターンから変わったマスの印（案3）: 種類の色の静止枠と、上の頂点に色丸＋白い記号。
  * 記号は 建設=＋、撤去=×、段階=◆。色は changes.js の CHANGE_COLORS（凡例と同じ色）。
  * top はマスの上面の上の頂点。丸は枠の角に重ね、白い縁を付けて建物や地形の絵に埋もれないようにする。
  * 止まった施設の赤い点（マスの真ん中）とは置く場所を分け、重なっても両方読めるようにする。
+ * glow（0〜1、第2波の動き）がある間は、静止枠の外に広がる光の枠を重ねる。
+ * 遠く（detail が "far"）では丸と記号を省き、枠だけにする（案46 のズーム別の詳しさ）。
  */
-function drawChangeMark(ctx, kind, px, top, theme) {
+function drawChangeMark(ctx, kind, px, top, theme, glow = 0, detail = "near") {
   const color = CHANGE_COLORS[kind];
   if (!color) return;
   const hw = theme.tile_width / 2;
   const hh = theme.tile_height / 2;
+  if (glow > 0) {
+    ctx.save();
+    ctx.globalAlpha = glow * 0.55;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    diamondPath(ctx, px, top - glow * hh * 0.5, hw + glow * hw * 0.45, hh + glow * hh * 0.45);
+    ctx.stroke();
+    ctx.restore();
+  }
   ctx.strokeStyle = color;
   ctx.lineWidth = 2.5;
   diamondPath(ctx, px, top, hw, hh);
   ctx.stroke();
+  if (detail === "far") return;
   const r = Math.max(5, hh * 0.42);
   ctx.beginPath();
   ctx.arc(px, top, r, 0, Math.PI * 2);
@@ -442,6 +461,55 @@ function drawChangeMark(ctx, kind, px, top, theme) {
     ctx.fill();
   }
   ctx.restore();
+}
+
+/**
+ * 建物のてっぺんの y（地図の座標）。絵があれば絵の上端、なければ色の箱の上面。
+ * drawFacility の置き方に合わせた近似で、煙の出る位置を決めるためだけに使う。
+ */
+function facilityTopY(f, defs, map, ground, theme, sprites) {
+  const isCapital = map.capital && map.capital[0] === f.x && map.capital[1] === f.y;
+  const sprite = facilitySprite(f, defs, map, isCapital, sprites, theme);
+  if (sprite) return ground + theme.tile_height - sprite.h;
+  const style = theme.facilities?.[f.kind] || theme.facility_fallback;
+  const base = ground + (theme.tile_height / 2) * (1 - 0.8);
+  return base - style.height * theme.facility_unit;
+}
+
+/**
+ * 煙（案1）: 稼働中の工場・火力発電所の煙突から、粒がもくもくと湧き出して
+ * 昇り、広がりながら薄れていく。奥の施設から手前へ描く。粒の決め方は
+ * anim.js（位相・詳しさ）。色は一段濃い灰色（anim.js の SMOKE_RGB）。
+ * 軽量モード（options.light）では時刻を位相ぶんだけ進めて止め、静止した姿にする。
+ */
+function drawSmoke(ctx, map, defs, view, options) {
+  const theme = defs.theme;
+  const sprites = options.sprites || new Map();
+  const detail = detailLevel(view.scale);
+  const n = map.size;
+  const sources = (map.facilities || [])
+    .filter((f) => isSmokeSource(f, defs))
+    .sort((a, b) => a.x + a.y - (b.x + b.y) || a.x - b.x);
+  for (const f of sources) {
+    const i = f.y * n + f.x;
+    const { px, py } = tileToWorld(f.x, f.y, theme);
+    const ground = py - lift(defs.terrain[map.terrain[i]]?.height ?? 0, theme);
+    const topY = facilityTopY(f, defs, map, ground, theme, sprites);
+    const t = options.light ? phaseFor(f.x, f.y) * SMOKE_CYCLE : options.animTime || 0;
+    for (const puff of smokePuffs(f, t, detail)) {
+      const cx = px + puff.dx * theme.tile_width;
+      const cy = topY + puff.dy * theme.tile_height;
+      const r = Math.max(1.5, puff.r * theme.tile_width);
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+      grad.addColorStop(0, `rgba(${SMOKE_RGB}, ${puff.alpha})`);
+      grad.addColorStop(0.5, `rgba(${SMOKE_RGB}, ${puff.alpha * 0.72})`);
+      grad.addColorStop(1, `rgba(${SMOKE_RGB}, 0)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
 }
 
 /** 止まっている施設には赤い印（絵の上にも描く）。top は印を置くひし形の上の頂点。

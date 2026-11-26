@@ -10,9 +10,19 @@
   --border: #6f8fd0;
   --rule: #b7c9f0;  /* 表の行の区切り */
   --head: #c9d9ff;  /* 表の見出しの地 */
+  /* 明暗の共通変数（台帳 P2 の 13 の枠。theme.js が data-theme を付けたときだけ暗に替わる。
+     既定では付けないので、今までの見た目のまま） */
+  --bg-base: #e6f0ff;  /* = --bg */
+  --text-base: #102a6b;  /* = --fg */
+  --line-base: #b7c9f0;  /* = --rule */
+}
+html[data-theme="dark"] {
+  --bg-base: #161c28;
+  --text-base: #dfe6fb;
+  --line-base: #41527a;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg);
+body { margin: 0; background: var(--bg-base); color: var(--text-base);
   font-family: "MS PGothic", "ＭＳ Ｐゴシック", "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif; }
 main { padding: 0 16px 24px; max-width: 1100px; margin: 0 auto; }
 .site-footer { max-width: 1100px; margin: 0 auto; padding: 8px 16px 24px; border-top: 1px solid var(--border); font-size: 0.85em; color: #555; }
@@ -100,7 +110,8 @@ table.market-table tbody tr:nth-child(even) > :first-child { background: var(--p
 .mark-buttons button { margin: 0; }
 .island-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
 .island-stats .panel { margin: 0; }
-.map-tools { margin: 4px 0; }
+.map-tools { margin: 4px 0; padding-bottom: 4px; border-bottom: 1px solid var(--line-base); }
+.smoke-swatch { color: #78909c; font-weight: bold; }
 .capacity-bar { display: block; height: 10px; margin-top: 4px; max-width: 360px; background: #cfe3c4; border: 1px solid #9bb88c; border-radius: 3px; overflow: hidden; }
 .capacity-bar .capacity-busy { display: block; height: 100%; background: var(--accent); }
 .toggle-button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
