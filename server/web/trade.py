@@ -511,16 +511,21 @@ def overview(data: dict[str, Any], stats: dict[str, float], currency: str) -> di
     return out
 
 
-# 貿易の相手ごとの統計の、島でない相手の表示名（#5455）
+# 貿易の相手ごとの統計の、島でない相手の表示名（#5455）。bloc は #5605 より前の記録にだけ
+# 残る（新しい記録では圏の市場の分も実際の相手の国ごとに出る。12 ターンで消える）
 PARTNER_LABELS = {"bloc": "圏の市場（相手は混ざる）", "merchant": "海外の商人"}
+# 経路の表示名（#5605）
+ROUTE_LABELS = {"bloc": "圏の市場", "contract": "二国間契約", "merchant": "海外の商人"}
 
 
 def partner_rows(
     island: m.Island, islands: dict[int, dict[str, Any]], currency: str
 ) -> list[dict[str, Any]]:
     """貿易の相手ごとの輸出・輸入（#5455）: 統計 partner.* を集計ターンと直近 1 年（12 ターン）
-    で足し上げた表。相手は島の番号か、相手が決まらない圏の市場（bloc）と海外の商人（merchant）。
-    主な品目は直近 1 年の額の大きい順に 3 つまで。記録が無い相手は行に出ない。"""
+    で足し上げた表。相手は島の番号か海外の商人（merchant）。圏の市場の分も、清算で決まった
+    実際の相手の国ごとに分かれる（#5605）。各行には経路（圏の市場・二国間契約・海外の商人）
+    ごとの直近 1 年の内訳 routes を添える。主な品目は直近 1 年の額の大きい順に 3 つまで。
+    記録が無い相手は行に出ない。"""
     turn, _ = display.latest_stats(island)
     if turn is None:
         return []
@@ -543,10 +548,44 @@ def partner_rows(
             good = ".".join(parts[3:])
             by_good = goods.setdefault(partner, {})
             by_good[good] = by_good.get(good, 0.0) + value
+    route_rows = island.stats.filter(
+        turn__gt=turn - 12, name__startswith="partner_route."
+    ).values_list("name", "value")
+    routes: dict[str, dict[str, dict[str, float]]] = {}
+    for name, value in route_rows:
+        parts = name.split(".")
+        if len(parts) != 4:
+            continue
+        _, partner, side, route = parts
+        by_route = routes.setdefault(partner, {}).setdefault(
+            route, {"exports": 0.0, "imports": 0.0}
+        )
+        by_route[side] += value
     defs = get_game().defs
 
     def good_name(good: str) -> str:
         return "運賃" if good == "freight" else defs.name("goods", good)
+
+    def route_entries(partner: str) -> list[dict[str, Any]]:
+        entries = [
+            {
+                "route": route,
+                "label": ROUTE_LABELS.get(route, route),
+                "exports": display.stat_text(
+                    "trade.exports", amounts["exports"], "money", currency
+                ),
+                "imports": display.stat_text(
+                    "trade.imports", amounts["imports"], "money", currency
+                ),
+                "_total": amounts["exports"] + amounts["imports"],
+            }
+            for route, amounts in routes.get(partner, {}).items()
+            if amounts["exports"] or amounts["imports"]
+        ]
+        entries.sort(key=lambda entry: -entry["_total"])
+        for entry in entries:
+            del entry["_total"]
+        return entries
 
     out = []
     for partner, entry in totals.items():
@@ -569,6 +608,7 @@ def partner_rows(
                     "trade.imports", entry["imports"], "money", currency
                 ),
                 "goods": [{"good": g, "name": good_name(g)} for g, _ in top],
+                "routes": route_entries(partner),
                 "_total": entry["exports"] + entry["imports"],
             }
         )

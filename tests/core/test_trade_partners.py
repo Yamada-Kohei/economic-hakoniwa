@@ -1,7 +1,8 @@
 """貿易の相手ごとの内訳（#5455）: add_trade と同じ額が、相手ごとに分かれて統計 partner.* に
-残る。相手が分かる物（二国間契約は相手の島、他国の船の運賃は運んだ島）と、相手が決まらない
-圏の市場（bloc）、海外の商人（merchant）に分かれ、相手ごとの合計は trade.exports・
-trade.imports に合う（記録を足すだけで計算は変えない）。
+残る。相手は実際の相手の島（二国間契約・他国の船の運賃・圏の市場の約定は清算で決まった組。
+#5605）か海外の商人（merchant）で、相手ごとの合計は trade.exports・trade.imports に合う
+（記録を足すだけで計算は変えない）。経路ごとの内訳は partner_route.* に残り、相手ごとの
+合計と一致する。
 """
 
 from __future__ import annotations
@@ -33,19 +34,36 @@ def _partner_goods(stats: dict, partner: str, side: str) -> dict[str, float]:
     return out
 
 
+def _route_totals(stats: dict, side: str) -> dict[tuple[str, str], float]:
+    """統計の partner_route.<相手>.<side>.<経路> を (相手, 経路) ごとに集める。"""
+    out: dict[tuple[str, str], float] = {}
+    for key, value in stats.items():
+        parts = key.split(".")
+        if len(parts) == 4 and parts[0] == "partner_route" and parts[2] == side:
+            out[(parts[1], parts[3])] = value
+    return out
+
+
 def test_partner_totals_add_up_to_trade_totals(game, traded):  # noqa: F811
     world = copy.deepcopy(traded[0])
-    seen_bloc = False
+    seen_bloc_route = False
 
     def check(w):
-        nonlocal seen_bloc
+        nonlocal seen_bloc_route
         for island in w.islands.values():
             stats = island.stats
             for side in ("exports", "imports"):
                 totals = _partner_totals(stats, side)
                 assert sum(totals.values()) == stats.get(f"trade.{side}", 0)
+                # 圏の市場の分は "bloc" の相手には残らず、実際の相手の島に分かれる（#5605）
+                assert "bloc" not in totals
                 for partner, total in totals.items():
                     assert sum(_partner_goods(stats, partner, side).values()) == total
+                # 経路ごとの内訳の合計は、相手ごとの合計と一致する
+                routes = _route_totals(stats, side)
+                assert sum(routes.values()) == sum(totals.values())
+                if any(route == "bloc" for _, route in routes):
+                    seen_bloc_route = True
             # 海外の商人の行は、商人の統計から公定価格との差を引いた額（add_trade の額）に合う
             merchant_in = _partner_totals(stats, "imports").get("merchant", 0)
             assert merchant_in == stats.get("trade.merchant", 0) - stats.get(
@@ -55,13 +73,9 @@ def test_partner_totals_add_up_to_trade_totals(game, traded):  # noqa: F811
             assert merchant_out == stats.get("trade.merchant_sold", 0) - stats.get(
                 "trade.merchant_premium", 0
             )
-            if _partner_totals(stats, "exports").get("bloc", 0) or _partner_totals(
-                stats, "imports"
-            ).get("bloc", 0):
-                seen_bloc = True
 
     run(game, world, 3, check)
-    assert seen_bloc  # 圏の市場の行が実際に出る
+    assert seen_bloc_route  # 圏の市場の約定が、経路=圏の市場で実際に記録される
 
 
 def test_contract_trade_is_recorded_under_the_other_island(game, traded):  # noqa: F811
@@ -97,12 +111,42 @@ def test_contract_trade_is_recorded_under_the_other_island(game, traded):  # noq
         6,
         lambda w: snapshots.append({i.id: dict(i.stats) for i in w.islands.values()}),
     )
+    # 履行のターンは、経路=二国間契約の相手別輸出が出たターンで拾う（#5605。相手別輸出の
+    # 合計には、同じ相手への圏の市場の分や運賃も混ざるので、額の一致では見ない）
     delivered_turns = [
-        s for s in snapshots if s[seller.id].get(f"partner.{buyer.id}.exports", 0) > 0
+        s
+        for s in snapshots
+        if s[seller.id].get(f"partner_route.{buyer.id}.exports.contract", 0) > 0
     ]
     assert delivered_turns  # 履行のターンに売り手の相手別輸出が出る
     for stats in delivered_turns:
-        sold = stats[seller.id][f"partner.{buyer.id}.exports"]
-        assert stats[seller.id][f"partner.{buyer.id}.exports.{good}"] == sold
+        assert stats[seller.id][f"partner.{buyer.id}.exports"] > 0
+        assert stats[seller.id][f"partner.{buyer.id}.exports.{good}"] > 0
         assert stats[buyer.id][f"partner.{seller.id}.imports"] > 0
         assert stats[buyer.id][f"partner.{seller.id}.imports.{good}"] > 0
+        # 経路の内訳にも、二国間契約として買い手側にも残る（#5605）
+        assert stats[buyer.id].get(f"partner_route.{seller.id}.imports.contract", 0) > 0
+
+
+def test_bloc_trade_is_recorded_under_the_actual_partner(game, traded):  # noqa: F811
+    """圏の市場の約定は、清算で決まった組の相手の島で両側に残る（#5605）。売り手の
+    partner_route.<買い手>.exports.bloc と、買い手の partner_route.<売り手>.imports.bloc が
+    同じターンに出る組が実際にある。額は各島の自国通貨建てなので、ここでは組の有無を見る
+    （額の鏡の照合は為替を直して測りの側で行う）。"""
+    world = copy.deepcopy(traded[0])
+    seen_pair = False
+
+    def check(w):
+        nonlocal seen_pair
+        for island in w.islands.values():
+            stats = island.stats
+            for (partner, route), amount in _route_totals(stats, "exports").items():
+                if route != "bloc" or not partner.isdigit() or amount <= 0:
+                    continue
+                other = w.islands[int(partner)]
+                back = _route_totals(other.stats, "imports").get((str(island.id), "bloc"), 0)
+                if back > 0:
+                    seen_pair = True
+
+    run(game, world, 3, check)
+    assert seen_pair  # 圏の市場の組が、両側とも実際の相手の島で記録される
