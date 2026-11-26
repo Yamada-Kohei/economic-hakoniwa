@@ -20,6 +20,7 @@ from server.game import get_game
 from server.letters.services import own_island
 from server.turns.models import TurnLog
 from server.web import (
+    awards,
     chain,
     chain_map,
     counter,
@@ -114,6 +115,8 @@ def _island_context(request, island_id: int, page: str) -> dict:
         # 建国から1年、持ち主に出す「次にすること」（国の要約の next_steps と同じ）
         "next_steps": next_steps,
         "strengths": rankings.island_strengths(island, stats),
+        # 賞（国の公開ページと同じ並び。ホームの国勢の欄に出す）
+        "awards": awards.holders(island.world, only=island.id).get(island.id, []),
         "goods": display.goods_table(stats, display.latest_markets(island, turn), currency),
         "regime": regime,
         "resources": [defs.name("goods", g) for g in island.resources or []],

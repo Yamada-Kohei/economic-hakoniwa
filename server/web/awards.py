@@ -137,3 +137,78 @@ def holders(world: m.World, only: int | None = None) -> dict[int, list[dict[str,
         if age >= rule["cup_turns"] and oldest in island_ids:
             give(oldest, "cup", "ターン杯", f"建国から {age} ターン、いちばん長く続いています")
     return out
+
+
+def moments(world: m.World, island_id: int) -> list[dict[str, Any]]:
+    """その島が賞を初めて取ったターン（{"id", "name", "detail", "turn"}、ターンの古い順）。
+
+    賞は記録を持たないので、残っている記録（統計とターンログ）から到達ターンを導く。導けるのは
+    繁栄賞（人口の統計）・災難賞（災難の出来事の数）・平穏賞（災害や戦争の出来事の間隔）だけ。
+    平和賞は殺した数の累計しか残っておらず、いつ届いたかは分からない。ターン杯は保持国の
+    移り変わりが残っていない。どちらも到達ターンは出さない（年表には載らない）。
+    detail は到達した時点の数で書く（holders の detail は今の数）。
+    """
+    rule = settings()
+    out: list[dict[str, Any]] = []
+    levels = sorted(rule["prosperity"])
+    reached: dict[int, int] = {}
+    stats = (
+        m.StatRecord.objects.filter(island_id=island_id, name="population")
+        .order_by("turn", "id")
+        .values_list("turn", "value")
+    )
+    for turn, value in stats:
+        for level, need in enumerate(levels, start=1):
+            if level not in reached and value >= need:
+                reached[level] = turn
+    for level, turn in reached.items():
+        out.append(
+            {
+                "id": f"prosperity_{level}",
+                "name": PROSPERITY[level - 1],
+                "detail": f"人口が {levels[level - 1]:,} 人に届きました",
+                "turn": turn,
+            }
+        )
+    calamity_turns = list(
+        TurnLog.objects.filter(_kinds(CALAMITIES), island_id=island_id)
+        .order_by("turn", "id")
+        .values_list("turn", flat=True)
+    )
+    if len(calamity_turns) >= rule["calamity_count"]:
+        out.append(
+            {
+                "id": "calamity",
+                "name": "災難賞",
+                "detail": f"災難の出来事が {rule['calamity_count']} 件ありました",
+                "turn": calamity_turns[rule["calamity_count"] - 1],
+            }
+        )
+    row = world.islands.filter(id=island_id).values("ext__founded_turn").first()
+    if row is not None:
+        founded = max(1, int(row["ext__founded_turn"] or 1))
+        unrest_turns = sorted(
+            set(
+                TurnLog.objects.filter(_kinds(UNREST), island_id=island_id).values_list(
+                    "turn", flat=True
+                )
+            )
+        )
+        starts = [founded] + [t for t in unrest_turns if t > founded]
+        for i, start in enumerate(starts):
+            reach = start + rule["calm_turns"]
+            nxt = starts[i + 1] if i + 1 < len(starts) else None
+            if reach <= world.turn and (nxt is None or reach <= nxt):
+                out.append(
+                    {
+                        "id": "calm",
+                        "name": "平穏賞",
+                        "detail": (
+                            f"{rule['calm_turns']} ターンのあいだ、災害も暴動も戦争もありません"
+                        ),
+                        "turn": reach,
+                    }
+                )
+                break
+    out.sort(key=lambda a: a["turn"])
+    return out

@@ -196,3 +196,80 @@ def test_mcp_news_tool(world, islands, settings):
     result = res.json()["result"]
     assert not result["isError"]
     assert json.loads(result["content"][0]["text"])["entries"][0]["island"]["id"] == a.id
+
+
+def _moments(world, island):
+    return awards.moments(world, island.id)
+
+
+def _recent_founding(islands, turn=290):
+    for island in islands:  # ほかの賞が混ざらないように、建国を最近にする
+        island.ext = {**island.ext, "founded_turn": turn}
+        island.save(update_fields=["ext"])
+
+
+def test_award_moments_find_when_prosperity_levels_were_reached(world, islands):
+    a, *_ = islands
+    _recent_founding(islands)
+    _stat(a, 100, 40_000)
+    _stat(a, 150, 50_000)  # 繁栄賞
+    _stat(a, 200, 130_000)  # 超繁栄賞
+    _stat(a, 250, 90_000)  # 減っても、取った瞬間は残る
+    got = [(x["name"], x["turn"]) for x in _moments(world, a)]
+    assert got == [("繁栄賞", 150), ("超繁栄賞", 200)]
+
+
+def test_award_moments_calamity_reached_at_the_threshold_event(world, islands):
+    a, *_ = islands
+    _recent_founding(islands)
+    for turn in range(1, 24):
+        TurnLog.objects.create(island=a, turn=turn, kind="disaster_fire", args={})
+    assert _moments(world, a) == []
+    TurnLog.objects.create(island=a, turn=100, kind="firm_bankrupt", args={})
+    got = [(x["name"], x["turn"]) for x in _moments(world, a)]
+    assert got == [("災難賞", 100)]
+
+
+def test_award_moments_calm_reached_after_quiet_turns(world, islands):
+    a, b, _ = islands
+    _recent_founding(islands, turn=100)
+    # a は建国から 120 ターン静かだった 220 に到達。そのあと災害があっても到達は残る
+    TurnLog.objects.create(island=a, turn=250, kind="disaster_flood", args={})
+    # b は 150 の暴動から数え直して 270 に到達
+    TurnLog.objects.create(island=b, turn=150, kind="politics_riot", args={})
+    assert [(x["name"], x["turn"]) for x in _moments(world, a)] == [("平穏賞", 220)]
+    assert [(x["name"], x["turn"]) for x in _moments(world, b)] == [("平穏賞", 270)]
+
+
+def test_award_moments_have_no_turn_for_peace_or_cup(world, islands):
+    # 平和賞は殺した数の累計しか残っておらず、ターン杯は保持国の移り変わりが残っていない。
+    # どちらも到達ターンは導けないので、年表には載らない
+    _, b, _ = islands
+    _recent_founding(islands)
+    b.ext = {**b.ext, "founded_turn": 10, "history": {"kills": 20_000}}
+    b.save(update_fields=["ext"])
+    assert "平和賞" in _names(world, b) and "ターン杯" in _names(world, b)
+    ids = [x["id"] for x in _moments(world, b)]
+    assert "peace" not in ids and "cup" not in ids
+
+
+def test_timeline_records_the_moment_an_award_was_won(world, islands):
+    a, *_ = islands
+    _recent_founding(islands)
+    _stat(a, 150, 60_000)
+    data = Client().get(f"/api/islands/{a.id}/country").json()
+    rows = [r for r in data["timeline"] if "繁栄賞" in r["text"]]
+    assert len(rows) == 1 and rows[0]["turn"] == 150 and "50,000" in rows[0]["text"]
+    assert any("繁栄賞" in line for line in data["timeline_text"].splitlines())
+
+
+def test_awards_show_on_the_island_home_and_the_rankings_page(world, islands):
+    a, *_ = islands
+    _recent_founding(islands)
+    _stat(a, 100, 60_000)
+    home = Client().get(f"/islands/{a.id}/home/").content.decode()
+    assert "繁栄賞" in home
+    page = Client().get("/rankings/").content.decode()
+    assert "世界の賞と受賞国" in page and "繁栄賞" in page
+    awards_section = page.split('id="awards"', 1)[1].split('id="firms"', 1)[0]
+    assert f"/islands/{a.id}/country/" in awards_section
