@@ -162,3 +162,38 @@ class StatRecord(models.Model):
 
     def __str__(self) -> str:
         return f"{self.island} ターン {self.turn} {self.name}"
+
+
+class GeoName(models.Model):
+    """地名（案34）: 山・湾・岬に島主が付け替えた名前。自動の仮の名前は地形から
+    その場で決める（server/web/geonames.py）ので、ここには付け替えだけを持つ。
+    鍵は「種類:x:y」（地形が変わらなければ同じ場所を指す）。"""
+
+    island = models.ForeignKey(Island, on_delete=models.CASCADE, related_name="geo_names")
+    key = models.CharField("地形の鍵", max_length=32)
+    name = models.CharField("名前", max_length=32)
+
+    class Meta:
+        verbose_name = verbose_name_plural = "地名の付け替え"
+        constraints = [
+            models.UniqueConstraint(fields=["island", "key"], name="unique_geo_name"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.island} {self.key} {self.name}"
+
+
+class GeoNameChange(models.Model):
+    """地名の付け替えの記録（案34）。国の年表に出すため、付け替えたターンを残す。"""
+
+    island = models.ForeignKey(Island, on_delete=models.CASCADE, related_name="geo_name_changes")
+    key = models.CharField("地形の鍵", max_length=32)
+    old = models.CharField("前の名前", max_length=32)
+    new = models.CharField("新しい名前", max_length=32)
+    turn = models.IntegerField("付け替えたターン")
+
+    class Meta:
+        verbose_name = verbose_name_plural = "地名の付け替えの記録"
+
+    def __str__(self) -> str:
+        return f"{self.island} {self.key} {self.old} → {self.new}"

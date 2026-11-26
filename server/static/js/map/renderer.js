@@ -6,6 +6,7 @@ import { barPixels, barsBackToFront, drawsBars, solidColor } from "./overlays/ba
 import { CHANGE_COLORS } from "./changes.js";
 import { lift, tileToWorld } from "./projection.js";
 import { drawSprite } from "./sprites.js";
+import { geoLabelsShown } from "./geonames.js";
 import {
   ERA_BOX_MIX,
   eraTint,
@@ -33,7 +34,8 @@ import {
  *          season（季節の色調を出すか。案18。月と気候帯から決める）、
  *          life（暮らしの気配を出すか。案13）、prosperity（繁栄の飾りを出すか。案14）、
  *          battleMarks（戦闘の跡の Map "x,y" → {kind, age}。案26）、
- *          moneyMarks（お金の出来事の Map "x,y" → {kind, age}。案15）
+ *          moneyMarks（お金の出来事の Map "x,y" → {kind, age}。案15）、
+ *          geoNames（地名の並び [{x, y, name}]。案34。拡大したときだけ描く）
  */
 export function drawIsland(ctx, map, defs, view, options = {}) {
   const theme = defs.theme;
@@ -137,6 +139,30 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
     }
   }
   if (bars) drawBars(ctx, map, defs, options.overlay, options.selected);
+  // 地名（案34）: 拡大したときだけ、山・湾・岬の名前を出す
+  if (options.geoNames && geoLabelsShown(view.scale)) {
+    drawGeoLabels(ctx, map, defs, options.geoNames);
+  }
+}
+
+/** 地名のラベル: マスの真ん中に、白い縁取りの字で出す。 */
+function drawGeoLabels(ctx, map, defs, rows) {
+  const theme = defs.theme;
+  ctx.font = "600 13px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (const g of rows) {
+    const i = g.y * map.size + g.x;
+    const h = lift(defs.terrain[map.terrain[i]]?.height ?? 0, theme);
+    const { px, py } = tileToWorld(g.x, g.y, theme);
+    const cy = py - h + theme.tile_height / 2;
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+    ctx.strokeText(g.name, px, cy);
+    ctx.fillStyle = "#22303c";
+    ctx.fillText(g.name, px, cy);
+  }
+  ctx.textBaseline = "alphabetic";
 }
 
 // 棒の透け具合（上面と側面）。側面は黒を重ねて暗くし、角柱に見せる

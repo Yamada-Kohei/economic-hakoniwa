@@ -65,6 +65,7 @@ urlpatterns = [
     path("islands/<int:island_id>/country/", views.country_page, name="island_country"),
     path("islands/<int:island_id>/card/", views.card_page, name="island_card"),
     path("islands/<int:island_id>/paper/", views.paper_page, name="island_paper"),
+    path("islands/<int:island_id>/geonames/", views.geoname_rename, name="geoname_rename"),
     path("islands/<int:island_id>/diary/", views.diary_page, name="diary"),
     path("islands/<int:island_id>/orders/", views.orders_page, name="island_orders"),
     path("islands/<int:island_id>/flag", views.island_flag, name="island_flag"),

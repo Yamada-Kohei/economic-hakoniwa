@@ -61,6 +61,7 @@ function environment({ failedUrl, failedDraw = false } = {}) {
     readLightMode: () => true, writeLightMode() {},
     loadSprites: async () => new Map(),
     spritePriorityKeys: () => new Set(),
+    geoLabelsShown: () => false, geoNameRows: (rows) => rows ?? [],
   };
   return { context: vm.createContext(context), element, frames, timers,
     get reloads() { return reloads; }, get drawings() { return drawings; } };

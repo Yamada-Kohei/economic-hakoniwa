@@ -116,6 +116,17 @@ def timeline(island: m.Island, profile: Profile | None) -> list[dict[str, Any]]:
         }
         for log, entry in zip(logs, display.log_entries(logs), strict=True)
     ]
+    # 地名の付け替え（案34）もログではないので、同じ並びに足す
+    for change in island.geo_name_changes.order_by("turn", "id"):
+        rows.append(
+            {
+                "turn": change.turn,
+                "date": services.date_text(island, profile, change.turn),
+                "period": services.period_text(island, profile, change.turn),
+                "milestone": False,
+                "text": display.message("geo_renamed", old=change.old, new=change.new),
+            }
+        )
     for moment in awards.moments(island.world, island.id):
         rows.append(
             {

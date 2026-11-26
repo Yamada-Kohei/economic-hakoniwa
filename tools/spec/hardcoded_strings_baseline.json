@@ -23,7 +23,7 @@
    "server/settings.py": 6,
    "server/turns": 75,
    "server/web": 1488,
-   "server/world": 144
+   "server/world": 162
   },
   "template": {
    "accounts": 1,
@@ -234,7 +234,8 @@
    "server/world/migrations/0001_initial.py": 23,
    "server/world/migrations/0002_phase1.py": 33,
    "server/world/migrations/0004_phase2.py": 3,
-   "server/world/models.py": 55,
+   "server/world/migrations/0008_geo_names.py": 10,
+   "server/world/models.py": 63,
    "server/world/repository.py": 1,
    "server/world/services.py": 3
   },
@@ -275,9 +276,9 @@
   }
  },
  "totals": {
-  "all": 3491,
+  "all": 3509,
   "js": 527,
-  "python": 2853,
+  "python": 2871,
   "template": 111
  },
  "version": 1

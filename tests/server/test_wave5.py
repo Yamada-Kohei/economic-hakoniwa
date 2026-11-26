@@ -11,6 +11,7 @@ from server.country import services as country_services
 from server.turns.models import TurnLog
 from server.web import card as card_views
 from server.web import country as country_views
+from server.web import geonames as geonames_views
 from server.web import paper as paper_views
 from server.world import models as m
 
@@ -137,3 +138,79 @@ def test_capital_and_leader_renames_are_in_timeline(owner):
     texts = [r["text"] for r in rows if r["turn"] in (4, 5)]
     assert any("首都の名前を「旧都」から「新都」に変更しました" == t for t in texts)
     assert any("国家元首の名前を 山田太郎 にしました" == t for t in texts)
+
+
+# --- 案34 地名 ---------------------------------------------------------------------------
+
+
+def _tile(island, x, y, terrain):
+    return m.Tile.objects.create(island=island, x=x, y=y, terrain=terrain)
+
+
+@pytest.fixture
+def geo_island(owner):
+    """山・湾・岬が 1 つずつできる地形を手で置いた島。区画の名前は 地区0〜地区15。"""
+    _, island = owner
+    island.tiles.all().delete()
+    for x, y in [(5, 5), (6, 5), (5, 6)]:
+        _tile(island, x, y, "mountain")
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            _tile(island, 10 + dx, 10 + dy, "sea" if dx == dy == 0 else "plain")
+    _tile(island, 20, 20, "plain")
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            if dx or dy:
+                _tile(island, 20 + dx, 20 + dy, "sea")
+    island.ext = {"places": [f"地区{i}" for i in range(16)]}
+    island.save(update_fields=["ext"])
+    return island
+
+
+def test_geonames_features_from_terrain(geo_island):
+    by_kind = {f["kind"]: f for f in geonames_views.features(geo_island)}
+    assert set(by_kind) == {"mountain", "bay", "cape"}
+    assert by_kind["mountain"]["key"] == "mountain:5:5"
+    assert by_kind["mountain"]["name"] == "地区0山"
+    assert by_kind["bay"]["key"] == "bay:10:10"
+    assert by_kind["bay"]["name"] == "地区5湾"  # 湾の名前は、近くの陸の区画から
+    assert by_kind["cape"]["key"] == "cape:20:20"
+    assert by_kind["cape"]["name"] == "地区10岬"
+    assert all(not f["renamed"] for f in by_kind.values())
+
+
+def test_geonames_rename_records_change_and_timeline(geo_island):
+    geonames_views.rename(geo_island, "bay:10:10", "入り江")
+    feature = {f["key"]: f for f in geonames_views.features(geo_island)}["bay:10:10"]
+    assert feature["name"] == "入り江" and feature["renamed"] is True
+    change = geo_island.geo_name_changes.get()
+    assert (change.old, change.new) == ("地区5湾", "入り江")
+    texts = [r["text"] for r in country_views.timeline(geo_island, None)]
+    assert "地名を「地区5湾」から「入り江」に変更しました" in texts
+    # 自動の名前に戻すと付け替えは消え、記録だけが増える
+    geonames_views.rename(geo_island, "bay:10:10", "地区5湾")
+    assert geo_island.geo_names.count() == 0
+    assert geo_island.geo_name_changes.count() == 2
+
+
+def test_geonames_rename_rejects_bad_input(geo_island):
+    with pytest.raises(ValueError):
+        geonames_views.rename(geo_island, "bay:10:10", "地区5湾")  # いまと同じ
+    with pytest.raises(ValueError):
+        geonames_views.rename(geo_island, "bay:99:99", "何か")  # そんな地形は無い
+    with pytest.raises(ValueError):
+        geonames_views.rename(geo_island, "bay:10:10", "あ" * 17)  # 長すぎる
+
+
+def test_geonames_api_param_and_owner_view(owner, geo_island):
+    client, island = owner
+    assert island.id == geo_island.id
+    plain = client.get(f"/api/islands/{island.id}/map").json()
+    assert "geonames" not in plain
+    data = client.get(f"/api/islands/{island.id}/map?geonames=1").json()
+    assert {g["kind"] for g in data["geonames"]} == {"mountain", "bay", "cape"}
+    res = client.post(f"/islands/{island.id}/geonames/", {"key": "cape:20:20", "name": "出っ張り"})
+    assert res.status_code == 302
+    assert geo_island.geo_names.get().name == "出っ張り"
+    anon = Client().post(f"/islands/{island.id}/geonames/", {"key": "cape:20:20", "name": "だめ"})
+    assert anon.status_code == 404

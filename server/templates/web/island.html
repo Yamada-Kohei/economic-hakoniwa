@@ -23,6 +23,7 @@
 <link rel="modulepreload" href="{% static 'js/map/changes.js' %}">
 <link rel="modulepreload" href="{% static 'js/map/flagtoggle.js' %}">
 <link rel="modulepreload" href="{% static 'js/map/export.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/geonames.js' %}">
 <link rel="modulepreload" href="{% static 'js/map/anim.js' %}">
 <link rel="modulepreload" href="{% static 'js/island/orders.js' %}">
 <link rel="modulepreload" href="{% static 'js/calendar.js' %}">
@@ -147,6 +148,23 @@
 {% if mine %}
 {% include "web/turn_schedule.html" with world=island.world %}
 <section id="orders" class="panel" data-url="{% url 'api_orders' island.id %}"></section>
+{% if geonames %}
+<details class="panel geonames-panel">
+  <summary>{% translate "地名" %}</summary>
+  <p class="hint">{% translate "山・湾・岬の名前は地形から自動で付けています。地図を拡大すると名前が出ます。付け替えると国の年表に残ります。" %}</p>
+  <div class="geonames-list">
+    {% for g in geonames %}
+    <form method="post" action="{% url 'geoname_rename' island.id %}">{% csrf_token %}
+      <input type="hidden" name="key" value="{{ g.key }}">
+      <span>{{ g.kind_name }}（{{ g.x }}, {{ g.y }}）</span>
+      <input name="name" value="{{ g.name }}" maxlength="16" aria-label="{% translate '地名' %}">
+      <button type="submit">{% translate "付け替える" %}</button>
+      {% if g.renamed %}<span class="muted">{% blocktranslate with auto=g.auto %}自動の名前は「{{ auto }}」です{% endblocktranslate %}</span>{% endif %}
+    </form>
+    {% endfor %}
+  </div>
+</details>
+{% endif %}
 {% endif %}
 
 <script>

@@ -18,6 +18,7 @@ order_postponed: "行政力が不足したため、命令「{order}」以降は�
 island_renamed: "国名を「{old}」から「{new}」に変更しました"
 capital_renamed: "首都の名前を「{old}」から「{new}」に変更しました"
 place_renamed: "({x}, {y}) の地名を「{old}」から「{new}」に変更しました"
+geo_renamed: "地名を「{old}」から「{new}」に変更しました"
 facility_renamed: "({x}, {y}) の{facility}の名称を「{new}」に変更しました"
 construction_started: "({x}, {y}) で{facility}の建設を開始しました"
 expansion_started: "({x}, {y}) の{facility}の建て増しを始めました（済むと規模 {size}）"

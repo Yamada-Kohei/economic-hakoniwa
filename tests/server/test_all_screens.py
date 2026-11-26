@@ -75,6 +75,7 @@ ISLAND_APIS_WITH_ARGS = ["api_tile", "api_island_market", "api_facility_book", "
 ISLAND_IMAGES = ["island_flag", "monument_image", "api_country_flag", "api_monument_image"]
 # 書き込む道（GET では開かない）
 ISLAND_WRITES = [
+    "geoname_rename",
     "api_country_edit",
     "api_country_note",
     "api_country_note_hide",

@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 
 from django.conf import settings as django_settings
+from django.contrib import messages
 from django.core.paginator import Paginator
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -38,6 +39,7 @@ from server.web import (
 )
 from server.web import card as card_views
 from server.web import facility_page as facility_views
+from server.web import geonames as geonames_views
 from server.web import (
     news as news_views,
 )
@@ -141,6 +143,9 @@ def _island_context(request, island_id: int, page: str) -> dict:
         # 1 行（国の要約の trade と同じ。W-247 (8)）
         context["todo"] = todo
         context["trade"] = overview.trade_brief(stats, currency)
+    if page == "island" and mine:
+        # 地名（案34）の付け替えの欄。地形から決まる一覧は持ち主の地図の画面だけに出す
+        context["geonames"] = geonames_views.features(island)
     return context
 
 
@@ -473,6 +478,30 @@ def paper_page(request, island_id: int):
     turn = int(raw) if raw.isdigit() else None
     context["paper"] = paper_views.paper_data(island, turn, context["mine"])
     return render(request, "web/paper.html", context)
+
+
+def geoname_rename(request, island_id: int):
+    """地名（案34）の付け替え。持ち主だけ・POST だけ。結果は地図の画面に戻って知らせる。"""
+    island = get_object_or_404(Island, pk=island_id)
+    mine = (
+        request.user.is_authenticated
+        and island.owner_id is not None
+        and island.owner_id == request.user.id
+    )
+    if request.method != "POST" or not mine:
+        raise Http404
+    try:
+        done = geonames_views.rename(
+            island, request.POST.get("key", ""), request.POST.get("name", "")
+        )
+    except ValueError as e:
+        messages.error(request, str(e))
+    else:
+        messages.success(
+            request,
+            gettext("地名を「{name}」に付け替えました").format(name=done["name"]),
+        )
+    return redirect("island", island.id)
 
 
 def orders_page(request, island_id: int):

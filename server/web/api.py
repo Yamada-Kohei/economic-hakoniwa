@@ -41,6 +41,7 @@ from server.web import changes as changes_views
 from server.web import country as country_views
 from server.web import diplomacy as diplomacy_views
 from server.web import facility_page as facility_views
+from server.web import geonames as geonames_views
 from server.web import marks as marks_views
 from server.web import military as military_views
 from server.web import news as news_views
@@ -423,6 +424,12 @@ def island_map(request, island_id: int):
     if request.GET.get("money"):
         # お金の出来事（案15）。同じく切り替えたときだけ取る
         data["money"] = marks_views.money_marks(island)
+    if request.GET.get("geonames"):
+        # 地名（案34）。拡大したときだけ取る（ラベルは拡大時のみ出す）
+        data["geonames"] = [
+            {k: f[k] for k in ("key", "kind", "x", "y", "name")}
+            for f in geonames_views.features(island)
+        ]
     # 部隊の印は、見ている国に見えるものだけ（自分の部隊と、見える範囲に入った相手の部隊。
     # 陣地と占領は誰にでも見える）
     data["units"] = military_views.island_units(island, letter_services.own_island(request.user))

@@ -12,6 +12,7 @@ import { overlayList } from "./overlays/index.js";
 import { lift, tileToWorld, worldToTile } from "./projection.js";
 import { drawIsland } from "./renderer.js";
 import { downloadCanvas, renderMapCanvas } from "./export.js";
+import { geoLabelsShown, geoNameRows } from "./geonames.js";
 import { drawRuler, readRulerShown, writeRulerShown } from "./ruler.js";
 import { loadFlag, loadSprites, spritePriorityKeys } from "./sprites.js";
 import { marksByCell, readBattlesShown, readLifeShown, readMoneyShown, readProsperityShown, readSeasonShown, writeBattlesShown, writeLifeShown, writeMoneyShown, writeProsperityShown, writeSeasonShown } from "./wave4.js";
@@ -73,6 +74,7 @@ const state = {
   life: readLifeShown(storage), prosperity: readProsperityShown(storage),
   battles: readBattlesShown(storage), battleMarks: null,
   money: readMoneyShown(storage), moneyMarks: null,
+  geoNames: null, // 地名（案34）。初めて拡大したときにだけ材料を読む
   // 第2波の表示（anim.js）: 煙（案1。既定は出す）、軽量モード（案47。
   // 既定は画面が狭いときだけ入。#6050）
   smoke: readSmokeShown(storage),
@@ -84,7 +86,29 @@ function heightOf(x, y) {
   return defs.terrain[map.terrain[y * map.size + x]]?.height ?? 0;
 }
 
+let geoFetching = false;
+
+/** 地名（案34）の材料は、初めて拡大したときにだけ地図の API から読む。 */
+function maybeFetchGeoNames() {
+  if (!geoLabelsShown(view.scale) || map.geonames !== undefined || geoFetching) return;
+  geoFetching = true;
+  fetch(`${canvas.dataset.api}?geonames=1`)
+    .then((r) => r.json())
+    .then((extra) => {
+      map.geonames = extra.geonames || [];
+      state.geoNames = geoNameRows(map.geonames);
+      redraw();
+    })
+    .catch(() => {
+      map.geonames = [];
+    })
+    .finally(() => {
+      geoFetching = false;
+    });
+}
+
 function redraw() {
+  maybeFetchGeoNames();
   if (pending) return;
   pending = true;
   requestAnimationFrame(() => {
