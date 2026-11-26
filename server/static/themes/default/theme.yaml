@@ -212,6 +212,9 @@ sprites:
   fleet/submarine: {file: sprites/fleet/submarine.svg, anchor: [11, 7]}
   fleet/transport: {file: sprites/fleet/transport.svg, anchor: [12, 10]}
   # 建て増しの規模の絵（FM-47。size_tiers）
+  facility/air_defense@s2: sprites/facility/air_defense@s2.svg
+  facility/air_defense@s3: sprites/facility/air_defense@s3.svg
+  facility/air_defense@s4: sprites/facility/air_defense@s4.svg
   facility/aluminium_smelter@s2: sprites/facility/aluminium_smelter@s2.svg
   facility/aluminium_smelter@s3: sprites/facility/aluminium_smelter@s3.svg
   facility/aluminium_smelter@s4: sprites/facility/aluminium_smelter@s4.svg

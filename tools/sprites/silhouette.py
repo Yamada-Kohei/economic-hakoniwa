@@ -4404,6 +4404,111 @@ def missile_plant(t):
     ]
 
 
+def air_defense_tiers(t):
+    """防空陣地の建て増し（FM-47）。名前のままの絵の姿（土の台に、斜めの筒が並んだ
+    発射機 2 基と、白い丸屋根の管制小屋、2 辺の土嚢の列）を保ちながら、段が上がるほど
+    発射機と対空砲が増え、管制小屋が大きくなってレーダー連動のアンテナが育ち、
+    格が上がって見えるようにする。大きな皿は持たせない（皿が主役のレーダーの絵とは
+    輪郭で見分けられるように）。
+    段 2 は発射機が 3 基になり、主の発射機の筒が 5 本に増え、管制小屋に
+    アンテナのマストが立つ。
+    段 3 は対空砲が 1 門増え、発射機の筒も増え、マストの上に小さい横棒の
+    アンテナが付く。
+    段 4 は対空砲が 2 門になり、管制小屋が一番大きく、マストも一番高く、
+    弾薬の箱も並ぶ。"""
+
+    def bags():
+        # 基本絵と同じ土嚢の列（2 辺）
+        return [
+            *[
+                box(0.06 + i * 0.075, 0.06, 0.12 + i * 0.075, 0.1, 0.5, 2, SOIL, STONE)
+                for i in range(11)
+            ],
+            *[
+                box(0.06, 0.06 + i * 0.075, 0.1, 0.12 + i * 0.075, 0.5, 2, SOIL, STONE)
+                for i in range(11)
+            ],
+        ]
+
+    def hut(u0, v0, u1, v1, h, dome_r, mast_top=0, bar_half=0.0):
+        # 管制小屋: 軍事色の箱＋白い丸屋根。段が上がると屋根の端にマストが立ち、
+        # 横棒のアンテナと先の赤（小さく 1 か所）が付く
+        cu, cv = (u0 + u1) / 2, (v0 + v1) / 2
+        parts = [
+            box(u0, v0, u1, v1, 0.5, h, MILITARY, MILITARY_DARK),
+            dome(cu, cv, dome_r, 0.5 + h, 5.5, WHITE),
+        ]
+        if mast_top:
+            mu, mv = cu + 0.055, cv + 0.055
+            parts.append(strut((mu, mv, 0.5 + h), (mu, mv, mast_top), 1.1, IRON))
+            if bar_half:
+                parts.append(
+                    box(
+                        mu - bar_half,
+                        mv - 0.016,
+                        mu + bar_half,
+                        mv + 0.016,
+                        mast_top - 1.2,
+                        1.2,
+                        METAL,
+                    )
+                )
+            parts.append(cylinder(mu, mv, 0.011, mast_top, 1.3, c=RED))
+        return parts
+
+    def aa_gun(uc, vc, barrels=2):
+        # 対空砲: 丸い台座＋防盾に、斜め上を向いた太い砲身（発射機の細い筒とは
+        # 太さと台座の形で見分ける）
+        parts = [
+            cylinder(uc, vc, 0.088, 0.5, 2.0, c=IRON, cap_c=METAL),
+            box(uc - 0.075, vc - 0.03, uc + 0.075, vc + 0.09, 2.5, 2.4, MILITARY, MILITARY_DARK),
+        ]
+        for i in range(barrels):
+            vv = vc - 0.015 + i * 0.055
+            parts.append(
+                tiered(2, strut((uc + 0.03, vv, 4.6), (uc - 0.14, vv, 15), 2.8, MILITARY_DARK))[0]
+            )
+        return parts
+
+    def ground():
+        # 基本絵と同じ土の台
+        return tiered(0, box(0.06, 0.06, 0.94, 0.94, 0, 0.5, SOIL, SOIL))
+
+    if t == 2:
+        return [
+            *ground(),
+            *launcher(0.14, 0.14, tubes=5),
+            *launcher(0.5, 0.52),
+            *launcher(0.14, 0.52),
+            *hut(0.58, 0.14, 0.72, 0.28, 5, 0.07, mast_top=14),
+            *bags(),
+        ]
+    if t == 3:
+        return [
+            *ground(),
+            *launcher(0.14, 0.14, tubes=5),
+            *launcher(0.5, 0.52, tubes=5),
+            *launcher(0.14, 0.52),
+            *aa_gun(0.85, 0.42),
+            *hut(0.56, 0.12, 0.74, 0.30, 6, 0.08, mast_top=17, bar_half=0.07),
+            *bags(),
+        ]
+    # 段 4: 発射機 3 基（筒は全部 5 本）、対空砲 2 門、管制小屋とマストは一番大きく
+    return [
+        *ground(),
+        *launcher(0.14, 0.14, tubes=5),
+        *launcher(0.5, 0.52, tubes=5),
+        *launcher(0.14, 0.52, tubes=5),
+        *aa_gun(0.85, 0.42),
+        *aa_gun(0.30, 0.86),
+        *hut(0.54, 0.10, 0.78, 0.34, 7, 0.09, mast_top=20, bar_half=0.09),
+        # 弾薬の箱（発射機と管制小屋の間の低い木箱）
+        box(0.44, 0.18, 0.52, 0.26, 0.5, 2.2, WOOD),
+        box(0.44, 0.30, 0.52, 0.38, 0.5, 1.6, WOOD),
+        *bags(),
+    ]
+
+
 # --- 土木業者・工事中・区域の指定（W-270・FM-47・フェーズ2）----------------------------------
 
 YARD = "#cfc6b0"  # 資材置き場の砂利敷き
@@ -4689,6 +4794,7 @@ SIZE_TIERS = {
     "copper_smelter": copper_smelter,
     "electronics_plant": electronics_plant,
     "missile_plant": missile_plant,
+    "air_defense": air_defense_tiers,
 }
 for _name, _tiers in SIZE_TIERS.items():
     for _t in (2, 3, 4):
