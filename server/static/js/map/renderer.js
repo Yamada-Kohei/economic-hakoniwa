@@ -1,7 +1,7 @@
 // 描画: 奥のマスから手前のマスへ（x + y の小さい順に）描き、高いものが奥を自然に隠すようにする。
 // 重ね表示の棒（UI-79）は島を描いたあとにもう一度奥から手前へ描き、建物に隠れず、半透明で奥の棒も透けて見える。
 
-import { detailLevel, isSmokeSource, phaseFor, SMOKE_CYCLE, SMOKE_RGB, smokePuffs } from "./anim.js";
+import { detailLevel, isSmokeSource, phaseFor, SMOKE_CYCLE, SMOKE_PEAK_ALPHA, SMOKE_RGB, smokePuffs } from "./anim.js";
 import { barPixels, barsBackToFront, drawsBars, solidColor } from "./overlays/bars.js";
 import { CHANGE_COLORS } from "./changes.js";
 import { lift, tileToWorld } from "./projection.js";
@@ -74,6 +74,11 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       if (!f && options.flag && map.capital && map.capital[0] === x && map.capital[1] === y) {
         drawCapitalFlag(ctx, options.flag, px, top + theme.tile_height / 2, theme);
       }
+      // 煙は施設と同じ奥行きの位置で描く。島を描き終えてからまとめて描くと、
+      // 手前の建物の上にも煙がかぶって見えた（重なり順の直し）
+      if (options.smoke && f && isSmokeSource(f, defs)) {
+        drawFacilitySmoke(ctx, f, map, defs, view, options, px, py - h);
+      }
       if (f?.hidden && map.mine) drawUnderground(ctx, px, top, theme, options.undergroundLabel || "");
       if (trench) drawOverlay(ctx, sprites.get("overlay/trench_front"), px, top, theme);
       if (map.occupied?.[i]) {
@@ -97,7 +102,6 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
     }
   }
   if (bars) drawBars(ctx, map, defs, options.overlay, options.selected);
-  if (options.smoke) drawSmoke(ctx, map, defs, view, options);
 }
 
 // 棒の透け具合（上面と側面）。側面は黒を重ねて暗くし、角柱に見せる
@@ -476,30 +480,71 @@ function facilityTopY(f, defs, map, ground, theme, sprites) {
   return base - style.height * theme.facility_unit;
 }
 
+// 煙の粒の絵: 濃さの段ごとに、最初に1枚ずつだけ描いておいて使い回す。
+// 粒ごとに放射グラデーションを塗ると重い（実測 #6192: 煙源約40件で1コマ
+// 約33ms が粒の塗り）。絵が作れない環境（テスト用の疑似キャンバス等）では
+// null を返し、呼び出し側が従来どおり粒ごとに塗る。
+const SMOKE_SPRITE_SIZE = 128;
+const SMOKE_ALPHA_STEPS = 16;
+let smokeSpriteCache = null;
+
+function smokeSprites() {
+  if (smokeSpriteCache) return smokeSpriteCache;
+  const makeCanvas = () => {
+    if (typeof OffscreenCanvas !== "undefined") return new OffscreenCanvas(SMOKE_SPRITE_SIZE, SMOKE_SPRITE_SIZE);
+    if (typeof document !== "undefined") {
+      const c = document.createElement("canvas");
+      c.width = SMOKE_SPRITE_SIZE;
+      c.height = SMOKE_SPRITE_SIZE;
+      return c;
+    }
+    return null;
+  };
+  const half = SMOKE_SPRITE_SIZE / 2;
+  const sprites = [];
+  for (let k = 0; k < SMOKE_ALPHA_STEPS; k++) {
+    const canvas = makeCanvas();
+    if (!canvas) return null;
+    const g = canvas.getContext("2d");
+    if (!g) return null;
+    const a = (SMOKE_PEAK_ALPHA * k) / (SMOKE_ALPHA_STEPS - 1);
+    const grad = g.createRadialGradient(half, half, 0, half, half, half);
+    grad.addColorStop(0, `rgba(${SMOKE_RGB}, ${a})`);
+    grad.addColorStop(0.5, `rgba(${SMOKE_RGB}, ${a * 0.72})`);
+    grad.addColorStop(1, `rgba(${SMOKE_RGB}, 0)`);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, SMOKE_SPRITE_SIZE, SMOKE_SPRITE_SIZE);
+    sprites.push(canvas);
+  }
+  smokeSpriteCache = sprites;
+  return sprites;
+}
+
 /**
  * 煙（案1）: 稼働中の工場・火力発電所の煙突から、粒がもくもくと湧き出して
- * 昇り、広がりながら薄れていく。奥の施設から手前へ描く。粒の決め方は
- * anim.js（位相・詳しさ）。色は一段濃い灰色（anim.js の SMOKE_RGB）。
+ * 昇り、広がりながら薄れていく。粒の決め方は anim.js（位相・詳しさ）。
+ * 色は一段濃い灰色（anim.js の SMOKE_RGB）。粒の絵は濃さの段ごとに作った
+ * ものを drawImage で使い回す（上の smokeSprites）。
+ * 描く位置は島の奥から手前への流れの中（drawIsland の施設の直後）で、
+ * 手前の建物が煙を隠すようにする。
  * 軽量モード（options.light）では時刻を位相ぶんだけ進めて止め、静止した姿にする。
  */
-function drawSmoke(ctx, map, defs, view, options) {
+function drawFacilitySmoke(ctx, f, map, defs, view, options, px, ground) {
   const theme = defs.theme;
   const sprites = options.sprites || new Map();
   const detail = detailLevel(view.scale);
-  const n = map.size;
-  const sources = (map.facilities || [])
-    .filter((f) => isSmokeSource(f, defs))
-    .sort((a, b) => a.x + a.y - (b.x + b.y) || a.x - b.x);
-  for (const f of sources) {
-    const i = f.y * n + f.x;
-    const { px, py } = tileToWorld(f.x, f.y, theme);
-    const ground = py - lift(defs.terrain[map.terrain[i]]?.height ?? 0, theme);
-    const topY = facilityTopY(f, defs, map, ground, theme, sprites);
-    const t = options.light ? phaseFor(f.x, f.y) * SMOKE_CYCLE : options.animTime || 0;
-    for (const puff of smokePuffs(f, t, detail)) {
-      const cx = px + puff.dx * theme.tile_width;
-      const cy = topY + puff.dy * theme.tile_height;
-      const r = Math.max(1.5, puff.r * theme.tile_width);
+  const topY = facilityTopY(f, defs, map, ground, theme, sprites);
+  const t = options.light ? phaseFor(f.x, f.y) * SMOKE_CYCLE : options.animTime || 0;
+  const puffSprites = smokeSprites();
+  for (const puff of smokePuffs(f, t, detail)) {
+    const cx = px + puff.dx * theme.tile_width;
+    const cy = topY + puff.dy * theme.tile_height;
+    const r = Math.max(1.5, puff.r * theme.tile_width);
+    if (puffSprites) {
+      const k = Math.round((puff.alpha / SMOKE_PEAK_ALPHA) * (SMOKE_ALPHA_STEPS - 1));
+      const img = puffSprites[Math.max(0, Math.min(SMOKE_ALPHA_STEPS - 1, k))];
+      ctx.drawImage(img, cx - r, cy - r, r * 2, r * 2);
+    } else {
       const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
       grad.addColorStop(0, `rgba(${SMOKE_RGB}, ${puff.alpha})`);
       grad.addColorStop(0.5, `rgba(${SMOKE_RGB}, ${puff.alpha * 0.72})`);
