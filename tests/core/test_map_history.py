@@ -100,3 +100,43 @@ def test_snapshot_captures_the_current_look(island):
     map_history.record(island, 5)
     rows = snaps(island)
     assert rows[0]["terrain"][tile.y * island.size + tile.x] == tile.terrain
+
+
+def engravings(island):
+    return island.ext.get(map_history.ENGRAVINGS, [])
+
+
+def test_engravings_capture_events_with_positions(island):
+    island.log.append(LogEntry("disaster_fire", {"x": 1, "y": 2}))
+    island.log.append(LogEntry("missile_hit", {"x": 3, "y": 4}))
+    map_history.record(island, 50)
+    rows = engravings(island)
+    assert {(r["x"], r["y"], r["kind"]) for r in rows} == {
+        (1, 2, "disaster_fire"),
+        (3, 4, "missile_hit"),
+    }
+    assert all(r["turn"] == 50 for r in rows)
+
+
+def test_engravings_skip_events_without_positions(island):
+    island.log.append(LogEntry("disaster_volcano_island", {}))
+    island.log.append(LogEntry("capital_rebuilt", {"name": "町"}))
+    island.log.append(LogEntry("anniversary_founding", {"years": 1}))
+    map_history.record(island, 51)
+    assert engravings(island) == []
+
+
+def test_engravings_dedupe_and_cap(island):
+    island.log.append(LogEntry("riot_destroyed", {"x": 0, "y": 0}))
+    island.log.append(LogEntry("riot_destroyed", {"x": 0, "y": 0}))
+    map_history.record(island, 52)
+    assert len(engravings(island)) == 1
+    island.ext[map_history.ENGRAVINGS] = [
+        {"turn": t, "x": 0, "y": 0, "kind": "disaster_quake"}
+        for t in range(map_history.MAX_ENGRAVINGS)
+    ]
+    island.log.append(LogEntry("nuclear_hit", {"x": 5, "y": 5}))
+    map_history.record(island, 999)
+    rows = engravings(island)
+    assert len(rows) == map_history.MAX_ENGRAVINGS
+    assert rows[-1]["kind"] == "nuclear_hit"

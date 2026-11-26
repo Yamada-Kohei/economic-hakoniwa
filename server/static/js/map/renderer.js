@@ -3,7 +3,7 @@
 
 import { barPixels, barsBackToFront, drawsBars, solidColor } from "./overlays/bars.js";
 import { CHANGE_COLORS } from "./changes.js";
-import { LENS_COLORS } from "./history.js";
+import { ENGRAVING_COLORS, LENS_COLORS } from "./history.js";
 import { lift, tileToWorld } from "./projection.js";
 import { drawSprite } from "./sprites.js";
 
@@ -12,6 +12,8 @@ import { drawSprite } from "./sprites.js";
  * options: selected（選んだマス {x, y}）、marked（印を付けるマスの Set "x,y"）、
  *          changeMarks（前のターンから変わったマスの Map "x,y" → 種類。changes.js）、
  *          lensMarks（節目の写しと比べた差の Map "x,y" → 種類。history.js）、
+ *          engravings（記憶の刻印の Map "x,y" → 種類。history.js）、
+ *          monumentImages（自作の記念碑の絵の Map 施設番号 → { img, w, h }。案35）、
  *          overlay（重ねて表示する情報。overlays/ のモジュール）、
  *          overlayMode（"bars" で量のある重ね表示を棒にする。ほかは塗り分け。UI-79）、
  *          sprites（sprites.js の loadSprites が返す絵。ないものは色の箱で描く）、
@@ -70,7 +72,7 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       // 陣地（塹壕）: 奥の2辺を施設・住宅より先に、手前の2辺をあとに描く（docs/map-art.md）
       const trench = map.trench?.[i];
       if (trench) drawOverlay(ctx, sprites.get("overlay/trench_back"), px, top, theme);
-      if (f) drawFacility(ctx, f, map, defs, px, top, theme, sprites, options.flag);
+      if (f) drawFacility(ctx, f, map, defs, px, top, theme, sprites, options.flag, options.monumentImages);
       // 首都のマスに建物がないときは、地面に直接旗を立てる
       if (!f && options.flag && map.capital && map.capital[0] === x && map.capital[1] === y) {
         drawCapitalFlag(ctx, options.flag, px, top + theme.tile_height / 2, theme);
@@ -91,6 +93,8 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       if (changeKind) drawChangeMark(ctx, changeKind, px, top, theme);
       const lensKind = options.lensMarks?.get(`${x},${y}`);
       if (lensKind) drawLensMark(ctx, lensKind, px, top, theme);
+      const engravingKind = options.engravings?.get(`${x},${y}`);
+      if (engravingKind) drawEngraving(ctx, engravingKind, px, top, theme);
       if (options.marked?.has(`${x},${y}`)) outlineTop(ctx, px, top, theme, "#ff5722");
       if (options.selected && options.selected.x === x && options.selected.y === y) {
         outlineTop(ctx, px, top, theme, "#ffeb3b");
@@ -330,8 +334,16 @@ function coastalSprite(f, defs, map, name, sprites) {
 }
 
 /** 施設: 絵があれば絵、なければ色付きの箱。住宅の高さは住宅地の段階、工事中は枠だけ。
- * 首都の建物が建っていて旗の画像（flag）があれば、建物の上に旗を立てる。 */
-function drawFacility(ctx, f, map, defs, px, ground, theme, sprites, flag) {
+ * 首都の建物が建っていて旗の画像（flag）があれば、建物の上に旗を立てる。
+ * 自作の記念碑の絵（monumentImages）があれば、共通の絵ではなくその絵を出す（案35）。 */
+function drawFacility(ctx, f, map, defs, px, ground, theme, sprites, flag, monumentImages) {
+  const custom = monumentImages?.get(f.number);
+  if (custom) {
+    const size = monumentImageSize(custom, theme);
+    ctx.drawImage(custom.img, px - size.w / 2, ground + theme.tile_height - size.h, size.w, size.h);
+    if (f.built) drawStopped(ctx, f, defs, px, ground, theme.tile_height / 2);
+    return;
+  }
   const isCapital = map.capital && map.capital[0] === f.x && map.capital[1] === f.y;
   const sprite = facilitySprite(f, defs, map, isCapital, sprites, theme);
   if (sprite) {
@@ -394,6 +406,20 @@ export function capitalFlagSize(flag, theme) {
   if (h > theme.tile_height / 4) {
     h = theme.tile_height / 4;
     w = (h * flag.w) / flag.h;
+  }
+  return { w, h };
+}
+
+/**
+ * 自作の記念碑の絵（案35）を島の地図に出すときの大きさ。幅はマスの幅にそろえ、
+ * 縦は画像の縦横比どおり。背が高すぎる絵はマスの高さの 2 倍までに収める。
+ */
+export function monumentImageSize(image, theme) {
+  let w = theme.tile_width;
+  let h = (w * image.h) / image.w;
+  if (h > theme.tile_height * 2) {
+    h = theme.tile_height * 2;
+    w = (h * image.w) / image.h;
   }
   return { w, h };
 }
@@ -512,6 +538,29 @@ function drawLensMark(ctx, kind, px, top, theme) {
   ctx.closePath();
   ctx.fill();
   ctx.restore();
+}
+
+/**
+ * 記憶の刻印（案35）: 災害や戦いの跡を、そのマスの下端に小さな石の碑で出す。
+ * 施設の絵を隠さないよう、マスの幅の 2 割ほどの大きさに収める。
+ */
+function drawEngraving(ctx, kind, px, top, theme) {
+  const color = ENGRAVING_COLORS[kind];
+  if (!color) return;
+  const w = theme.tile_width * 0.22;
+  const h = theme.tile_height * 0.6;
+  const base = top + theme.tile_height * 0.94;
+  ctx.beginPath();
+  ctx.moveTo(px - w / 2, base);
+  ctx.lineTo(px - w / 2, base - h * 0.55);
+  ctx.quadraticCurveTo(px, base - h * 1.15, px + w / 2, base - h * 0.55);
+  ctx.lineTo(px + w / 2, base);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
 }
 
 /** 止まっている施設には赤い印（絵の上にも描く）。top は印を置くひし形の上の頂点。

@@ -84,6 +84,9 @@
       <label><input type="checkbox" id="map-lens" disabled> {% translate "変化レンズ" %}</label>
       <span id="lens-legend" class="hint" hidden>{% translate "選んだ節目と今の姿を比べた差です。" %}<span class="lens-swatch new">▲</span> {% translate "新しくできた" %}　<span class="lens-swatch down">▼</span> {% translate "無くなった・衰えた" %}　<span class="lens-swatch changed">◇</span> {% translate "姿が変わった" %}</span>
       <span id="history-turns" class="hint" hidden></span>
+      {# 記憶の刻印（案35）: 災害や戦いの跡を、そのマスに小さな石の印で出す #}
+      <label><input type="checkbox" id="map-engravings"> {% translate "記憶の刻印" %}</label>
+      <span id="engravings-legend" class="hint" hidden>{% translate "大きな出来事があったマスの印です。" %}<span class="engraving-swatch disaster">■</span> {% translate "災害の跡" %}　<span class="engraving-swatch scar">■</span> {% translate "戦いや騒ぎの跡" %}</span>
       {% endif %}
     </div>
     <p id="map-help" class="hint">{% translate "地図はドラッグで移動、Ctrl＋ホイールか＋－ボタンで拡大縮小できます。スマートフォンでは2本指で拡大縮小できます。通常のホイールはページをスクロールします。" %}</p>

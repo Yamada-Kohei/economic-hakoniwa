@@ -4,7 +4,7 @@
 
 import { attachControls } from "./controls.js";
 import { changeMarks, readChangesShown, writeChangesShown } from "./changes.js";
-import { lensMarks, readLensShown, writeLensShown } from "./history.js";
+import { engravingMarks, lensMarks, readEngravingsShown, readLensShown, writeEngravingsShown, writeLensShown } from "./history.js";
 import { readFlagShown, writeFlagShown } from "./flagtoggle.js";
 import { drawMinimap, minimapTile } from "./minimap.js";
 import { BARS, FILL, overlayLegend, readOverlayMode, writeOverlayMode } from "./overlays/bars.js";
@@ -63,6 +63,8 @@ const state = {
   changes: readChangesShown(storage), changeMarks: null, // 前のターンから変わったマスの印（案3 の静止版）。既定は出さない
   lens: readLensShown(storage), lensMarks: null, // 変化レンズ（案29）。既定は出さない
   historyTurn: null, snapshotMap: null, historyNow: "", // 地図の変遷（案29）: 選んだ節目の写しと、その見比べ方
+  engravingsShown: readEngravingsShown(storage), engravings: null, engravingList: [], // 記憶の刻印（案35）
+  monumentImages: null, // 自作の記念碑の絵（案35）: 施設番号 → { img, w, h }
   flagShown: readFlagShown(storage), // 首都の旗（案23）を出すか。既定は出す
   merchantShown: readMerchantShown(storage), // 港の商船（案6）を出すか。既定は出す
   fleetShown: readFleetShown(storage), // 母港の艦隊（W-100）を出すか。既定は出す
@@ -390,6 +392,8 @@ if (historySelect) {
         historyLabels.set(snap.turn, snap.label);
         historySelect.add(new Option(snap.label, String(snap.turn)));
       }
+      state.engravingList = history.engravings || [];
+      applyEngravings();
     })
     .catch(() => {});
   historySelect.addEventListener("change", () => {
@@ -404,6 +408,24 @@ if (lensToggle) {
     writeLensShown(storage, state.lens);
     applyHistory();
   });
+}
+
+// 記憶の刻印（案35）: 出すかどうかは覚える。刻印の一覧は上の ?history=1 で一緒に読む
+const engravingsToggle = document.getElementById("map-engravings");
+const engravingsLegend = document.getElementById("engravings-legend");
+function applyEngravings() {
+  state.engravings = state.engravingsShown ? engravingMarks(state.engravingList) : null;
+  if (engravingsLegend) engravingsLegend.hidden = !state.engravingsShown;
+  redraw();
+}
+if (engravingsToggle) {
+  engravingsToggle.checked = state.engravingsShown;
+  engravingsToggle.addEventListener("change", () => {
+    state.engravingsShown = engravingsToggle.checked;
+    writeEngravingsShown(storage, state.engravingsShown);
+    applyEngravings();
+  });
+  if (state.engravingsShown) applyEngravings();
 }
 
 // 首都の旗（案23）の表示の切り替え（案44 の旗の分）。出すかどうかは覚え、
@@ -536,6 +558,17 @@ loadSprites(theme, { into: state.sprites, priority: spritePriorityKeys(theme, ma
 
 // 首都のマスに立てる旗（その国の旗の画像）。読めたら描き直す
 if (canvas.dataset.flag) loadFlag(canvas.dataset.flag, (flag) => { state.flag = flag; redraw(); });
+
+// 自作の記念碑の絵（案35）: 地図の材料に絵の場所が付いた施設だけ読み、読めたら描き直す
+for (const f of map.facilities || []) {
+  if (!f.image) continue;
+  loadFlag(f.image, (image) => {
+    if (!image) return;
+    if (!state.monumentImages) state.monumentImages = new Map();
+    state.monumentImages.set(f.number, image);
+    redraw();
+  });
+}
 
 // ターンログのリンクなどから ?x=..&y=.. で来たら、そのマスを選ぶ
 const params = new URLSearchParams(location.search);

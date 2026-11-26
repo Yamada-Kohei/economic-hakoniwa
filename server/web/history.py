@@ -12,6 +12,9 @@
 比べ方は server/web/changes.py と同じ「見た目の差」で、施設の名前や状態のような
 絵に出ない違いや、指標の変化は数えません。読みは持ち主の地図だけに使います
 （島の地図の API が ?history=1 / ?snapshot= / ?lens= のとき、持ち主にだけ足す）。
+
+記憶の刻印（案35）は engraving_list: 残した出来事を、災害（disaster）と
+戦い・騒ぎの傷跡（scar）に分けて地図の印の材料にします。
 """
 
 from __future__ import annotations
@@ -27,6 +30,9 @@ from server.world import models as m
 NEW = "new"
 DOWN = "down"
 CHANGED = "changed"
+
+DISASTER = "disaster"
+SCAR = "scar"
 
 _KIND_KEYS = {
     map_history.START: "map_snapshot_start",
@@ -55,6 +61,28 @@ def snapshot_list(island: m.Island) -> list[dict[str, Any]]:
                 "turn": snap["turn"],
                 "kinds": [kind for kind in snap.get("kinds", []) if kind in _KIND_KEYS],
                 "label": display.message("map_snapshot_option", turn=snap["turn"], kinds=kinds),
+            }
+        )
+    return out
+
+
+def engraving_list(island: m.Island) -> list[dict[str, Any]]:
+    """記憶の刻印（案35）の一覧。種類を災害と傷跡に分け、地図の印の材料にする。"""
+    rows = (island.ext or {}).get(map_history.ENGRAVINGS) or []
+    out = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        x, y, kind = row.get("x"), row.get("y"), row.get("kind")
+        if not isinstance(x, int) or not isinstance(y, int) or not isinstance(kind, str):
+            continue
+        out.append(
+            {
+                "turn": row.get("turn"),
+                "x": x,
+                "y": y,
+                "kind": kind,
+                "mark": DISASTER if kind.startswith(map_history.DISASTER_PREFIX) else SCAR,
             }
         )
     return out

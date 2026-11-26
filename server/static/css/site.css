@@ -262,6 +262,9 @@ pre.prompt { white-space: pre-wrap; overflow-wrap: anywhere; }
 .lens-swatch.new { color: #2e7d32; }
 .lens-swatch.down { color: #6a1b9a; }
 .lens-swatch.changed { color: #00838f; }
+/* 記憶の刻印の凡例（案35）: 色は history.js の ENGRAVING_COLORS と同じ */
+.engraving-swatch.disaster { color: #616161; }
+.engraving-swatch.scar { color: #6d4c41; }
 /* 港の船の凡例（案6・W-100）: 商船は四角、艦隊は尖った形で、色と形の両方で見分ける */
 .ship-swatch { display: inline-block; width: 16px; height: 10px; vertical-align: middle; }
 .ship-swatch.merchant { background: #9c4a2f; }

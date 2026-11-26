@@ -17,6 +17,7 @@ from django.db.models import Max, Q
 from django.http import Http404, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.templatetags.static import static
+from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods
 
 from hakoniwa_core import facilities as fac
@@ -413,10 +414,12 @@ def island_map(request, island_id: int):
         # 切り替えたときだけ読む。持ち主の地図だけに出す（他国の施設の変化は見せない）
         data["changed"] = changes_views.changed_cells(island)
     if request.GET.get("history") and mine:
-        # 地図の変遷（案29）: 節目の写しの一覧。写しの中身は ?snapshot= で別に読む
+        # 地図の変遷（案29）: 節目の写しの一覧。写しの中身は ?snapshot= で別に読む。
+        # 記憶の刻印（案35）の一覧も、同じ読みで一緒に渡す
         data["history"] = {
             "snapshots": history_views.snapshot_list(island),
             "now": display.message("map_history_now", turn=island.world.turn),
+            "engravings": history_views.engraving_list(island),
         }
     if request.GET.get("lens") and mine:
         # 変化レンズ（案29）: 選んだ節目の写しと今の姿の差。写しが無ければ空
@@ -428,6 +431,11 @@ def island_map(request, island_id: int):
     # 港に停泊中の商船（案6）と、母港に繋留中の艦隊（W-100）。地図に船を浮かべるための材料
     data["port_ships"] = _port_ships(island)
     data["harbor_fleets"] = military_views.harbor_fleets(island, viewer)
+    # 自作の記念碑の絵（案35）: 絵を上げた記念碑は、国のページと同じ絵を島の地図にも
+    # 出す（W-94 の決め直し）。管理者に隠された絵は出さない
+    monument_numbers = set(
+        island.monument_images.filter(hidden=False).values_list("number", flat=True)
+    )
     facilities = [
         {
             "number": f.number,
@@ -435,6 +443,15 @@ def island_map(request, island_id: int):
             "x": f.x,
             "y": f.y,
             "built": f.built,
+            **(
+                {
+                    "image": reverse(
+                        "monument_image", kwargs={"island_id": island.id, "number": f.number}
+                    )
+                }
+                if f.kind == "monument_custom" and f.number in monument_numbers
+                else {}
+            ),
             "level": (f.ext or {}).get("level"),
             # 地図が絵を選ぶ: 作り方（綿の畑・銅の鉱山など）、農場の段階（FM-50）、
             # 建て増しの規模（FM-47）

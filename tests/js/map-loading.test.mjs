@@ -50,6 +50,7 @@ function environment({ failedUrl, failedDraw = false } = {}) {
     drawMinimap() {}, drawRuler() {}, readRulerShown: () => false, writeRulerShown() {},
     changeMarks: () => new Map(), readChangesShown: () => false, writeChangesShown() {},
     lensMarks: () => new Map(), readLensShown: () => false, writeLensShown() {},
+    engravingMarks: () => new Map(), readEngravingsShown: () => false, writeEngravingsShown() {},
     readFlagShown: () => true, writeFlagShown() {},
     placeShips: () => new Map(),
     shipCounts: () => ({ merchantKnown: false, merchantTotal: 0, merchantPlaced: 0, fleetTotal: 0, fleetPlaced: 0 }),

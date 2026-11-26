@@ -11,8 +11,15 @@ import pytest
 from django.contrib.auth.models import User
 from django.urls import reverse
 
-from server.web.history import find_snapshot, lens_marks, snapshot_list, snapshot_map
-from server.world.models import Island
+from server.country.models import MonumentImage
+from server.web.history import (
+    engraving_list,
+    find_snapshot,
+    lens_marks,
+    snapshot_list,
+    snapshot_map,
+)
+from server.world.models import Facility, Island
 
 pytestmark = pytest.mark.django_db
 
@@ -155,3 +162,56 @@ def test_api_is_owner_only(client, world):
     assert "history" not in data
     assert "lens" not in data
     assert "population" in data  # 持ち主でなければ写しは返さず、今の地図を返す
+
+
+def test_engraving_list_splits_disaster_and_scar(world):
+    island = Island.objects.order_by("id").first()
+    island.ext = {
+        "map_engravings": [
+            {"turn": 3, "x": 1, "y": 2, "kind": "disaster_tsunami"},
+            {"turn": 4, "x": 5, "y": 6, "kind": "tile_occupied"},
+            {"turn": 5, "x": "bad", "y": 0, "kind": "disaster_fire"},
+            "junk",
+        ]
+    }
+    island.save(update_fields=["ext"])
+    rows = engraving_list(island)
+    assert [(r["x"], r["y"], r["mark"]) for r in rows] == [
+        (1, 2, "disaster"),
+        (5, 6, "scar"),
+    ]
+
+
+def test_monument_image_joins_the_map_payload(client, world):
+    island = _own_island(client)
+    monument = island.facilities.filter(kind="monument_custom", x__gte=0).first()
+    if monument is None:
+        taken = {(f.x, f.y) for f in island.facilities.filter(x__gte=0)}
+        free = next(
+            (x, y) for y in range(island.size) for x in range(island.size) if (x, y) not in taken
+        )
+        monument = Facility.objects.create(
+            island=island,
+            number=9001,
+            kind="monument_custom",
+            x=free[0],
+            y=free[1],
+            built=True,
+        )
+    url = reverse("api_island_map", args=[island.id])
+
+    def image_of(data):
+        return next(f.get("image") for f in data["facilities"] if f["number"] == monument.number)
+
+    assert image_of(client.get(url).json()) is None  # 絵が無ければ共通の絵のまま
+
+    MonumentImage.objects.create(
+        island=island, number=monument.number, png=b"png", width=10, height=10
+    )
+    shown = image_of(client.get(url).json())
+    assert shown and "monument" in shown
+
+    image = MonumentImage.objects.get(island=island, number=monument.number)
+    image.hidden = True
+    image.save(update_fields=["hidden"])
+    assert image_of(client.get(url).json()) is None  # 隠された絵は地図にも出さない

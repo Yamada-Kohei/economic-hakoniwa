@@ -4,12 +4,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  ENGRAVING_COLORS,
+  ENGRAVINGS_KEY,
   LENS_COLORS,
   LENS_KEY,
+  engravingMarks,
   lensMarks,
+  readEngravingsShown,
   readLensShown,
+  writeEngravingsShown,
   writeLensShown,
 } from "../../server/static/js/map/history.js";
+import { monumentImageSize } from "../../server/static/js/map/renderer.js";
 
 function memory() {
   const items = new Map();
@@ -64,4 +70,39 @@ test("知らない種類や壊れた行は飛ばす", () => {
   assert.equal(marks.get("2,2"), "new");
   assert.equal(lensMarks({}).size, 0);
   assert.equal(lensMarks(null).size, 0);
+});
+
+test("刻印は覚えていなければ出さず、切り替えを覚える", () => {
+  const storage = memory();
+  assert.equal(readEngravingsShown(storage), false);
+  writeEngravingsShown(storage, true);
+  assert.equal(storage.getItem(ENGRAVINGS_KEY), "on");
+  assert.equal(readEngravingsShown(storage), true);
+  writeEngravingsShown(storage, false);
+  assert.equal(readEngravingsShown(storage), false);
+  assert.equal(readEngravingsShown(null), false);
+});
+
+test("刻印の並びをマスの組に直し、同じマスは新しい物を採る", () => {
+  const marks = engravingMarks([
+    { x: 1, y: 1, mark: "disaster" },
+    { x: 2, y: 2, mark: "scar" },
+    { x: 1, y: 1, mark: "scar" },
+    { x: 3, y: 3, mark: "unknown" },
+    { x: 4.5, y: 4, mark: "scar" },
+    null,
+  ]);
+  assert.equal(marks.size, 2);
+  assert.equal(marks.get("1,1"), "scar");
+  assert.equal(marks.get("2,2"), "scar");
+  assert.deepEqual(Object.keys(ENGRAVING_COLORS).sort(), ["disaster", "scar"]);
+  assert.equal(engravingMarks(null).size, 0);
+});
+
+test("自作の記念碑の絵は、マスの幅にそろえ、背が高すぎれば収める", () => {
+  const theme = { tile_width: 64, tile_height: 32 };
+  assert.deepEqual(monumentImageSize({ w: 100, h: 50 }, theme), { w: 64, h: 32 });
+  const tall = monumentImageSize({ w: 10, h: 100 }, theme);
+  assert.equal(tall.h, 64);
+  assert.ok(tall.w < 64);
 });

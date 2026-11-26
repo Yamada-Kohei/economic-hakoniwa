@@ -12,6 +12,9 @@
 保存は記録の段（records）で、節目を残した直後に呼びます。計算・バランスは変えず、
 記録だけです。写しは最大 MAX_SNAPSHOTS 枚まで持ち、最初の 1 枚は落とさず、
 古い中間の物から落とします。
+
+あわせて「記憶の刻印」（案35）: 災害や戦いの跡など、位置を持つ大きな出来事を
+``island.ext["map_engravings"]`` に残し、地図に小さな石の印として出します。
 """
 
 from __future__ import annotations
@@ -23,6 +26,22 @@ from hakoniwa_core.state import IslandState
 SNAPSHOTS = "map_snapshots"  # island.ext: [{turn, kinds, size, terrain, capital, facilities}]
 MAX_SNAPSHOTS = 16
 START = "start"  # 記録開始の 1 枚（節目ではない）
+
+ENGRAVINGS = "map_engravings"  # island.ext: [{turn, x, y, kind}]（記憶の刻印、案35）
+MAX_ENGRAVINGS = 120
+# 刻印として残す出来事。位置（x/y）を持つログだけが対象で、災害（disaster_ で始まる物。
+# 島全体の *_island は位置を持たないので自然に外れる）と、戦い・騒ぎの傷跡に分ける
+DISASTER_PREFIX = "disaster_"
+SCAR_KINDS = frozenset(
+    {
+        "missile_hit",
+        "missile_intercepted",
+        "nuclear_hit",
+        "rebellion_started",
+        "riot_destroyed",
+        "tile_occupied",
+    }
+)
 # 節目のログの種類（hakoniwa_core/milestones.py が残す）
 MILESTONE_KINDS = ("anniversary_founding", "milestone_population", "milestone_gdp")
 
@@ -77,3 +96,35 @@ def record(island: IslandState, turn: int) -> None:
             snaps.append(snapshot_of(island, turn, hit))
     while len(snaps) > MAX_SNAPSHOTS:
         del snaps[1]  # 最初の 1 枚（記録開始の姿）は落とさない
+    _record_engravings(island, turn)
+
+
+def _record_engravings(island: IslandState, turn: int) -> None:
+    """記憶の刻印（案35）: 位置を持つ大きな出来事を、そのマスに残す。
+
+    災害と戦い・騒ぎの跡が対象です。同じターン・同じマス・同じ種類は 1 つにまとめ、
+    古い物から落として最大 MAX_ENGRAVINGS 件まで持ちます。出来事とマスの結び付きは
+    ログの引数（x/y）だけが頼りなので、位置を持たない種類は残しません。
+    """
+    rows = island.ext.get(ENGRAVINGS)
+    if not isinstance(rows, list):
+        rows = []
+    seen = {
+        (row.get("turn"), row.get("x"), row.get("y"), row.get("kind"))
+        for row in rows
+        if isinstance(row, dict)
+    }
+    for entry in island.log:
+        kind = entry.kind
+        if not (kind.startswith(DISASTER_PREFIX) or kind in SCAR_KINDS):
+            continue
+        args = entry.args or {}
+        x, y = args.get("x"), args.get("y")
+        if not isinstance(x, int) or not isinstance(y, int):
+            continue
+        key = (turn, x, y, kind)
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append({"turn": turn, "x": x, "y": y, "kind": kind})
+    island.ext[ENGRAVINGS] = rows[-MAX_ENGRAVINGS:]

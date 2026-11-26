@@ -40,7 +40,8 @@ class Flag(models.Model):
 
 class MonumentImage(models.Model):
     """自作の記念碑（monument_custom）の絵。国旗と同じ PNG の検査と守り（png.py）。管理者が隠すと
-    仮の絵に戻る。碑の国の画面とタイルの欄に出る（島の地図の絵は、どの自作の碑も共通の絵）。"""
+    仮の絵に戻る。碑の国の画面とタイルの欄に出るほか、島の地図にも同じ絵を出す
+    （案35 で W-94 の決めを変えた）。"""
 
     island = models.ForeignKey(
         Island, verbose_name="国", on_delete=models.CASCADE, related_name="monument_images"

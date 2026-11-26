@@ -45,3 +45,46 @@ export function lensMarks(map) {
   }
   return marks;
 }
+
+// 記憶の刻印（案35）: 災害や戦いの跡を、そのマスに小さな石の印で出す。
+// 一覧は ?history=1 の engravings で読む。出すかどうかはレンズと同じく覚える。
+
+export const ENGRAVINGS_KEY = "hakoniwa:map-engravings";
+
+/** 刻印を出すか。覚えていない・読めないときは出さない（既定）。 */
+export function readEngravingsShown(storage) {
+  try {
+    return storage?.getItem(ENGRAVINGS_KEY) === "on";
+  } catch {
+    return false;
+  }
+}
+
+/** 出すかどうかを覚える。覚えられなくても表示は切り替える。 */
+export function writeEngravingsShown(storage, shown) {
+  try {
+    storage?.setItem(ENGRAVINGS_KEY, shown ? "on" : "off");
+  } catch {
+    // プライベートの窓など
+  }
+}
+
+/** 刻印の種類ごとの石の色。凡例（island.html の .engraving-swatch）と同じ色にする。 */
+export const ENGRAVING_COLORS = {
+  disaster: "#616161", // 災害の跡（石の灰色）
+  scar: "#6d4c41", // 戦い・騒ぎの跡（焦げた茶色）
+};
+
+/**
+ * API の engravings（[{x, y, mark}]）を "x,y" → 種類の Map に直す。
+ * 知らない種類や壊れた行は飛ばす。同じマスに複数あれば後の物（新しい出来事）を採る。
+ */
+export function engravingMarks(rows) {
+  const marks = new Map();
+  for (const row of rows || []) {
+    if (!row || !(row.mark in ENGRAVING_COLORS)) continue;
+    if (!Number.isInteger(row.x) || !Number.isInteger(row.y)) continue;
+    marks.set(`${row.x},${row.y}`, row.mark);
+  }
+  return marks;
+}
