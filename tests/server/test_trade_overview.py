@@ -303,10 +303,20 @@ def test_trade_partner_stats_table(world):
     routes = {r["route"]: r for r in rows[str(other.id)]["routes"]}
     assert routes["bloc"]["label"] == "圏の市場" and "800" in routes["bloc"]["exports"]
     assert routes["contract"]["label"] == "二国間契約" and "100" in routes["contract"]["imports"]
+    # 表の注用に、輸出・輸入の片側ずつの内訳も出す（その側の額が無い経路は除く）
+    route_exports = rows[str(other.id)]["route_exports"]
+    assert [r["label"] for r in route_exports] == ["圏の市場"]
+    assert "800" in route_exports[0]["amount"]
+    assert [r["label"] for r in rows[str(other.id)]["route_imports"]] == ["二国間契約"]
+    assert "100" in rows[str(other.id)]["route_imports"][0]["amount"]
+    assert [r["label"] for r in rows["merchant"]["route_imports"]] == ["海外の商人"]
     page = browser.get(f"/islands/{island.id}/trade/").content.decode()
     section = _section(page, "trade-partners")
     assert "貿易の相手国" in section and "圏の市場（相手は混ざる）" not in section
     assert "経路" in section and "圏の市場" in section and "二国間契約" in section
     assert other.name in section and "穀物" in section
+    # 経路の注は相手の名前の欄ではなく、直近 1 年の金額の欄の 2 行目に小さく出す
+    assert f"<th>{other.name}</th>" in section
+    assert '<small class="muted route-note">' in section
     # 金額の桁が長くスマホ幅に収まらないので、表は横スクロールの入れ物で包む
     assert '<div class="table-scroll">' in section
