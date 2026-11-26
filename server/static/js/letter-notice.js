@@ -1,4 +1,6 @@
 // 公電の新着を、画面が見えている間だけ調べる。保存を禁じたブラウザでもページ内で動く。
+// 文言は多言語の形（gettext）で書き、訳は base.html が先に読み込む
+// /jsi18n/ のカタログから来る（docs/i18n.md の JS の節）。
 const notice = document.getElementById("letter-notice");
 if (notice) mountLetterNotice(notice);
 
@@ -54,10 +56,18 @@ function mountLetterNotice(root) {
     if (!pending.size) return;
     if (pending.size === 1) {
       const letter = pending.values().next().value;
-      link.textContent = `${letter.from.name}から公電: ${letter.subject}`;
+      link.textContent = interpolate(
+        gettext("%(name)sから公電: %(subject)s"),
+        { name: letter.from.name, subject: letter.subject },
+        true,
+      );
       link.href = root.dataset.letterUrl.replace(/0\/$/, `${letter.id}/`);
     } else {
-      link.textContent = `公電が ${pending.size} 通届きました`;
+      link.textContent = interpolate(
+        ngettext("公電が %(count)s 通届きました", "公電が %(count)s 通届きました", pending.size),
+        { count: pending.size },
+        true,
+      );
       link.href = nav.href;
     }
     card.hidden = false;
@@ -74,7 +84,7 @@ function mountLetterNotice(root) {
       badge.className = "badge";
       nav.append(" ", badge);
     }
-    badge.textContent = `未読の公電 ${unread}`;
+    badge.textContent = interpolate(gettext("未読の公電 %(count)s"), { count: unread }, true);
   }
 
   function syncPreference() {

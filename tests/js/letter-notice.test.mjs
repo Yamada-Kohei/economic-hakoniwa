@@ -33,7 +33,18 @@ class Element {
   }
 }
 
-function browser({ stored = {}, storageFails = false, visible = true, mounted = true } = {}) {
+// /jsi18n/ のカタログ（Django の JavaScriptCatalog）と同じ動きの代わり。
+// 訳が無い文言は原文（日本語）がそのまま出る。catalog で訳を渡すとそちらが出る。
+function catalogStubs(catalog) {
+  return {
+    gettext: (msgid) => catalog[msgid] ?? msgid,
+    ngettext: (singular, plural, count) => catalog[singular] ?? (count === 1 ? singular : plural),
+    interpolate: (fmt, obj, named) =>
+      named ? fmt.replace(/%\((\w+)\)s/g, (_match, key) => String(obj[key])) : fmt,
+  };
+}
+
+function browser({ stored = {}, storageFails = false, visible = true, mounted = true, catalog = {} } = {}) {
   const values = new Map(Object.entries(stored));
   const root = new Element();
   root.dataset = { user: "7", island: "2", url: "/api/letters", letterUrl: "/letters/0/" };
@@ -68,6 +79,7 @@ function browser({ stored = {}, storageFails = false, visible = true, mounted = 
     },
   };
   const context = vm.createContext({ document, window, localStorage: storage, URL, AbortController,
+    ...catalogStubs(catalog),
     setTimeout(handler, delay) { const id = ++nextTimer; timers.set(id, { handler, delay }); return id; },
     clearTimeout(id) { timers.delete(id); },
     fetch(url, options) {
@@ -244,6 +256,22 @@ test("別タブで確認済みのIDと設定を取り込む", async () => {
   b.window.fire("storage", { key: enabledKey });
   assert.equal(b.checkbox.checked, false);
   assert.equal(b.card.hidden, true);
+});
+
+test("カタログに訳がある文言は訳で出る", async () => {
+  const catalog = {
+    "%(name)sから公電: %(subject)s": "Letter from %(name)s: %(subject)s",
+    "公電が %(count)s 通届きました": "%(count)s new letters",
+    "未読の公電 %(count)s": "Unread letters: %(count)s",
+  };
+  const b = browser({ stored: { [lastKey]: "4" }, catalog });
+  await b.reply(inbox([letter(8, true), letter(7), letter(6), letter(4)]));
+  assert.equal(b.link.textContent, "2 new letters");
+  assert.equal(b.nav.querySelector().textContent, "Unread letters: 3");
+  b.close.fire("click");
+  await b.tick();
+  await b.reply(inbox([letter(9), letter(8), letter(7)]));
+  assert.equal(b.link.textContent, "Letter from 海辺国: 会談のお願い");
 });
 
 test("対象のHTMLがないページでは通信しない", () => {
