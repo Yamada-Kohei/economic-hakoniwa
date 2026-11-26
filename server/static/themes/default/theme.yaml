@@ -194,6 +194,18 @@ sprites:
   facility/naval_base@sw: {file: sprites/facility/naval_base@sw.svg, anchor: [32, 49]}
   facility/naval_base@ne: sprites/facility/naval_base@ne.svg
   facility/naval_base@nw: sprites/facility/naval_base@nw.svg
+  facility/naval_base@s2: {file: sprites/facility/naval_base@s2.svg, anchor: [32, 51]}
+  facility/naval_base@s3: {file: sprites/facility/naval_base@s3.svg, anchor: [32, 54]}
+  facility/naval_base@s4: {file: sprites/facility/naval_base@s4.svg, anchor: [32, 56]}
+  facility/naval_base@sw@s2: {file: sprites/facility/naval_base@sw@s2.svg, anchor: [32, 51]}
+  facility/naval_base@sw@s3: {file: sprites/facility/naval_base@sw@s3.svg, anchor: [32, 54]}
+  facility/naval_base@sw@s4: {file: sprites/facility/naval_base@sw@s4.svg, anchor: [32, 56]}
+  facility/naval_base@ne@s2: sprites/facility/naval_base@ne@s2.svg
+  facility/naval_base@ne@s3: sprites/facility/naval_base@ne@s3.svg
+  facility/naval_base@ne@s4: sprites/facility/naval_base@ne@s4.svg
+  facility/naval_base@nw@s2: sprites/facility/naval_base@nw@s2.svg
+  facility/naval_base@nw@s3: sprites/facility/naval_base@nw@s3.svg
+  facility/naval_base@nw@s4: sprites/facility/naval_base@nw@s4.svg
   facility/radar: sprites/facility/radar.svg
   overlay/trench_back: sprites/overlay/trench_back.svg
   overlay/trench_front: sprites/overlay/trench_front.svg
