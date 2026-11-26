@@ -1,0 +1,609 @@
+{
+ "commit": "7c948cb5eb23a26287a50a7397eab259a6fa23de",
+ "files": [
+  "reqb_shortage_measure.py"
+ ],
+ "pool": "any",
+ "runs": [
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-off-plan-s1.jsonl.gz"
+   ],
+   "name": "reqbm-off-plan-s1",
+   "summary": [
+    "reqbm-off-plan-s1.jsonl.gz",
+    "reqbm-off-plan-s1.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-on-plan-s1.jsonl.gz"
+   ],
+   "name": "reqbm-on-plan-s1",
+   "summary": [
+    "reqbm-on-plan-s1.jsonl.gz",
+    "reqbm-on-plan-s1.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "2",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-off-plan-s2.jsonl.gz"
+   ],
+   "name": "reqbm-off-plan-s2",
+   "summary": [
+    "reqbm-off-plan-s2.jsonl.gz",
+    "reqbm-off-plan-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "2",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-on-plan-s2.jsonl.gz"
+   ],
+   "name": "reqbm-on-plan-s2",
+   "summary": [
+    "reqbm-on-plan-s2.jsonl.gz",
+    "reqbm-on-plan-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "3",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-off-plan-s3.jsonl.gz"
+   ],
+   "name": "reqbm-off-plan-s3",
+   "summary": [
+    "reqbm-off-plan-s3.jsonl.gz",
+    "reqbm-off-plan-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "3",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-on-plan-s3.jsonl.gz"
+   ],
+   "name": "reqbm-on-plan-s3",
+   "summary": [
+    "reqbm-on-plan-s3.jsonl.gz",
+    "reqbm-on-plan-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-off-independent-s1.jsonl.gz"
+   ],
+   "name": "reqbm-off-independent-s1",
+   "summary": [
+    "reqbm-off-independent-s1.jsonl.gz",
+    "reqbm-off-independent-s1.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-on-independent-s1.jsonl.gz"
+   ],
+   "name": "reqbm-on-independent-s1",
+   "summary": [
+    "reqbm-on-independent-s1.jsonl.gz",
+    "reqbm-on-independent-s1.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "2",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-off-independent-s2.jsonl.gz"
+   ],
+   "name": "reqbm-off-independent-s2",
+   "summary": [
+    "reqbm-off-independent-s2.jsonl.gz",
+    "reqbm-off-independent-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "2",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-on-independent-s2.jsonl.gz"
+   ],
+   "name": "reqbm-on-independent-s2",
+   "summary": [
+    "reqbm-on-independent-s2.jsonl.gz",
+    "reqbm-on-independent-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "3",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-off-independent-s3.jsonl.gz"
+   ],
+   "name": "reqbm-off-independent-s3",
+   "summary": [
+    "reqbm-off-independent-s3.jsonl.gz",
+    "reqbm-off-independent-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "3",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-on-independent-s3.jsonl.gz"
+   ],
+   "name": "reqbm-on-independent-s3",
+   "summary": [
+    "reqbm-on-independent-s3.jsonl.gz",
+    "reqbm-on-independent-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "small",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-off-small-s1.jsonl.gz"
+   ],
+   "name": "reqbm-off-small-s1",
+   "summary": [
+    "reqbm-off-small-s1.jsonl.gz",
+    "reqbm-off-small-s1.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "small",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-on-small-s1.jsonl.gz"
+   ],
+   "name": "reqbm-on-small-s1",
+   "summary": [
+    "reqbm-on-small-s1.jsonl.gz",
+    "reqbm-on-small-s1.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "small",
+    "--seed",
+    "2",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-off-small-s2.jsonl.gz"
+   ],
+   "name": "reqbm-off-small-s2",
+   "summary": [
+    "reqbm-off-small-s2.jsonl.gz",
+    "reqbm-off-small-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "small",
+    "--seed",
+    "2",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-on-small-s2.jsonl.gz"
+   ],
+   "name": "reqbm-on-small-s2",
+   "summary": [
+    "reqbm-on-small-s2.jsonl.gz",
+    "reqbm-on-small-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "small",
+    "--seed",
+    "3",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-off-small-s3.jsonl.gz"
+   ],
+   "name": "reqbm-off-small-s3",
+   "summary": [
+    "reqbm-off-small-s3.jsonl.gz",
+    "reqbm-off-small-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "small",
+    "--seed",
+    "3",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-on-small-s3.jsonl.gz"
+   ],
+   "name": "reqbm-on-small-s3",
+   "summary": [
+    "reqbm-on-small-s3.jsonl.gz",
+    "reqbm-on-small-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "open",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-off-open-s1.jsonl.gz"
+   ],
+   "name": "reqbm-off-open-s1",
+   "summary": [
+    "reqbm-off-open-s1.jsonl.gz",
+    "reqbm-off-open-s1.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "open",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-on-open-s1.jsonl.gz"
+   ],
+   "name": "reqbm-on-open-s1",
+   "summary": [
+    "reqbm-on-open-s1.jsonl.gz",
+    "reqbm-on-open-s1.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "open",
+    "--seed",
+    "2",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-off-open-s2.jsonl.gz"
+   ],
+   "name": "reqbm-off-open-s2",
+   "summary": [
+    "reqbm-off-open-s2.jsonl.gz",
+    "reqbm-off-open-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "open",
+    "--seed",
+    "2",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-on-open-s2.jsonl.gz"
+   ],
+   "name": "reqbm-on-open-s2",
+   "summary": [
+    "reqbm-on-open-s2.jsonl.gz",
+    "reqbm-on-open-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "open",
+    "--seed",
+    "3",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-off-open-s3.jsonl.gz"
+   ],
+   "name": "reqbm-off-open-s3",
+   "summary": [
+    "reqbm-off-open-s3.jsonl.gz",
+    "reqbm-off-open-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "open",
+    "--seed",
+    "3",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-on-open-s3.jsonl.gz"
+   ],
+   "name": "reqbm-on-open-s3",
+   "summary": [
+    "reqbm-on-open-s3.jsonl.gz",
+    "reqbm-on-open-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "war",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-off-war-s1.jsonl.gz"
+   ],
+   "name": "reqbm-off-war-s1",
+   "summary": [
+    "reqbm-off-war-s1.jsonl.gz",
+    "reqbm-off-war-s1.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "war",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-on-war-s1.jsonl.gz"
+   ],
+   "name": "reqbm-on-war-s1",
+   "summary": [
+    "reqbm-on-war-s1.jsonl.gz",
+    "reqbm-on-war-s1.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "war",
+    "--seed",
+    "2",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-off-war-s2.jsonl.gz"
+   ],
+   "name": "reqbm-off-war-s2",
+   "summary": [
+    "reqbm-off-war-s2.jsonl.gz",
+    "reqbm-off-war-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "war",
+    "--seed",
+    "2",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-on-war-s2.jsonl.gz"
+   ],
+   "name": "reqbm-on-war-s2",
+   "summary": [
+    "reqbm-on-war-s2.jsonl.gz",
+    "reqbm-on-war-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "war",
+    "--seed",
+    "3",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-off-war-s3.jsonl.gz"
+   ],
+   "name": "reqbm-off-war-s3",
+   "summary": [
+    "reqbm-off-war-s3.jsonl.gz",
+    "reqbm-off-war-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "reqb_shortage_measure.py",
+    "probe",
+    "--scenario",
+    "war",
+    "--seed",
+    "3",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "reqbm-on-war-s3.jsonl.gz"
+   ],
+   "name": "reqbm-on-war-s3",
+   "summary": [
+    "reqbm-on-war-s3.jsonl.gz",
+    "reqbm-on-war-s3.gate.json"
+   ]
+  }
+ ]
+}
