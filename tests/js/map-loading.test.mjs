@@ -49,6 +49,9 @@ function environment({ failedUrl, failedDraw = false } = {}) {
     drawIsland() { if (failedDraw) throw new Error("描けません"); drawings += 1; },
     drawMinimap() {}, drawRuler() {}, readRulerShown: () => false, writeRulerShown() {},
     changeMarks: () => new Map(), readChangesShown: () => false, writeChangesShown() {},
+    GLOW_SECONDS: 2.4, glowAlpha: () => 0,
+    readSmokeShown: () => false, writeSmokeShown() {},
+    readLightMode: () => true, writeLightMode() {},
     loadSprites: async () => new Map(),
     spritePriorityKeys: () => new Set(),
   };
