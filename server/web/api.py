@@ -341,6 +341,18 @@ def _capital_buildings(regime: dict[str, str], ext: dict[str, Any], d: Defs) -> 
     return buildings
 
 
+def _crop_yield(defs: Defs, f: m.Facility) -> float | None:
+    """畑の作柄（グラフィック強化 案19a）: 作物の育つ農場について、その農場の収穫に
+    掛かる生産性の倍率（1.0 がふつう）。生産の段が economy["productivity"]（1000 分の 1）
+    に残した値で、肥沃度・気候など、その畑の土地と作の条件が入っている。
+    1.0 ちょうどのときはキーが消える（hakoniwa_core/economy/productivity.py の update）
+    ので、建っている畑はキーが無ければ 1.0 と読む。畑でない・建っていない施設には
+    無い（None。地図の色は変えない）。"""
+    if not f.built or fac.grow_turns(defs, f.kind, f.recipe) <= 0:
+        return None
+    return round((f.economy or {}).get("productivity", 1000) / 1000, 2)
+
+
 @require_GET
 def island_map(request, island_id: int):
     """島のマスと施設。マスの値は y * size + x の順に並べる。
@@ -405,6 +417,9 @@ def island_map(request, island_id: int):
     # 部隊の印は、見ている国に見えるものだけ（自分の部隊と、見える範囲に入った相手の部隊。
     # 陣地と占領は誰にでも見える）
     data["units"] = military_views.island_units(island, letter_services.own_island(request.user))
+    crop_yields = {
+        f.number: y for f in facility_rows if (y := _crop_yield(get_game().defs, f)) is not None
+    }
     facilities = [
         {
             "number": f.number,
@@ -412,6 +427,9 @@ def island_map(request, island_id: int):
             "x": f.x,
             "y": f.y,
             "built": f.built,
+            # 畑の作柄（案19a）: その農場の収穫に掛かる倍率。畑でない・建っていない
+            # 施設には付けない（地図の色を変える材料がある所だけ）
+            **({"crop_yield": crop_yields[f.number]} if f.number in crop_yields else {}),
             "level": (f.ext or {}).get("level"),
             # 地図が絵を選ぶ: 作り方（綿の畑・銅の鉱山など）、農場の段階（FM-50）、
             # 建て増しの規模（FM-47）

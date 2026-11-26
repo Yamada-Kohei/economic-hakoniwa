@@ -270,6 +270,10 @@ pre.prompt { white-space: pre-wrap; overflow-wrap: anywhere; }
 .change-swatch.built { color: #2e7d32; }
 .change-swatch.removed { color: #c62828; }
 .change-swatch.stage { color: #ef6c00; }
+/* 畑の作柄の凡例（案19a）。色は地図の畑に効かせる色の向き（豊作=深い緑、不作・凶作=枯れ色） */
+.crop-swatch { display: inline-block; width: 0.9em; height: 0.9em; border: 1px solid rgba(0, 0, 0, 0.35); vertical-align: -0.08em; }
+.crop-swatch.rich { background: #3d6b1c; }
+.crop-swatch.withered { background: #a37f33; }
 
 /* 統計の画面 */
 .stat-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 12px 0; }

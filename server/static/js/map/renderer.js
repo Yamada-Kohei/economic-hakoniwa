@@ -325,12 +325,14 @@ function coastalSprite(f, defs, map, name, sprites, theme) {
 }
 
 /** 施設: 絵があれば絵、なければ色付きの箱。住宅の高さは住宅地の段階、工事中は枠だけ。
- * 首都の建物が建っていて旗の画像（flag）があれば、建物の上に旗を立てる。 */
+ * 首都の建物が建っていて旗の画像（flag）があれば、建物の上に旗を立てる。
+ * 畑（農場）に作柄（f.crop_yield）があれば、その帯の色を絵に効かせる（案19a）。 */
 function drawFacility(ctx, f, map, defs, px, ground, theme, sprites, flag) {
   const isCapital = map.capital && map.capital[0] === f.x && map.capital[1] === f.y;
   const sprite = facilitySprite(f, defs, map, isCapital, sprites, theme);
+  const band = cropBand(f.crop_yield);
   if (sprite) {
-    drawSprite(ctx, sprite, px, ground + theme.tile_height);
+    drawSprite(ctx, band ? cropSprite(sprite, band) : sprite, px, ground + theme.tile_height);
     if (f.built) drawStopped(ctx, f, defs, px, ground, theme.tile_height / 2);
     if (isCapital && f.built && flag) {
       // 絵の上の余白ぶん、竿の下端を屋根に少し沈める
@@ -366,13 +368,89 @@ function drawFacility(ctx, f, map, defs, px, ground, theme, sprites, flag) {
     ctx.setLineDash([]);
     return;
   }
-  const color = style.color;
+  const color = band ? cropBoxColor(style.color, band) : style.color;
   sides(ctx, px, top, base, hw, hh, shade(color, 0.78), shade(color, 0.62));
   ctx.fillStyle = isCapital ? theme.capital_roof : color;
   diamondPath(ctx, px, top, hw, hh);
   ctx.fill();
   drawStopped(ctx, f, defs, px, top, hh);
   if (isCapital && flag) drawCapitalFlag(ctx, flag, px, top + hh, theme);
+}
+
+// 畑の作柄（案19a）: 農場の収穫に掛かる生産性の倍率（サーバーの crop_yield。1.0 がふつう）で
+// 畑の色を変える。豊作は濃い実りの緑、凶作は枯れ色。新しい絵は描かず、元の絵に効果を
+// かけた写しを使う（本人の決め 2026-11-26: 絵が変わる版は新しく描かず、そのマスだけ
+// 効果をかける形。衰退の暗色化と同じ考え方）。
+export const CROP_RICH = 1.15; // これ以上は豊作
+export const CROP_POOR = 0.9; // これ未満は不作
+export const CROP_WITHERED = 0.7; // これ未満は凶作（枯れ色を強くする）
+
+/** 作柄の帯: "rich"（豊作）・"poor"（不作）・"withered"（凶作）。ふつう・材料が無ければ null。 */
+export function cropBand(yieldValue) {
+  if (typeof yieldValue !== "number") return null;
+  if (yieldValue >= CROP_RICH) return "rich";
+  if (yieldValue < CROP_WITHERED) return "withered";
+  if (yieldValue < CROP_POOR) return "poor";
+  return null;
+}
+
+// 帯ごとの効かせ方（元の絵に source-atop で重ねる色）。豊作は緑を深く、不作・凶作は
+// 乾いた枯れ色へ寄せる。凶作は不作より濃く重ね、2 帯の差が目で分かるようにする。
+export const CROP_TINTS = {
+  rich: "rgba(30, 82, 16, 0.38)",
+  poor: "rgba(158, 124, 52, 0.30)",
+  withered: "rgba(146, 110, 44, 0.52)",
+};
+
+const cropSprites = new Map(); // 帯 → WeakMap（元の絵 → 色を効かせた写し）
+
+/**
+ * 作柄の色を効かせた絵の写し。元の絵は壊さず、写しは絵と帯の組ごとに 1 回だけ作って
+ * 使い回す。重ねは source-atop（絵のある所にだけ重なる）で、透明な所は透明なまま。
+ */
+export function cropSprite(sprite, band) {
+  const tint = CROP_TINTS[band];
+  if (!tint) return sprite;
+  let bySprite = cropSprites.get(band);
+  if (!bySprite) {
+    bySprite = new WeakMap();
+    cropSprites.set(band, bySprite);
+  }
+  let tinted = bySprite.get(sprite);
+  if (tinted) return tinted;
+  const canvas = document.createElement("canvas");
+  canvas.width = sprite.img.naturalWidth || sprite.img.width;
+  canvas.height = sprite.img.naturalHeight || sprite.img.height;
+  const c = canvas.getContext("2d");
+  c.drawImage(sprite.img, 0, 0);
+  c.globalCompositeOperation = "source-atop";
+  c.fillStyle = tint;
+  c.fillRect(0, 0, canvas.width, canvas.height);
+  tinted = { img: canvas, w: sprite.w, h: sprite.h, ax: sprite.ax, ay: sprite.ay };
+  bySprite.set(sprite, tinted);
+  return tinted;
+}
+
+// 絵のない畑（色の箱）の作柄の色: 帯の目標色へ寄せる割合。絵の重ねと見え方が
+// そろうよう、豊作は深い緑、凶作は枯れ色へ強く寄せる。
+const CROP_BOX_MIX = {
+  rich: ["#3f7a1e", 0.5],
+  poor: ["#a68d4b", 0.45],
+  withered: ["#8a6d2f", 0.65],
+};
+
+/** "#rrggbb" を帯の目標色へ寄せた "#rrggbb"（帯が無ければ元のまま）。 */
+export function cropBoxColor(hex, band) {
+  const spec = CROP_BOX_MIX[band];
+  if (!spec || typeof hex !== "string" || !hex.startsWith("#")) return hex;
+  const [target, t] = spec;
+  const a = parseInt(hex.slice(1), 16);
+  const b = parseInt(target.slice(1), 16);
+  const ch = (shift) =>
+    Math.round(((a >> shift) & 255) * (1 - t) + ((b >> shift) & 255) * t)
+      .toString(16)
+      .padStart(2, "0");
+  return `#${ch(16)}${ch(8)}${ch(0)}`;
 }
 
 // 首都の旗の竿の下端を、建物のてっぺんに少し沈める量（ピクセル）
