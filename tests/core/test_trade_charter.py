@@ -5,8 +5,9 @@ from __future__ import annotations
 
 import copy
 
+from hakoniwa_core import ledger
 from hakoniwa_core.diplomacy import war
-from hakoniwa_core.economy import Payer
+from hakoniwa_core.economy import Payer, books, funds
 from hakoniwa_core.military import naval
 from hakoniwa_core.modules import trade as trade_stage
 from hakoniwa_core.modules.trade import check
@@ -97,6 +98,44 @@ def test_chartered_freight_is_paid_in_the_settlement_currency(game, traded):  # 
     assert paid and all(income > 0 and (p > 0 or income <= 1) for p, income in paid)
     assert sum(p for p, _ in paid) > 0
     assert world.islands[2].stats["trade.charter_income"] == 0
+
+
+def test_charter_freight_route_follows_the_callers_route(game, traded):  # noqa: F811
+    """借りた船の運賃の相手ごとの内訳は、呼び元が渡した経路で記録する（#6188）。二国間契約の
+    荷を借りた船で運んでも、圏の市場（bloc）の経路に混ざらない。"""
+    world = copy.deepcopy(traded[0])
+    r = _round(game, world)
+    buyer, carrier = world.islands[1], world.islands[3]
+    shipping = shipping_of(carrier, game.config)
+    freight = min(1000, funds.available(buyer, Payer(ledger.GOV)))
+    assert freight > 0
+    before_carrier = dict(books.sector(carrier, books.TRADE_PARTNER_ROUTES))
+    before_buyer = dict(books.sector(buyer, books.TRADE_PARTNER_ROUTES))
+    paid = r._pay_carrier(
+        buyer,
+        carrier,
+        shipping,
+        ledger.GOV,
+        None,
+        freight,
+        buyer.id,
+        route=books.ROUTE_CONTRACT,
+    )
+    assert paid > 0
+    carrier_routes = books.sector(carrier, books.TRADE_PARTNER_ROUTES)
+    buyer_routes = books.sector(buyer, books.TRADE_PARTNER_ROUTES)
+    key_out, key_in = f"{buyer.id}.exports", f"{carrier.id}.imports"
+    assert (
+        carrier_routes.get(f"{key_out}.contract", 0) - before_carrier.get(f"{key_out}.contract", 0)
+        == freight
+    )
+    assert (
+        buyer_routes.get(f"{key_in}.contract", 0) - before_buyer.get(f"{key_in}.contract", 0)
+        == paid
+    )
+    # 圏の市場（bloc）の経路には、この呼び出しでは 1 つも足さない
+    assert carrier_routes.get(f"{key_out}.bloc", 0) == before_carrier.get(f"{key_out}.bloc", 0)
+    assert buyer_routes.get(f"{key_in}.bloc", 0) == before_buyer.get(f"{key_in}.bloc", 0)
 
 
 def test_neutral_chartered_ships_are_turned_back_not_sunk(game, traded, monkeypatch):  # noqa: F811

@@ -1452,10 +1452,12 @@ class _Round:
         f: Facility | None,
         freight: int,
         currency: int,
+        route: str = books.ROUTE_BLOC,
     ) -> int:
         """S1: 借りたほかの国の船の運賃を、決済通貨で運んだ国の海運業に払う（払えるだけ。
         サービスの輸入と輸出。国際収支の shipping_freight）。払った額（買い手の自国通貨。外貨は
-        帳簿の値打ち）を返す。"""
+        帳簿の値打ち）を返す。相手ごとの内訳の経路は、呼び元の荷の経路（route）をそのまま使う
+        （圏の市場の荷か二国間契約の荷かで内訳がずれないように。#6188）。"""
         if freight <= 0:
             return 0
         amount = freight
@@ -1489,7 +1491,7 @@ class _Round:
         books.add(carrier, shipping.id, books.SALES, value)
         books.add_trade(carrier, "exports", books.FREIGHT_ITEM, value)
         books.add_partner_trade(
-            carrier, str(buyer.id), "exports", books.FREIGHT_ITEM, value, route=books.ROUTE_BLOC
+            carrier, str(buyer.id), "exports", books.FREIGHT_ITEM, value, route=route
         )
         # 貸した船の運賃の収入（船の国の通貨）と、借りた船に払った運賃（買い手の通貨）
         carrier.stats["trade.charter_income"] = carrier.stats.get("trade.charter_income", 0) + value
@@ -1501,7 +1503,7 @@ class _Round:
             books.add_sector(buyer, books.GOVERNMENT, "freight", cost)
         books.add_trade(buyer, "imports", books.FREIGHT_ITEM, cost)
         books.add_partner_trade(
-            buyer, str(carrier.id), "imports", books.FREIGHT_ITEM, cost, route=books.ROUTE_BLOC
+            buyer, str(carrier.id), "imports", books.FREIGHT_ITEM, cost, route=route
         )
         self.islands[carrier.id].settled(currency, amount)
         self.islands[buyer.id].settled(currency, amount)
@@ -1573,8 +1575,12 @@ class _Round:
                 payer = Payer(entity) if f is not None else gov_payer()
                 paid = self._pay_freight(buyer, payer, freight, f)
             else:
-                assert currency is not None  # 借りた船は圏の市場の荷だけ
-                paid = self._pay_carrier(buyer, carrier, shipping, entity, f, freight, currency)
+                assert currency is not None  # 借りた船の運賃は決済通貨で払う
+                # 運賃の相手ごとの内訳の経路は、この荷の経路（圏の市場か二国間契約か）を渡す
+                route = books.ROUTE_CONTRACT if kind == "contract" else books.ROUTE_BLOC
+                paid = self._pay_carrier(
+                    buyer, carrier, shipping, entity, f, freight, currency, route=route
+                )
             if f is not None:
                 traders.add_cost(f, good, paid)
         self.state["shipments"].append(
