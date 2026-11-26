@@ -356,14 +356,15 @@ function drawFacility(ctx, f, map, defs, px, ground, theme, sprites, flag) {
 const FLAG_SINK = 3;
 
 /**
- * 首都の旗を描くときの大きさ。幅はマスの幅の半分、縦は画像の縦横比どおり。
- * 背の高い画像はマスの高さまでに収め、幅もそれに合わせて縮める。
+ * 首都の旗を描くときの大きさ。建物の屋根に立つ小旗として、幅はマスの幅の 8 分の 1、縦は画像の縦横比どおり。
+ * 背の高い画像はマスの高さの 4 分の 1 までに収め、幅もそれに合わせて縮める。
+ * （11-26 本人「もっとずっと小さく」: 最初の版はマスの半分の幅で、建物より目立っていた）
  */
 export function capitalFlagSize(flag, theme) {
-  let w = theme.tile_width / 2;
+  let w = theme.tile_width / 8;
   let h = (w * flag.h) / flag.w;
-  if (h > theme.tile_height) {
-    h = theme.tile_height;
+  if (h > theme.tile_height / 4) {
+    h = theme.tile_height / 4;
     w = (h * flag.w) / flag.h;
   }
   return { w, h };
@@ -376,13 +377,13 @@ export function capitalFlagSize(flag, theme) {
 export function drawCapitalFlag(ctx, flag, px, base, theme) {
   if (!flag || !flag.w || !flag.h) return;
   const { w, h } = capitalFlagSize(flag, theme);
-  const poleTop = base - h - 4;
+  const poleTop = base - h - 3;
   ctx.save();
   ctx.fillStyle = "#fff";
-  ctx.fillRect(px - 1, poleTop + 1, w + 2, h + 2);
-  ctx.drawImage(flag.img, px, poleTop + 2, w, h);
+  ctx.fillRect(px - 0.5, poleTop + 0.5, w + 1, h + 1);
+  ctx.drawImage(flag.img, px, poleTop + 1, w, h);
   ctx.strokeStyle = "#4a3520";
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(px, base);
   ctx.lineTo(px, poleTop);
