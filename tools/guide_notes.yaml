@@ -1,0 +1,80 @@
+# 案内係の辞書の手書き注記（tools/build_guide_dict.py が生成時に合成する）。
+#
+# 決まり（掲示板 #5259・#5268）:
+# - 注記は財・施設の id をキーにする。定義に無い id（未知 id）や、同じ id の重複が
+#   あると生成は失敗する。
+# - 注記は、コードと定義で確かめた事だけを書く（推し量りは書かない）。
+# - 根拠がコード側にある場合は code_refs にファイルと関数名まで書く。
+# - facility_scope は最初の枝の施設の範囲（よく聞く施設の id の固定の一覧）。
+#   施設の全部は次の枝で広げる。施設の注記は facility_scope の中だけに書ける。
+
+facility_scope:
+  - farm # 農場
+  - ranch # 牧場
+  - thermal_power_plant # 火力発電所
+  - hydro_power_plant # 水力発電所
+  - steel_mill # 製鉄所
+  - building_materials_plant # 建材工場
+  - machinery_plant # 機械工場
+  - food_factory # 食品工場
+  - consumer_goods_factory # 消費財工場
+  - refinery # 製油所
+  - textile_mill # 繊維工場
+  - aluminium_smelter # アルミ精錬所
+  - copper_smelter # 銅精錬所
+  - electronics_plant # 電子機器工場
+  - auto_parts_plant # 自動車部品工場
+  - automobile_plant # 自動車工場
+
+goods:
+  electricity:
+    note: >-
+      発電と消費は島ごと・ターンごとに釣り合わせるしかない（運べず、貯められないため）。
+      足りない島では発電所を増やすか、電力を多く使う施設を減らすのが手になる。
+  grain:
+    note: >-
+      乾かして倉庫に置けば年単位でもつ主食。国の備蓄の入れ替えの目安は2年
+      （goods.yaml 冒頭のコメント、W-199）。
+  food:
+    note: >-
+      加工した食品。穀物より1単位で養える人数が多く（nutrition 1.5）、食事の質も高い（quality 1）。
+  services:
+    note: >-
+      商店・飲食・理美容・娯楽・修理などの働き。その場で使われ、量は働く人1人の
+      1ターンの働き（人月）で数える。
+  retail:
+    note: >-
+      店の売り場の働き。家計が品物（電力と町の資材を除く）を買うと、代金に見合う量の
+      小売りも商店・百貨店から一緒に買う（goods.yaml の retail のコメント）。
+  transport_ship:
+    note: >-
+      輸送船そのもの。海運業が設備として使う。freight_weight 0 は「自分で航海して届く物」の印。
+  automobile:
+    note: >-
+      1台ずつ数える財なので、display_scale（25倍の表示）は付かない。
+  weapons:
+    note: >-
+      武器は1組が兵1人分（goods.yaml のフェーズ4-2のコメント）。
+  uranium_ore:
+    note: >-
+      鉱脈のある限られた島でだけ採れる（vein_only）。国どうしの契約でだけ動く。
+  nuclear_warhead:
+    note: >-
+      核施設で作り、ミサイル基地に置いてミサイルに積む装備。
+
+facilities:
+  farm:
+    note: >-
+      作物を替えると、1ターンに畑の 1/grow_turns ずつ蒔き直し、蒔いた畑はその作物の
+      grow_turns のあいだ何も出さない。化学品を肥料に入れると産出が3割増える
+      （facilities.yaml の farm のコメント）。段階（機械化・近代化）の作り方は
+      定義の grades から読み込み時に足されるので、この辞書の生産方式の一覧には出ない。
+  hydro_power_plant:
+    note: >-
+      周りの地形から集まる水の量で産出が決まる（facilities.yaml の water:
+      集める範囲 radius 4、満水 full 26、産出の下限の割合 min 0.3、地形ごとの
+      流れ込み runoff）。建てられるのは山のマスだけ。
+  thermal_power_plant:
+    note: >-
+      燃料は石炭と石油燃料の2通り選べ、どちらでも発電量は同じ30。
+      周りに汚染を出す（pollution amount 6・radius 2）。

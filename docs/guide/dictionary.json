@@ -1,0 +1,1867 @@
+{
+  "goods": [
+    {
+      "id": "grain",
+      "name": "穀物",
+      "tier": 1,
+      "tier_name": "原料",
+      "unit": "トン",
+      "unit_key": "ton",
+      "definition": {
+        "tier": 1,
+        "unit": "ton",
+        "display_scale": 25,
+        "shelf_life": 24,
+        "consumer": true,
+        "food": {
+          "nutrition": 1,
+          "quality": 0.2
+        },
+        "freight_weight": 1,
+        "need": "necessity",
+        "fx_priority": 1
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越せるのは24ターンまで（shelf_life）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "住民が食べられる。1単位で1人前、食事の質は0.2（0〜1）",
+        "家計にとっての種類は必需品（need: necessity）",
+        "家計が買う財で、物価指数に入る（consumer）",
+        "計画経済の国営商社が少ない外貨を使う順は1（1が先）"
+      ],
+      "note": "乾かして倉庫に置けば年単位でもつ主食。国の備蓄の入れ替えの目安は2年（goods.yaml 冒頭のコメント、W-199）。",
+      "source": "packs/base/data/goods.yaml の grain"
+    },
+    {
+      "id": "fish",
+      "name": "魚",
+      "tier": 1,
+      "tier_name": "原料",
+      "unit": "トン",
+      "unit_key": "ton",
+      "definition": {
+        "tier": 1,
+        "unit": "ton",
+        "display_scale": 25,
+        "shelf_life": 2,
+        "consumer": true,
+        "food": {
+          "nutrition": 1,
+          "quality": 0.4
+        },
+        "freight_weight": 1,
+        "need": "necessity",
+        "fx_priority": 1
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越せるのは2ターンまで（shelf_life）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "住民が食べられる。1単位で1人前、食事の質は0.4（0〜1）",
+        "家計にとっての種類は必需品（need: necessity）",
+        "家計が買う財で、物価指数に入る（consumer）",
+        "計画経済の国営商社が少ない外貨を使う順は1（1が先）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の fish"
+    },
+    {
+      "id": "wood",
+      "name": "木材",
+      "tier": 1,
+      "tier_name": "原料",
+      "unit": "m³",
+      "unit_key": "cubic_meter",
+      "definition": {
+        "tier": 1,
+        "unit": "cubic_meter",
+        "display_scale": 25,
+        "freight_weight": 0.7,
+        "fx_priority": 3
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を0.7トンとして積載量を数える",
+        "計画経済の国営商社が少ない外貨を使う順は3（1が先）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の wood"
+    },
+    {
+      "id": "stone",
+      "name": "石材",
+      "tier": 1,
+      "tier_name": "原料",
+      "unit": "トン",
+      "unit_key": "ton",
+      "definition": {
+        "tier": 1,
+        "unit": "ton",
+        "display_scale": 25,
+        "mining": true,
+        "freight_weight": 1,
+        "fx_priority": 3
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "建国時に選べる地下資源（mining）",
+        "計画経済の国営商社が少ない外貨を使う順は3（1が先）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の stone"
+    },
+    {
+      "id": "iron_ore",
+      "name": "鉄鉱石",
+      "tier": 1,
+      "tier_name": "原料",
+      "unit": "トン",
+      "unit_key": "ton",
+      "definition": {
+        "tier": 1,
+        "unit": "ton",
+        "display_scale": 25,
+        "mining": true,
+        "freight_weight": 1,
+        "fx_priority": 3
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "建国時に選べる地下資源（mining）",
+        "計画経済の国営商社が少ない外貨を使う順は3（1が先）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の iron_ore"
+    },
+    {
+      "id": "coal",
+      "name": "石炭",
+      "tier": 1,
+      "tier_name": "原料",
+      "unit": "トン",
+      "unit_key": "ton",
+      "definition": {
+        "tier": 1,
+        "unit": "ton",
+        "display_scale": 25,
+        "mining": true,
+        "freight_weight": 1,
+        "fx_priority": 1
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "建国時に選べる地下資源（mining）",
+        "計画経済の国営商社が少ない外貨を使う順は1（1が先）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の coal"
+    },
+    {
+      "id": "steel",
+      "name": "鋼鉄",
+      "tier": 2,
+      "tier_name": "中間財",
+      "unit": "トン",
+      "unit_key": "ton",
+      "definition": {
+        "tier": 2,
+        "unit": "ton",
+        "display_scale": 25,
+        "freight_weight": 1,
+        "fx_priority": 2
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "計画経済の国営商社が少ない外貨を使う順は2（1が先）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の steel"
+    },
+    {
+      "id": "building_materials",
+      "name": "建材",
+      "tier": 2,
+      "tier_name": "中間財",
+      "unit": "トン",
+      "unit_key": "ton",
+      "definition": {
+        "tier": 2,
+        "unit": "ton",
+        "display_scale": 25,
+        "freight_weight": 1,
+        "fx_priority": 2
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "計画経済の国営商社が少ない外貨を使う順は2（1が先）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の building_materials"
+    },
+    {
+      "id": "food",
+      "name": "食品",
+      "tier": 3,
+      "tier_name": "最終財",
+      "unit": "トン",
+      "unit_key": "ton",
+      "definition": {
+        "tier": 3,
+        "unit": "ton",
+        "display_scale": 25,
+        "shelf_life": 6,
+        "consumer": true,
+        "food": {
+          "nutrition": 1.5,
+          "quality": 1
+        },
+        "freight_weight": 1,
+        "need": "necessity",
+        "fx_priority": 1
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越せるのは6ターンまで（shelf_life）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "住民が食べられる。1単位で1.5人前、食事の質は1（0〜1）",
+        "家計にとっての種類は必需品（need: necessity）",
+        "家計が買う財で、物価指数に入る（consumer）",
+        "計画経済の国営商社が少ない外貨を使う順は1（1が先）"
+      ],
+      "note": "加工した食品。穀物より1単位で養える人数が多く（nutrition 1.5）、食事の質も高い（quality 1）。",
+      "source": "packs/base/data/goods.yaml の food"
+    },
+    {
+      "id": "machinery",
+      "name": "機械",
+      "tier": 3,
+      "tier_name": "最終財",
+      "unit": "台",
+      "unit_key": "piece",
+      "definition": {
+        "tier": 3,
+        "unit": "piece",
+        "display_scale": 25,
+        "freight_weight": 5,
+        "fx_priority": 2
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を5トンとして積載量を数える",
+        "計画経済の国営商社が少ない外貨を使う順は2（1が先）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の machinery"
+    },
+    {
+      "id": "consumer_goods",
+      "name": "消費財",
+      "tier": 3,
+      "tier_name": "最終財",
+      "unit": "個",
+      "unit_key": "item",
+      "definition": {
+        "tier": 3,
+        "unit": "item",
+        "display_scale": 25,
+        "consumer": true,
+        "freight_weight": 0.05,
+        "need": "luxury",
+        "fx_priority": 4
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を0.05トンとして積載量を数える",
+        "家計にとっての種類はぜいたく品（need: luxury）",
+        "家計が買う財で、物価指数に入る（consumer）",
+        "計画経済の国営商社が少ない外貨を使う順は4（1が先）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の consumer_goods"
+    },
+    {
+      "id": "electricity",
+      "name": "電力",
+      "tier": 2,
+      "tier_name": "中間財",
+      "unit": "MWh",
+      "unit_key": "megawatt_hour",
+      "definition": {
+        "tier": 2,
+        "unit": "megawatt_hour",
+        "display_scale": 25,
+        "shelf_life": 0,
+        "consumer": true,
+        "need": "necessity"
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "そのターンに使わなかった分は消える。貯めておけない（shelf_life 0）",
+        "船で運べない。島の外へ送れない（freight_weight が無い）",
+        "家計にとっての種類は必需品（need: necessity）",
+        "家計が買う財で、物価指数に入る（consumer）"
+      ],
+      "note": "発電と消費は島ごと・ターンごとに釣り合わせるしかない（運べず、貯められないため）。足りない島では発電所を増やすか、電力を多く使う施設を減らすのが手になる。",
+      "source": "packs/base/data/goods.yaml の electricity"
+    },
+    {
+      "id": "transport_ship",
+      "name": "輸送船",
+      "tier": 3,
+      "tier_name": "最終財",
+      "unit": "隻",
+      "unit_key": "ship",
+      "definition": {
+        "tier": 3,
+        "unit": "ship",
+        "freight_weight": 0,
+        "fx_priority": 2
+      },
+      "points": [
+        "画面の量は内部の量そのまま（倍率の表示は付かない）",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "自分で航海して届く物。運ぶ重さとしては数えない（freight_weight 0）",
+        "計画経済の国営商社が少ない外貨を使う順は2（1が先）"
+      ],
+      "note": "輸送船そのもの。海運業が設備として使う。freight_weight 0 は「自分で航海して届く物」の印。",
+      "source": "packs/base/data/goods.yaml の transport_ship"
+    },
+    {
+      "id": "crude_oil",
+      "name": "原油",
+      "tier": 1,
+      "tier_name": "原料",
+      "unit": "トン",
+      "unit_key": "ton",
+      "definition": {
+        "tier": 1,
+        "unit": "ton",
+        "display_scale": 25,
+        "mining": true,
+        "freight_weight": 1,
+        "fx_priority": 1
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "建国時に選べる地下資源（mining）",
+        "計画経済の国営商社が少ない外貨を使う順は1（1が先）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の crude_oil"
+    },
+    {
+      "id": "bauxite",
+      "name": "ボーキサイト",
+      "tier": 1,
+      "tier_name": "原料",
+      "unit": "トン",
+      "unit_key": "ton",
+      "definition": {
+        "tier": 1,
+        "unit": "ton",
+        "display_scale": 25,
+        "mining": true,
+        "freight_weight": 1,
+        "fx_priority": 3
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "建国時に選べる地下資源（mining）",
+        "計画経済の国営商社が少ない外貨を使う順は3（1が先）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の bauxite"
+    },
+    {
+      "id": "cotton",
+      "name": "綿",
+      "tier": 1,
+      "tier_name": "原料",
+      "unit": "トン",
+      "unit_key": "ton",
+      "definition": {
+        "tier": 1,
+        "unit": "ton",
+        "display_scale": 25,
+        "freight_weight": 1,
+        "fx_priority": 3
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "計画経済の国営商社が少ない外貨を使う順は3（1が先）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の cotton"
+    },
+    {
+      "id": "luxury_crop",
+      "name": "嗜好品",
+      "tier": 1,
+      "tier_name": "原料",
+      "unit": "トン",
+      "unit_key": "ton",
+      "definition": {
+        "tier": 1,
+        "unit": "ton",
+        "display_scale": 25,
+        "consumer": true,
+        "freight_weight": 1,
+        "need": "luxury",
+        "fx_priority": 4
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "家計にとっての種類はぜいたく品（need: luxury）",
+        "家計が買う財で、物価指数に入る（consumer）",
+        "計画経済の国営商社が少ない外貨を使う順は4（1が先）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の luxury_crop"
+    },
+    {
+      "id": "fuel",
+      "name": "石油燃料",
+      "tier": 2,
+      "tier_name": "中間財",
+      "unit": "トン",
+      "unit_key": "ton",
+      "definition": {
+        "tier": 2,
+        "unit": "ton",
+        "display_scale": 25,
+        "consumer": true,
+        "freight_weight": 1,
+        "fx_priority": 1
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "家計が買う財で、物価指数に入る（consumer）",
+        "計画経済の国営商社が少ない外貨を使う順は1（1が先）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の fuel"
+    },
+    {
+      "id": "chemicals",
+      "name": "化学品",
+      "tier": 2,
+      "tier_name": "中間財",
+      "unit": "トン",
+      "unit_key": "ton",
+      "definition": {
+        "tier": 2,
+        "unit": "ton",
+        "display_scale": 25,
+        "freight_weight": 1,
+        "fx_priority": 3
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "計画経済の国営商社が少ない外貨を使う順は3（1が先）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の chemicals"
+    },
+    {
+      "id": "aluminium",
+      "name": "アルミ",
+      "tier": 2,
+      "tier_name": "中間財",
+      "unit": "トン",
+      "unit_key": "ton",
+      "definition": {
+        "tier": 2,
+        "unit": "ton",
+        "display_scale": 25,
+        "freight_weight": 1,
+        "fx_priority": 3
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "計画経済の国営商社が少ない外貨を使う順は3（1が先）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の aluminium"
+    },
+    {
+      "id": "meat",
+      "name": "肉",
+      "tier": 3,
+      "tier_name": "最終財",
+      "unit": "トン",
+      "unit_key": "ton",
+      "definition": {
+        "tier": 3,
+        "unit": "ton",
+        "display_scale": 25,
+        "shelf_life": 3,
+        "consumer": true,
+        "food": {
+          "nutrition": 1.2,
+          "quality": 0.8
+        },
+        "freight_weight": 1,
+        "need": "necessity",
+        "fx_priority": 1
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越せるのは3ターンまで（shelf_life）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "住民が食べられる。1単位で1.2人前、食事の質は0.8（0〜1）",
+        "家計にとっての種類は必需品（need: necessity）",
+        "家計が買う財で、物価指数に入る（consumer）",
+        "計画経済の国営商社が少ない外貨を使う順は1（1が先）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の meat"
+    },
+    {
+      "id": "clothing",
+      "name": "衣料",
+      "tier": 3,
+      "tier_name": "最終財",
+      "unit": "トン",
+      "unit_key": "ton",
+      "definition": {
+        "tier": 3,
+        "unit": "ton",
+        "display_scale": 25,
+        "consumer": true,
+        "freight_weight": 1,
+        "need": "necessity",
+        "fx_priority": 4
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "家計にとっての種類は必需品（need: necessity）",
+        "家計が買う財で、物価指数に入る（consumer）",
+        "計画経済の国営商社が少ない外貨を使う順は4（1が先）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の clothing"
+    },
+    {
+      "id": "automobile",
+      "name": "自動車",
+      "tier": 3,
+      "tier_name": "最終財",
+      "unit": "台",
+      "unit_key": "piece",
+      "definition": {
+        "tier": 3,
+        "unit": "piece",
+        "consumer": true,
+        "freight_weight": 1.5,
+        "need": "durable",
+        "fx_priority": 4
+      },
+      "points": [
+        "画面の量は内部の量そのまま（倍率の表示は付かない）",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を1.5トンとして積載量を数える",
+        "家計にとっての種類は耐久消費財（ぜいたく品の種類にも数える）（need: durable）",
+        "家計が買う財で、物価指数に入る（consumer）",
+        "計画経済の国営商社が少ない外貨を使う順は4（1が先）"
+      ],
+      "note": "1台ずつ数える財なので、display_scale（25倍の表示）は付かない。",
+      "source": "packs/base/data/goods.yaml の automobile"
+    },
+    {
+      "id": "auto_parts",
+      "name": "自動車部品",
+      "tier": 2,
+      "tier_name": "中間財",
+      "unit": "組",
+      "unit_key": "set",
+      "definition": {
+        "tier": 2,
+        "unit": "set",
+        "freight_weight": 1,
+        "fx_priority": 3
+      },
+      "points": [
+        "画面の量は内部の量そのまま（倍率の表示は付かない）",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "計画経済の国営商社が少ない外貨を使う順は3（1が先）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の auto_parts"
+    },
+    {
+      "id": "services",
+      "name": "サービス",
+      "tier": 3,
+      "tier_name": "最終財",
+      "unit": "人月",
+      "unit_key": "person_month",
+      "definition": {
+        "tier": 3,
+        "unit": "person_month",
+        "shelf_life": 0,
+        "consumer": true,
+        "need": "service"
+      },
+      "points": [
+        "画面の量は内部の量そのまま（倍率の表示は付かない）",
+        "そのターンに使わなかった分は消える。貯めておけない（shelf_life 0）",
+        "船で運べない。島の外へ送れない（freight_weight が無い）",
+        "家計にとっての種類はサービス（ぜいたく品の種類にも数える）（need: service）",
+        "家計が買う財で、物価指数に入る（consumer）"
+      ],
+      "note": "商店・飲食・理美容・娯楽・修理などの働き。その場で使われ、量は働く人1人の 1ターンの働き（人月）で数える。",
+      "source": "packs/base/data/goods.yaml の services"
+    },
+    {
+      "id": "retail",
+      "name": "小売り",
+      "tier": 3,
+      "tier_name": "最終財",
+      "unit": "人月",
+      "unit_key": "person_month",
+      "definition": {
+        "tier": 3,
+        "unit": "person_month",
+        "shelf_life": 0,
+        "consumer": true,
+        "need": "retail"
+      },
+      "points": [
+        "画面の量は内部の量そのまま（倍率の表示は付かない）",
+        "そのターンに使わなかった分は消える。貯めておけない（shelf_life 0）",
+        "船で運べない。島の外へ送れない（freight_weight が無い）",
+        "家計にとっての種類は小売り（店の売り場の働き）（need: retail）",
+        "家計が買う財で、物価指数に入る（consumer）"
+      ],
+      "note": "店の売り場の働き。家計が品物（電力と町の資材を除く）を買うと、代金に見合う量の小売りも商店・百貨店から一緒に買う（goods.yaml の retail のコメント）。",
+      "source": "packs/base/data/goods.yaml の retail"
+    },
+    {
+      "id": "copper_ore",
+      "name": "銅鉱石",
+      "tier": 1,
+      "tier_name": "原料",
+      "unit": "トン",
+      "unit_key": "ton",
+      "definition": {
+        "tier": 1,
+        "unit": "ton",
+        "display_scale": 25,
+        "mining": true,
+        "freight_weight": 1,
+        "fx_priority": 3
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "建国時に選べる地下資源（mining）",
+        "計画経済の国営商社が少ない外貨を使う順は3（1が先）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の copper_ore"
+    },
+    {
+      "id": "copper",
+      "name": "銅",
+      "tier": 2,
+      "tier_name": "中間財",
+      "unit": "トン",
+      "unit_key": "ton",
+      "definition": {
+        "tier": 2,
+        "unit": "ton",
+        "display_scale": 25,
+        "freight_weight": 1,
+        "fx_priority": 3
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "計画経済の国営商社が少ない外貨を使う順は3（1が先）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の copper"
+    },
+    {
+      "id": "electronics",
+      "name": "電子機器",
+      "tier": 3,
+      "tier_name": "最終財",
+      "unit": "トン",
+      "unit_key": "ton",
+      "definition": {
+        "tier": 3,
+        "unit": "ton",
+        "display_scale": 25,
+        "freight_weight": 1,
+        "fx_priority": 2
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "計画経済の国営商社が少ない外貨を使う順は2（1が先）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の electronics"
+    },
+    {
+      "id": "weapons",
+      "name": "武器",
+      "tier": 3,
+      "tier_name": "最終財",
+      "unit": "組",
+      "unit_key": "set",
+      "definition": {
+        "tier": 3,
+        "unit": "set",
+        "arms": true,
+        "freight_weight": 0.002
+      },
+      "points": [
+        "画面の量は内部の量そのまま（倍率の表示は付かない）",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を0.002トンとして積載量を数える",
+        "軍事品。貿易圏の市場には出さず、国どうしの契約と物の援助でだけ動く。買うのは国だけ（arms）"
+      ],
+      "note": "武器は1組が兵1人分（goods.yaml のフェーズ4-2のコメント）。",
+      "source": "packs/base/data/goods.yaml の weapons"
+    },
+    {
+      "id": "ammunition",
+      "name": "弾薬",
+      "tier": 3,
+      "tier_name": "最終財",
+      "unit": "トン",
+      "unit_key": "ton",
+      "definition": {
+        "tier": 3,
+        "unit": "ton",
+        "display_scale": 25,
+        "arms": true,
+        "freight_weight": 1
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "軍事品。貿易圏の市場には出さず、国どうしの契約と物の援助でだけ動く。買うのは国だけ（arms）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の ammunition"
+    },
+    {
+      "id": "military_vehicle",
+      "name": "軍用車両",
+      "tier": 3,
+      "tier_name": "最終財",
+      "unit": "台",
+      "unit_key": "piece",
+      "definition": {
+        "tier": 3,
+        "unit": "piece",
+        "arms": true,
+        "freight_weight": 1.6
+      },
+      "points": [
+        "画面の量は内部の量そのまま（倍率の表示は付かない）",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を1.6トンとして積載量を数える",
+        "軍事品。貿易圏の市場には出さず、国どうしの契約と物の援助でだけ動く。買うのは国だけ（arms）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の military_vehicle"
+    },
+    {
+      "id": "missile",
+      "name": "ミサイル",
+      "tier": 3,
+      "tier_name": "最終財",
+      "unit": "台",
+      "unit_key": "piece",
+      "definition": {
+        "tier": 3,
+        "unit": "piece",
+        "arms": true,
+        "freight_weight": 0.1
+      },
+      "points": [
+        "画面の量は内部の量そのまま（倍率の表示は付かない）",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を0.1トンとして積載量を数える",
+        "軍事品。貿易圏の市場には出さず、国どうしの契約と物の援助でだけ動く。買うのは国だけ（arms）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の missile"
+    },
+    {
+      "id": "interceptor",
+      "name": "迎撃ミサイル",
+      "tier": 3,
+      "tier_name": "最終財",
+      "unit": "台",
+      "unit_key": "piece",
+      "definition": {
+        "tier": 3,
+        "unit": "piece",
+        "arms": true,
+        "freight_weight": 0.05
+      },
+      "points": [
+        "画面の量は内部の量そのまま（倍率の表示は付かない）",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を0.05トンとして積載量を数える",
+        "軍事品。貿易圏の市場には出さず、国どうしの契約と物の援助でだけ動く。買うのは国だけ（arms）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の interceptor"
+    },
+    {
+      "id": "uranium_ore",
+      "name": "ウラン鉱石",
+      "tier": 1,
+      "tier_name": "原料",
+      "unit": "トン",
+      "unit_key": "ton",
+      "definition": {
+        "tier": 1,
+        "unit": "ton",
+        "display_scale": 25,
+        "mining": true,
+        "vein_only": true,
+        "arms": true,
+        "freight_weight": 1
+      },
+      "points": [
+        "画面の量は内部の量の25倍で表示される。1単位あたりの値段は25分の1になり、お金の額は変わらない",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を1トンとして積載量を数える",
+        "建国時に選べる地下資源（mining）",
+        "軍事品。貿易圏の市場には出さず、国どうしの契約と物の援助でだけ動く。買うのは国だけ（arms）",
+        "限られた島の鉱脈でだけ採れる（vein_only）"
+      ],
+      "note": "鉱脈のある限られた島でだけ採れる（vein_only）。国どうしの契約でだけ動く。",
+      "source": "packs/base/data/goods.yaml の uranium_ore"
+    },
+    {
+      "id": "nuclear_warhead",
+      "name": "核弾頭",
+      "tier": 3,
+      "tier_name": "最終財",
+      "unit": "台",
+      "unit_key": "piece",
+      "definition": {
+        "tier": 3,
+        "unit": "piece",
+        "arms": true,
+        "freight_weight": 0.2
+      },
+      "points": [
+        "画面の量は内部の量そのまま（倍率の表示は付かない）",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "船で運ぶとき、1単位を0.2トンとして積載量を数える",
+        "軍事品。貿易圏の市場には出さず、国どうしの契約と物の援助でだけ動く。買うのは国だけ（arms）"
+      ],
+      "note": "核施設で作り、ミサイル基地に置いてミサイルに積む装備。",
+      "source": "packs/base/data/goods.yaml の nuclear_warhead"
+    },
+    {
+      "id": "warship",
+      "name": "軍艦",
+      "tier": 3,
+      "tier_name": "最終財",
+      "unit": "隻",
+      "unit_key": "ship",
+      "definition": {
+        "tier": 3,
+        "unit": "ship",
+        "arms": true,
+        "freight_weight": 0
+      },
+      "points": [
+        "画面の量は内部の量そのまま（倍率の表示は付かない）",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "自分で航海して届く物。運ぶ重さとしては数えない（freight_weight 0）",
+        "軍事品。貿易圏の市場には出さず、国どうしの契約と物の援助でだけ動く。買うのは国だけ（arms）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の warship"
+    },
+    {
+      "id": "frigate",
+      "name": "フリゲート",
+      "tier": 3,
+      "tier_name": "最終財",
+      "unit": "隻",
+      "unit_key": "ship",
+      "definition": {
+        "tier": 3,
+        "unit": "ship",
+        "arms": true,
+        "freight_weight": 0
+      },
+      "points": [
+        "画面の量は内部の量そのまま（倍率の表示は付かない）",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "自分で航海して届く物。運ぶ重さとしては数えない（freight_weight 0）",
+        "軍事品。貿易圏の市場には出さず、国どうしの契約と物の援助でだけ動く。買うのは国だけ（arms）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の frigate"
+    },
+    {
+      "id": "submarine",
+      "name": "潜水艦",
+      "tier": 3,
+      "tier_name": "最終財",
+      "unit": "隻",
+      "unit_key": "ship",
+      "definition": {
+        "tier": 3,
+        "unit": "ship",
+        "arms": true,
+        "freight_weight": 0
+      },
+      "points": [
+        "画面の量は内部の量そのまま（倍率の表示は付かない）",
+        "持ち越しの期限は無い（shelf_life を書かない＝無期限）",
+        "自分で航海して届く物。運ぶ重さとしては数えない（freight_weight 0）",
+        "軍事品。貿易圏の市場には出さず、国どうしの契約と物の援助でだけ動く。買うのは国だけ（arms）"
+      ],
+      "note": null,
+      "source": "packs/base/data/goods.yaml の submarine"
+    }
+  ],
+  "facilities": [
+    {
+      "id": "farm",
+      "name": "農場",
+      "category": "primary",
+      "industry": "農業",
+      "terrain": [
+        "平地"
+      ],
+      "construction": {
+        "turns": 2,
+        "labor": 200,
+        "materials": {
+          "木材": "5"
+        }
+      },
+      "workers": "500人（一般の労働者）",
+      "max_size": 1,
+      "max_size_from_code": false,
+      "recipes": [
+        {
+          "id": "default",
+          "name": "穀物",
+          "inputs": {},
+          "outputs": {
+            "穀物": "20"
+          },
+          "grow_turns": 5
+        },
+        {
+          "id": "fertilized",
+          "name": "穀物（肥料あり）",
+          "inputs": {
+            "化学品": "1"
+          },
+          "outputs": {
+            "穀物": "26"
+          },
+          "grow_turns": 5
+        },
+        {
+          "id": "cotton",
+          "name": "綿",
+          "inputs": {},
+          "outputs": {
+            "綿": "12"
+          },
+          "grow_turns": 6
+        },
+        {
+          "id": "cotton_fertilized",
+          "name": "綿（肥料あり）",
+          "inputs": {
+            "化学品": "1"
+          },
+          "outputs": {
+            "綿": "15.6"
+          },
+          "grow_turns": 6
+        },
+        {
+          "id": "luxury_crop",
+          "name": "嗜好品",
+          "inputs": {},
+          "outputs": {
+            "嗜好品": "8"
+          },
+          "grow_turns": 12
+        },
+        {
+          "id": "luxury_crop_fertilized",
+          "name": "嗜好品（肥料あり）",
+          "inputs": {
+            "化学品": "1"
+          },
+          "outputs": {
+            "嗜好品": "10.4"
+          },
+          "grow_turns": 12
+        }
+      ],
+      "grades": [
+        "mechanized",
+        "modern"
+      ],
+      "pollution": null,
+      "water": null,
+      "public_service": false,
+      "note": "作物を替えると、1ターンに畑の 1/grow_turns ずつ蒔き直し、蒔いた畑はその作物の grow_turns のあいだ何も出さない。化学品を肥料に入れると産出が3割増える（facilities.yaml の farm のコメント）。段階（機械化・近代化）の作り方は定義の grades から読み込み時に足されるので、この辞書の生産方式の一覧には出ない。",
+      "source": "packs/base/data/facilities.yaml の farm"
+    },
+    {
+      "id": "ranch",
+      "name": "牧場",
+      "category": "primary",
+      "industry": "農業",
+      "terrain": [
+        "平地"
+      ],
+      "construction": {
+        "turns": 2,
+        "labor": 200,
+        "materials": {
+          "木材": "8"
+        }
+      },
+      "workers": "250人（一般の労働者）",
+      "max_size": 1,
+      "max_size_from_code": false,
+      "recipes": [
+        {
+          "id": "default",
+          "name": "default",
+          "inputs": {
+            "穀物": "4"
+          },
+          "outputs": {
+            "肉": "5"
+          }
+        }
+      ],
+      "grades": [],
+      "pollution": null,
+      "water": null,
+      "public_service": false,
+      "note": null,
+      "source": "packs/base/data/facilities.yaml の ranch"
+    },
+    {
+      "id": "thermal_power_plant",
+      "name": "火力発電所",
+      "category": "power",
+      "industry": "エネルギー",
+      "terrain": [
+        "平地"
+      ],
+      "construction": {
+        "turns": 5,
+        "labor": 600,
+        "materials": {
+          "建材": "25",
+          "鋼鉄": "10",
+          "機械": "5"
+        }
+      },
+      "workers": "一般労働者 40人・技術者 20人",
+      "max_size": 10,
+      "max_size_from_code": true,
+      "recipes": [
+        {
+          "id": "default",
+          "name": "石炭で発電",
+          "inputs": {
+            "石炭": "4"
+          },
+          "outputs": {
+            "電力": "30"
+          }
+        },
+        {
+          "id": "fuel",
+          "name": "石油燃料で発電",
+          "inputs": {
+            "石油燃料": "3"
+          },
+          "outputs": {
+            "電力": "30"
+          }
+        }
+      ],
+      "grades": [],
+      "pollution": {
+        "amount": 6,
+        "radius": 2
+      },
+      "water": null,
+      "public_service": false,
+      "note": "燃料は石炭と石油燃料の2通り選べ、どちらでも発電量は同じ30。周りに汚染を出す（pollution amount 6・radius 2）。",
+      "source": "packs/base/data/facilities.yaml の thermal_power_plant"
+    },
+    {
+      "id": "hydro_power_plant",
+      "name": "水力発電所",
+      "category": "power",
+      "industry": "エネルギー",
+      "terrain": [
+        "山"
+      ],
+      "construction": {
+        "turns": 8,
+        "labor": 1000,
+        "materials": {
+          "建材": "60",
+          "鋼鉄": "10",
+          "機械": "5"
+        }
+      },
+      "workers": "一般労働者 18人・技術者 12人",
+      "max_size": 1,
+      "max_size_from_code": false,
+      "recipes": [
+        {
+          "id": "default",
+          "name": "default",
+          "inputs": {},
+          "outputs": {
+            "電力": "20"
+          }
+        }
+      ],
+      "grades": [],
+      "pollution": null,
+      "water": {
+        "radius": 4,
+        "runoff": {
+          "mountain": 1.0,
+          "forest": 0.25,
+          "plain": 0.03
+        },
+        "full": 26,
+        "min": 0.3
+      },
+      "public_service": false,
+      "note": "周りの地形から集まる水の量で産出が決まる（facilities.yaml の water: 集める範囲 radius 4、満水 full 26、産出の下限の割合 min 0.3、地形ごとの流れ込み runoff）。建てられるのは山のマスだけ。",
+      "source": "packs/base/data/facilities.yaml の hydro_power_plant"
+    },
+    {
+      "id": "steel_mill",
+      "name": "製鉄所",
+      "category": "industry",
+      "industry": "鉄鋼業",
+      "terrain": [
+        "平地"
+      ],
+      "construction": {
+        "turns": 6,
+        "labor": 800,
+        "materials": {
+          "建材": "30",
+          "機械": "5"
+        }
+      },
+      "workers": "一般労働者 1,900人・技術者 100人",
+      "max_size": 10,
+      "max_size_from_code": true,
+      "recipes": [
+        {
+          "id": "default",
+          "name": "default",
+          "inputs": {
+            "鉄鉱石": "10",
+            "石炭": "5",
+            "電力": "5"
+          },
+          "outputs": {
+            "鋼鉄": "5"
+          }
+        }
+      ],
+      "grades": [],
+      "pollution": {
+        "amount": 8,
+        "radius": 2
+      },
+      "water": null,
+      "public_service": false,
+      "note": null,
+      "source": "packs/base/data/facilities.yaml の steel_mill"
+    },
+    {
+      "id": "building_materials_plant",
+      "name": "建材工場",
+      "category": "industry",
+      "industry": "鉱業",
+      "terrain": [
+        "平地"
+      ],
+      "construction": {
+        "turns": 4,
+        "labor": 500,
+        "materials": {
+          "木材": "25"
+        }
+      },
+      "workers": "1,000人（一般の労働者）",
+      "max_size": 10,
+      "max_size_from_code": true,
+      "recipes": [
+        {
+          "id": "stone",
+          "name": "石材から製造",
+          "inputs": {
+            "石材": "10",
+            "木材": "2",
+            "電力": "2"
+          },
+          "outputs": {
+            "建材": "8"
+          }
+        },
+        {
+          "id": "wood",
+          "name": "木材から製造",
+          "inputs": {
+            "木材": "12",
+            "電力": "2"
+          },
+          "outputs": {
+            "建材": "5"
+          }
+        }
+      ],
+      "grades": [],
+      "pollution": {
+        "amount": 3,
+        "radius": 1
+      },
+      "water": null,
+      "public_service": false,
+      "note": null,
+      "source": "packs/base/data/facilities.yaml の building_materials_plant"
+    },
+    {
+      "id": "machinery_plant",
+      "name": "機械工場",
+      "category": "industry",
+      "industry": "機械",
+      "terrain": [
+        "平地"
+      ],
+      "construction": {
+        "turns": 6,
+        "labor": 800,
+        "materials": {
+          "建材": "30",
+          "鋼鉄": "10"
+        }
+      },
+      "workers": "一般労働者 1,350人・技術者 150人",
+      "max_size": 10,
+      "max_size_from_code": true,
+      "recipes": [
+        {
+          "id": "default",
+          "name": "default",
+          "inputs": {
+            "鋼鉄": "4",
+            "電力": "4"
+          },
+          "outputs": {
+            "機械": "2"
+          }
+        }
+      ],
+      "grades": [],
+      "pollution": {
+        "amount": 3,
+        "radius": 1
+      },
+      "water": null,
+      "public_service": false,
+      "note": null,
+      "source": "packs/base/data/facilities.yaml の machinery_plant"
+    },
+    {
+      "id": "food_factory",
+      "name": "食品工場",
+      "category": "industry",
+      "industry": "食品",
+      "terrain": [
+        "平地"
+      ],
+      "construction": {
+        "turns": 3,
+        "labor": 400,
+        "materials": {
+          "建材": "10"
+        }
+      },
+      "workers": "800人（一般の労働者）",
+      "max_size": 10,
+      "max_size_from_code": true,
+      "recipes": [
+        {
+          "id": "default",
+          "name": "穀物から製造",
+          "inputs": {
+            "穀物": "12",
+            "電力": "1"
+          },
+          "outputs": {
+            "食品": "10"
+          }
+        },
+        {
+          "id": "fish",
+          "name": "魚から製造",
+          "inputs": {
+            "魚": "15",
+            "電力": "1"
+          },
+          "outputs": {
+            "食品": "10"
+          }
+        }
+      ],
+      "grades": [],
+      "pollution": null,
+      "water": null,
+      "public_service": false,
+      "note": null,
+      "source": "packs/base/data/facilities.yaml の food_factory"
+    },
+    {
+      "id": "consumer_goods_factory",
+      "name": "消費財工場",
+      "category": "industry",
+      "industry": "消費財",
+      "terrain": [
+        "平地"
+      ],
+      "construction": {
+        "turns": 4,
+        "labor": 500,
+        "materials": {
+          "建材": "20",
+          "機械": "5"
+        }
+      },
+      "workers": "一般労働者 950人・技術者 50人",
+      "max_size": 10,
+      "max_size_from_code": true,
+      "recipes": [
+        {
+          "id": "default",
+          "name": "鋼鉄と木材から製造",
+          "inputs": {
+            "木材": "4",
+            "鋼鉄": "1",
+            "電力": "2"
+          },
+          "outputs": {
+            "消費財": "6"
+          }
+        },
+        {
+          "id": "wood",
+          "name": "木材から製造",
+          "inputs": {
+            "木材": "8",
+            "電力": "2"
+          },
+          "outputs": {
+            "消費財": "4"
+          }
+        },
+        {
+          "id": "chemicals",
+          "name": "化学品から製造",
+          "inputs": {
+            "化学品": "4",
+            "電力": "2"
+          },
+          "outputs": {
+            "消費財": "6"
+          }
+        }
+      ],
+      "grades": [],
+      "pollution": {
+        "amount": 2,
+        "radius": 1
+      },
+      "water": null,
+      "public_service": false,
+      "note": null,
+      "source": "packs/base/data/facilities.yaml の consumer_goods_factory"
+    },
+    {
+      "id": "refinery",
+      "name": "製油所",
+      "category": "industry",
+      "industry": "石油",
+      "terrain": [
+        "平地"
+      ],
+      "construction": {
+        "turns": 6,
+        "labor": 700,
+        "materials": {
+          "建材": "30",
+          "鋼鉄": "10",
+          "機械": "3"
+        }
+      },
+      "workers": "一般労働者 550人・技術者 70人",
+      "max_size": 10,
+      "max_size_from_code": true,
+      "recipes": [
+        {
+          "id": "default",
+          "name": "default",
+          "inputs": {
+            "原油": "10",
+            "電力": "3"
+          },
+          "outputs": {
+            "石油燃料": "6",
+            "化学品": "2"
+          }
+        }
+      ],
+      "grades": [],
+      "pollution": {
+        "amount": 6,
+        "radius": 2
+      },
+      "water": null,
+      "public_service": false,
+      "note": null,
+      "source": "packs/base/data/facilities.yaml の refinery"
+    },
+    {
+      "id": "textile_mill",
+      "name": "繊維工場",
+      "category": "industry",
+      "industry": "繊維",
+      "terrain": [
+        "平地"
+      ],
+      "construction": {
+        "turns": 3,
+        "labor": 400,
+        "materials": {
+          "建材": "15",
+          "機械": "1"
+        }
+      },
+      "workers": "1,500人（一般の労働者）",
+      "max_size": 10,
+      "max_size_from_code": true,
+      "recipes": [
+        {
+          "id": "default",
+          "name": "default",
+          "inputs": {
+            "綿": "8",
+            "電力": "1"
+          },
+          "outputs": {
+            "衣料": "6"
+          }
+        }
+      ],
+      "grades": [],
+      "pollution": {
+        "amount": 1,
+        "radius": 1
+      },
+      "water": null,
+      "public_service": false,
+      "note": null,
+      "source": "packs/base/data/facilities.yaml の textile_mill"
+    },
+    {
+      "id": "aluminium_smelter",
+      "name": "アルミ精錬所",
+      "category": "industry",
+      "industry": "非鉄",
+      "terrain": [
+        "平地"
+      ],
+      "construction": {
+        "turns": 6,
+        "labor": 600,
+        "materials": {
+          "建材": "30",
+          "鋼鉄": "10",
+          "機械": "3"
+        }
+      },
+      "workers": "一般労働者 450人・技術者 50人",
+      "max_size": 10,
+      "max_size_from_code": true,
+      "recipes": [
+        {
+          "id": "default",
+          "name": "default",
+          "inputs": {
+            "ボーキサイト": "8",
+            "電力": "20"
+          },
+          "outputs": {
+            "アルミ": "3"
+          }
+        }
+      ],
+      "grades": [],
+      "pollution": {
+        "amount": 4,
+        "radius": 1
+      },
+      "water": null,
+      "public_service": false,
+      "note": null,
+      "source": "packs/base/data/facilities.yaml の aluminium_smelter"
+    },
+    {
+      "id": "copper_smelter",
+      "name": "銅の精錬所",
+      "category": "industry",
+      "industry": "非鉄",
+      "terrain": [
+        "平地"
+      ],
+      "construction": {
+        "turns": 5,
+        "labor": 600,
+        "materials": {
+          "建材": "25",
+          "鋼鉄": "10",
+          "機械": "3"
+        }
+      },
+      "workers": "一般労働者 270人・技術者 30人",
+      "max_size": 10,
+      "max_size_from_code": true,
+      "recipes": [
+        {
+          "id": "default",
+          "name": "default",
+          "inputs": {
+            "銅鉱石": "12",
+            "電力": "8"
+          },
+          "outputs": {
+            "銅": "4"
+          }
+        }
+      ],
+      "grades": [],
+      "pollution": {
+        "amount": 4,
+        "radius": 1
+      },
+      "water": null,
+      "public_service": false,
+      "note": null,
+      "source": "packs/base/data/facilities.yaml の copper_smelter"
+    },
+    {
+      "id": "electronics_plant",
+      "name": "電子機器工場",
+      "category": "industry",
+      "industry": "電子機器",
+      "terrain": [
+        "平地"
+      ],
+      "construction": {
+        "turns": 6,
+        "labor": 800,
+        "materials": {
+          "建材": "30",
+          "鋼鉄": "10",
+          "機械": "5"
+        }
+      },
+      "workers": "一般労働者 320人・技術者 80人",
+      "max_size": 10,
+      "max_size_from_code": true,
+      "recipes": [
+        {
+          "id": "default",
+          "name": "default",
+          "inputs": {
+            "銅": "1",
+            "化学品": "0.6",
+            "機械": "0.4",
+            "電力": "3"
+          },
+          "outputs": {
+            "電子機器": "2"
+          }
+        },
+        {
+          "id": "aluminium",
+          "name": "銅の代わりにアルミで製造",
+          "inputs": {
+            "アルミ": "0.5",
+            "化学品": "0.6",
+            "機械": "0.5",
+            "電力": "3.5"
+          },
+          "outputs": {
+            "電子機器": "2"
+          }
+        }
+      ],
+      "grades": [],
+      "pollution": {
+        "amount": 2,
+        "radius": 1
+      },
+      "water": null,
+      "public_service": false,
+      "note": null,
+      "source": "packs/base/data/facilities.yaml の electronics_plant"
+    },
+    {
+      "id": "auto_parts_plant",
+      "name": "自動車部品工場",
+      "category": "industry",
+      "industry": "自動車",
+      "terrain": [
+        "平地"
+      ],
+      "construction": {
+        "turns": 5,
+        "labor": 600,
+        "materials": {
+          "建材": "25",
+          "鋼鉄": "10",
+          "機械": "6"
+        }
+      },
+      "workers": "一般労働者 1,250人・技術者 130人",
+      "max_size": 10,
+      "max_size_from_code": true,
+      "recipes": [
+        {
+          "id": "default",
+          "name": "鋼鉄から製造",
+          "inputs": {
+            "鋼鉄": "3.2",
+            "化学品": "0.8",
+            "衣料": "0.12",
+            "機械": "0.2",
+            "電力": "1.5"
+          },
+          "outputs": {
+            "自動車部品": "200"
+          }
+        },
+        {
+          "id": "aluminium",
+          "name": "鋼鉄とアルミから製造",
+          "inputs": {
+            "鋼鉄": "1.8",
+            "アルミ": "0.7",
+            "化学品": "0.8",
+            "衣料": "0.12",
+            "機械": "0.2",
+            "電力": "1.5"
+          },
+          "outputs": {
+            "自動車部品": "200"
+          }
+        }
+      ],
+      "grades": [],
+      "pollution": {
+        "amount": 2,
+        "radius": 1
+      },
+      "water": null,
+      "public_service": false,
+      "note": null,
+      "source": "packs/base/data/facilities.yaml の auto_parts_plant"
+    },
+    {
+      "id": "automobile_plant",
+      "name": "自動車工場",
+      "category": "industry",
+      "industry": "自動車",
+      "terrain": [
+        "平地"
+      ],
+      "construction": {
+        "turns": 8,
+        "labor": 1000,
+        "materials": {
+          "建材": "40",
+          "鋼鉄": "20",
+          "機械": "10"
+        }
+      },
+      "workers": "一般労働者 550人・技術者 70人",
+      "max_size": 10,
+      "max_size_from_code": true,
+      "recipes": [
+        {
+          "id": "default",
+          "name": "部品を組み立て",
+          "inputs": {
+            "自動車部品": "200",
+            "鋼鉄": "2.2",
+            "化学品": "0.3",
+            "電力": "1.5"
+          },
+          "outputs": {
+            "自動車": "200"
+          }
+        },
+        {
+          "id": "military_vehicle",
+          "name": "軍用車両を製造",
+          "inputs": {
+            "自動車部品": "20",
+            "鋼鉄": "2.4",
+            "機械": "0.2",
+            "電子機器": "0.1",
+            "電力": "1.5"
+          },
+          "outputs": {
+            "軍用車両": "2"
+          }
+        }
+      ],
+      "grades": [],
+      "pollution": {
+        "amount": 3,
+        "radius": 1
+      },
+      "water": null,
+      "public_service": false,
+      "note": null,
+      "source": "packs/base/data/facilities.yaml の automobile_plant"
+    }
+  ],
+  "memos": [
+    {
+      "id": "electricity-island-balance",
+      "question": "電力が余っている島があるのに、別の島では電力が足りないのはなぜ？",
+      "answer": "電力は船で運べず（freight_weight が無い）、貯めてもおけない（shelf_life 0）ので、島ごとに、そのターンの中で発電と消費を釣り合わせるしかありません。足りない島では発電所を増やすか、電力を多く使う施設を減らすのが手です。",
+      "basis": [
+        "packs/base/data/goods.yaml の electricity（freight_weight なし・shelf_life 0）",
+        "packs/base/data/facilities.yaml の thermal_power_plant（作り方 default: 石炭 4 → 電力 30、fuel: 燃料 3 → 電力 30）"
+      ]
+    },
+    {
+      "id": "shelf-life-food",
+      "question": "穀物は長く貯められるのに、魚はすぐだめになるのはなぜ？",
+      "answer": "財ごとに「持ち越せるターン数」（shelf_life）が決まっているためです。穀物は24ターン、食品は6ターン、肉は3ターン、魚は2ターンです。期限を過ぎた分は消えるので、傷みやすい食べ物は作りすぎに注意が要ります。",
+      "basis": [
+        "packs/base/data/goods.yaml の grain（shelf_life 24）・food（6）・meat（3）・fish（2）"
+      ]
+    },
+    {
+      "id": "display-scale-25",
+      "question": "画面に出る量が、思っていたより25倍に大きく見えるのはなぜ？",
+      "answer": "重さ・体積の財などは、量を島の大きさに合わせて縮めて計算し、画面では display_scale（25倍）で見せているためです。1単位あたりの値段は逆に25分の1になるので、お金の額は変わりません。打ち込んだ量と値段は、中で元に戻されます。",
+      "basis": [
+        "packs/base/data/goods.yaml 冒頭のコメント（display_scale の説明）",
+        "hakoniwa_core/defs/defs.py の display_scale()（書かなければ 1）"
+      ]
+    },
+    {
+      "id": "services-retail-nostock",
+      "question": "サービスや小売りは、貯めておいたり別の島へ送ったりできないの？",
+      "answer": "できません。サービスと小売りは「その場で使う働き」で、shelf_life 0 （そのターン限り）かつ freight_weight が無い（船で運べない）ためです。量は、働く人1人の1ターンの働き（人月）で数えます。",
+      "basis": [
+        "packs/base/data/goods.yaml の services・retail（shelf_life 0・freight_weight なし）と冒頭のコメント"
+      ]
+    },
+    {
+      "id": "arms-not-on-market",
+      "question": "武器や軍艦は、市場で買えないの？",
+      "answer": "買えません。軍事品（arms: true）は貿易圏の市場には出さず、国どうしの契約と物の援助でだけ動きます。買うのは国だけです。",
+      "basis": [
+        "packs/base/data/goods.yaml 冒頭のコメント（フェーズ4-2: arms の説明）",
+        "packs/base/data/goods.yaml の weapons・warship など（arms: true）"
+      ]
+    },
+    {
+      "id": "farm-grow-turns",
+      "question": "農場を作ったのに、しばらく何も収穫できないのはなぜ？",
+      "answer": "農場には「蒔いてから収穫までのターン数」（grow_turns）があるためです。穀物は5ターン、綿は6ターン、嗜好品は12ターンかかります。作物を替えると蒔き直しになり、そのあいだは収穫がありません。",
+      "basis": [
+        "packs/base/data/facilities.yaml の farm（作り方ごとの grow_turns と冒頭の説明）"
+      ]
+    },
+    {
+      "id": "thermal-two-fuels",
+      "question": "火力発電所の燃料は、石炭と石油燃料のどちらがいいの？",
+      "answer": "発電量はどちらでも同じ（電力 30）です。石炭は4、石油燃料は3使います。島で余っている方、安く手に入る方を使うのが目安になります。",
+      "basis": [
+        "packs/base/data/facilities.yaml の thermal_power_plant（作り方 default と fuel）"
+      ]
+    },
+    {
+      "id": "automobile-no-scale",
+      "question": "自動車の台数は、ほかの財みたいに25倍で表示されないの？",
+      "answer": "されません。display_scale は重さ・体積の財や電力・消費財・機械などに付く倍率で、自動車・部品の組・輸送船のように1つずつ数える財と、人月で数えるサービス・小売りには付きません（倍率は1のまま）。",
+      "basis": [
+        "packs/base/data/goods.yaml 冒頭のコメント（display_scale を書かない財の説明）",
+        "packs/base/data/goods.yaml の automobile（display_scale なし）"
+      ]
+    }
+  ]
+}
