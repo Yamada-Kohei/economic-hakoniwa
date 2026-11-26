@@ -117,6 +117,8 @@ test("煙の粒: 詳しさで数が変わり、昇るほど大きく薄くなる
     assert.ok(puff.rise >= 0 && puff.rise < 1);
     assert.ok(puff.alpha >= 0 && puff.alpha <= 0.3);
     assert.ok(puff.dy < 0); // てっぺんより上
+    // 粒の大きさは半径でマス幅の 0.045〜0.122（直径 6〜9px 程度の小ささ。#6090）
+    assert.ok(puff.r >= 0.045 && puff.r <= 0.122, `粒の半径 ${puff.r}`);
   }
   for (let k = 1; k < sorted.length; k++) {
     assert.ok(sorted[k].r > sorted[k - 1].r, "昇るほど広がる");
