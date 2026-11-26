@@ -71,6 +71,26 @@
 - 台本は市場の関数を包まず、ターンを回した後に統計を読むだけなので、測る
   こと自体は挙動を変えない（gate の Recorder は標準の測りと同じ物）
 
+## 1 回目の投入の失敗と直し（2026-11-27）
+
+- 1 回目の 36 本（受付の仕事 1008〜1043）は、全本が hal で同じ引数エラーに
+  より即落ちした（終了コード 2）。エラーの中身:
+  `lb47_household_probe.py: error: argument cmd: invalid choice:
+  'lb47_household_probe.py' (choose from 'probe', 'report')`
+- 原因: ask.json の各 run の `args` の先頭に台本のファイル名
+  （`lb47_household_probe.py`）が入っていた。受付は `sys.argv` を
+  `[uketsuke-run/<台本名>] + args` の形に組み立てるので、台本名が
+  argv[1] にも入り、argparse がそれをサブコマンド（probe/report）と
+  誤認した。手元の試走は `python3 lb47_household_probe.py probe ...` の
+  形（台本名は argv[0] の 1 つだけ）だったため、この重なりが出なかった。
+  通っている包み（deadlock-quick・h7-dict501・grain-rotate 等）は全部
+  args の先頭がサブコマンドで、台本名を入れていない
+- 直し: ask.json の全 36 本の args から先頭の台本名を取り除いた
+  （台本そのもの・合格線・場面・種・ターン数は不変更）。受付と同じ
+  組み立て方（manage.py shell + runpy、sys.argv の形も同一）を手元で
+  再現し、small・種 1・30 ターン切/入とも通ることを確認してから
+  出し直した
+
 ## 範囲の注意
 
 - plan/inbox.md はリポジトリ内に無く（共有フォルダ側）、この VM からは

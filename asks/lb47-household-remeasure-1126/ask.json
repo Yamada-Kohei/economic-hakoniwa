@@ -8,7 +8,6 @@
  "runs": [
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "plan",
@@ -28,7 +27,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "plan",
@@ -48,7 +46,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "plan",
@@ -68,7 +65,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "plan",
@@ -88,7 +84,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "plan",
@@ -108,7 +103,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "plan",
@@ -128,7 +122,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "none",
@@ -148,7 +141,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "none",
@@ -168,7 +160,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "none",
@@ -188,7 +179,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "none",
@@ -208,7 +198,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "none",
@@ -228,7 +217,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "none",
@@ -248,7 +236,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "independent",
@@ -268,7 +255,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "independent",
@@ -288,7 +274,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "independent",
@@ -308,7 +293,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "independent",
@@ -328,7 +312,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "independent",
@@ -348,7 +331,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "independent",
@@ -368,7 +350,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "small",
@@ -388,7 +369,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "small",
@@ -408,7 +388,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "small",
@@ -428,7 +407,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "small",
@@ -448,7 +426,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "small",
@@ -468,7 +445,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "small",
@@ -488,7 +464,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "open",
@@ -508,7 +483,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "open",
@@ -528,7 +502,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "open",
@@ -548,7 +521,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "open",
@@ -568,7 +540,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "open",
@@ -588,7 +559,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "open",
@@ -608,7 +578,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "war",
@@ -628,7 +597,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "war",
@@ -648,7 +616,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "war",
@@ -668,7 +635,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "war",
@@ -688,7 +654,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "war",
@@ -708,7 +673,6 @@
   },
   {
    "args": [
-    "lb47_household_probe.py",
     "probe",
     "--scenario",
     "war",
