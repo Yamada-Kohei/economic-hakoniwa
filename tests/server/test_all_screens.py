@@ -59,6 +59,8 @@ ISLAND_APIS = [
     "api_island_military",
     "api_island_diplomacy",
     "api_island_country",
+    "api_island_card",
+    "api_island_paper",
     "api_island_summary",
     "api_island_changes",
     "api_island_log",

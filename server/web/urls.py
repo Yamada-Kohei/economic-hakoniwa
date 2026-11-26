@@ -120,6 +120,8 @@ urlpatterns = [
         name="api_island_diplomacy",
     ),
     path("api/islands/<int:island_id>/country", api.island_country, name="api_island_country"),
+    path("api/islands/<int:island_id>/card", api.island_card, name="api_island_card"),
+    path("api/islands/<int:island_id>/paper", api.island_paper, name="api_island_paper"),
     path("api/islands/<int:island_id>/summary", api.summary, name="api_island_summary"),
     path("api/islands/<int:island_id>/changes", api.changes, name="api_island_changes"),
     path("api/islands/<int:island_id>/log", api.turn_log, name="api_island_log"),

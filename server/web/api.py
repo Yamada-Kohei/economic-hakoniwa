@@ -36,6 +36,7 @@ from server.letters import services as letter_services
 from server.orders.models import Order
 from server.turns import services as turn_services
 from server.web import budget_guide, display, order_confirm, overview, rankings, reports
+from server.web import card as card_views
 from server.web import chain as chain_views
 from server.web import changes as changes_views
 from server.web import country as country_views
@@ -44,7 +45,9 @@ from server.web import facility_page as facility_views
 from server.web import geonames as geonames_views
 from server.web import marks as marks_views
 from server.web import military as military_views
+from server.web import mural as mural_views
 from server.web import news as news_views
+from server.web import paper as paper_views
 from server.web import politics as politics_views
 from server.web import top as top_page
 from server.web import trade as trade_views
@@ -954,7 +957,29 @@ def summary(request, island_id: int):
     赤字の施設・命令の列と結果・公電も。"""
     island = get_object_or_404(m.Island.objects.select_related("owner", "world"), pk=island_id)
     viewer = letter_services.own_island(request.user)
-    return _json(overview.summary(island, _mine(request, island), viewer.id if viewer else None))
+    mine = _mine(request, island)
+    data = overview.summary(island, mine, viewer.id if viewer else None)
+    if mine:
+        # 地図とホームの画面が持ち主に出す分（地名（案34）と港の壁画（案36））も、要約で読める
+        data["geonames"] = geonames_views.features(island)
+        data["mural"] = mural_views.mural_data(island, True)
+    return _json(data)
+
+
+@require_GET
+def island_card(request, island_id: int):
+    """国のカード（案30）の材料: 旗・首都・元首・人口・GDP・節目と、地図の材料の URL。"""
+    island = get_object_or_404(m.Island, pk=island_id)
+    return _json(card_views.card_data(island))
+
+
+@require_GET
+def island_paper(request, island_id: int):
+    """ターンの新聞（案31）の材料: そのターンの見出しの出来事（?turn=ターン）。"""
+    island = get_object_or_404(m.Island, pk=island_id)
+    raw = request.GET.get("turn", "")
+    turn = int(raw) if raw.isdigit() else None
+    return _json(paper_views.paper_data(island, turn, _mine(request, island)))
 
 
 @require_GET

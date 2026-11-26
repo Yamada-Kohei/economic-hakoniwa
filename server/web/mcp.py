@@ -250,6 +250,8 @@ REPORTS = {
     "追い返すかは命令 set_neutral_ships（初めは追い返す））",
     "country": "国の公開ページ（国旗・元首・体制・通貨・人口・紹介文・年表・来訪者の一言。日付は"
     "その国の選んだ紀年。年表は timeline_text で wiki にそのまま貼れる文でも読める）",
+    "card": "国のカード（案30）の材料（国旗・国名・首都・元首・人口・GDP・節目と、地図の材料）",
+    "paper": "ターンの新聞（案31）の材料（そのターンの見出しの出来事。turn でターンを選ぶ）",
     "plan": "計画と値段の規制（計画経済・混合経済の島）",
     "chain": (
         "産業の鎖（誰にでも。品目ごとの作った量・使った量と、止まっている工場のわけ。"
@@ -313,6 +315,9 @@ def _report(request, args):
         return call_ok(request, "GET", f"/api/islands/{island}/market/{args['good']}")
     if page == "economy":
         return call_ok(request, "GET", f"/api/islands/{island}/economy/overview")
+    if page == "paper":
+        query = {"turn": args["turn"]} if args.get("turn") else None
+        return call_ok(request, "GET", f"/api/islands/{island}/paper", query=query)
     return call_ok(request, "GET", f"/api/islands/{island}/{page}")
 
 
@@ -956,6 +961,7 @@ TOOLS = [
         {
             "page": {"type": "string", "enum": list(REPORTS)},
             "good": {"type": "string", "description": "page=market のときの財（例 coal）"},
+            "turn": {**TURN, "description": "page=paper のときのターン（省くと新しい号）"},
             "island": ISLAND,
         },
         ("page",),
@@ -1457,6 +1463,8 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "island_diplomacy": ("report",),
     "island_military": ("report",),
     "island_country": ("report", "country_set", "flag_set", "monument_image_set", "country_note"),
+    "island_card": ("report",),  # 国のカード（案30）。材料は report の page=card
+    "island_paper": ("report",),  # ターンの新聞（案31）。材料は report の page=paper
     "diary": ("diary", "diary_set"),
     # 命令のページ（UI-74）: 列は summary の orders。足す・消す・並べ替えは
     # add_order・remove_order・set_orders
@@ -1478,7 +1486,19 @@ SCREENS: dict[str, tuple[str, ...]] = {
 # AI の入り口が要らない画面（アカウントの画面。鍵は人が画面で作って AI に渡す）
 # 国旗と自作の記念碑の画像（island_flag・monument_image）も要らない（report page=country の flag と
 # monuments に、大きさや仮の絵かどうかがある）
-NOT_FOR_AI = {"signup", "login", "logout", "account", "api_keys", "island_flag", "monument_image"}
+# 地名の付け替え（geoname_rename）と壁画を飾る操作（mural_install）も画面だけの飾りの操作で
+# 要らない（地名は map の geonames と summary、壁画は summary の mural で読める）
+NOT_FOR_AI = {
+    "signup",
+    "login",
+    "logout",
+    "account",
+    "api_keys",
+    "island_flag",
+    "monument_image",
+    "geoname_rename",
+    "mural_install",
+}
 
 
 # --- 文にする ---------------------------------------------------------------------------

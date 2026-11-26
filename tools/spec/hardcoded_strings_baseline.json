@@ -22,7 +22,7 @@
    "server/orders": 24,
    "server/settings.py": 6,
    "server/turns": 75,
-   "server/web": 1488,
+   "server/web": 1491,
    "server/world": 162
   },
   "template": {
@@ -210,7 +210,7 @@
    "server/web/founding.py": 7,
    "server/web/island_nav.py": 27,
    "server/web/management/commands/sync_updates.py": 2,
-   "server/web/mcp.py": 220,
+   "server/web/mcp.py": 223,
    "server/web/migrations/0001_access_counter_and_updates.py": 24,
    "server/web/migrations/0002_updatemark.py": 3,
    "server/web/models.py": 23,
@@ -277,9 +277,9 @@
   }
  },
  "totals": {
-  "all": 3523,
+  "all": 3526,
   "js": 527,
-  "python": 2885,
+  "python": 2888,
   "template": 111
  },
  "version": 1
