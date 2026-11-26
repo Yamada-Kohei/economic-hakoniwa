@@ -82,6 +82,7 @@ export function detailLevel(scale) {
 }
 
 export const SMOKE_CYCLE = 4.8; // 煙が1巡する秒数
+export const SMOKE_PEAK_ALPHA = 0.78; // 煙の粒の濃さの上限（renderer が段の絵を作るときの物差し）
 const PUFFS = { near: 6, mid: 4, far: 2 };
 
 /** 煙の色（RGB の並び）。湯気に見えないよう、薄い青白でなく一段濃い灰色。 */
@@ -109,7 +110,7 @@ export function smokePuffs(f, t, detail) {
       dx: 0.03 * phase + 0.22 * rise * rise + 0.05 * sway * Math.sin(rise * 5 + phase * 6.28), // 風で流れて少し揺れる
       dy: -(0.25 + 1.5 * rise), // てっぺんから昇る
       r: 0.05 + 0.17 * rise * rise, // 出発は小さく、昇るほどもくもく広がる
-      alpha: 0.78 * Math.pow(Math.sin(Math.PI * Math.min(1, 0.12 + 0.88 * u)), 1.4), // 湧き出しからしっかり濃く、消え際だけ薄く
+      alpha: SMOKE_PEAK_ALPHA * Math.pow(Math.sin(Math.PI * Math.min(1, 0.12 + 0.88 * u)), 1.4), // 湧き出しからしっかり濃く、消え際だけ薄く
     });
   }
   return puffs;
