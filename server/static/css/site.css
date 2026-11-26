@@ -89,6 +89,63 @@ table.market-table tr > :first-child { position: sticky; left: 0; z-index: 1; ba
 table.market-table thead tr > :first-child { background: var(--head); }
 table.market-table tbody tr:nth-child(even) > :first-child { background: var(--pale); }
 
+/* 貿易の表の配色（台帳 P2 の 12・9。13 の枠の共通変数へつなぐ）: 貿易の概要の表・相手国の表と、
+   貿易圏の情報の表・資源一覧の表の色は、このブロックにまとめる。明るいときは上の table.info / table.goods の
+   色のまま。暗いとき（html の data-theme="dark"）だけ、地・文字・罫線を共通変数
+   （--bg-base・--text-base・--line-base）に替える。見出しの地 #232f47 と偶数行の地 #1c2536 は
+   このブロックだけの暗いときの色。リンク・薄い文字・警告も暗い地で読める色にする。
+   ほかの画面の表への展開は、13 の全画面展開の回に分ける。 */
+html[data-theme="dark"] table.trade-overview,
+html[data-theme="dark"] table.trade-partners,
+html[data-theme="dark"] table.bloc-info,
+html[data-theme="dark"] table.bloc-table,
+html[data-theme="dark"] table.other-blocs-table {
+  background: var(--bg-base); color: var(--text-base);
+}
+html[data-theme="dark"] table.trade-overview th,
+html[data-theme="dark"] table.trade-overview td,
+html[data-theme="dark"] table.trade-partners th,
+html[data-theme="dark"] table.trade-partners td,
+html[data-theme="dark"] table.bloc-info th,
+html[data-theme="dark"] table.bloc-info td,
+html[data-theme="dark"] table.bloc-table th,
+html[data-theme="dark"] table.bloc-table td,
+html[data-theme="dark"] table.other-blocs-table th,
+html[data-theme="dark"] table.other-blocs-table td {
+  border-color: var(--line-base);
+}
+html[data-theme="dark"] table.trade-overview th,
+html[data-theme="dark"] table.trade-partners th,
+html[data-theme="dark"] table.bloc-info th,
+html[data-theme="dark"] table.bloc-table thead th,
+html[data-theme="dark"] table.other-blocs-table thead th {
+  background: #232f47; color: var(--text-base);
+}
+html[data-theme="dark"] table.bloc-table tbody tr:nth-child(even),
+html[data-theme="dark"] table.other-blocs-table tbody tr:nth-child(even) {
+  background: #1c2536;
+}
+html[data-theme="dark"] table.trade-overview a,
+html[data-theme="dark"] table.trade-partners a,
+html[data-theme="dark"] table.bloc-info a,
+html[data-theme="dark"] table.bloc-table a,
+html[data-theme="dark"] table.other-blocs-table a { color: #8ab4ff; }
+html[data-theme="dark"] table.trade-overview a:visited,
+html[data-theme="dark"] table.trade-partners a:visited,
+html[data-theme="dark"] table.bloc-info a:visited,
+html[data-theme="dark"] table.bloc-table a:visited,
+html[data-theme="dark"] table.other-blocs-table a:visited { color: #c9a7ff; }
+html[data-theme="dark"] table.trade-overview .muted,
+html[data-theme="dark"] table.trade-partners .muted,
+html[data-theme="dark"] table.bloc-info .muted,
+html[data-theme="dark"] table.bloc-table .muted,
+html[data-theme="dark"] table.other-blocs-table .muted { color: #9aa9cc; }
+html[data-theme="dark"] table.trade-overview .warning,
+html[data-theme="dark"] table.trade-partners .warning,
+html[data-theme="dark"] table.bloc-info .warning,
+html[data-theme="dark"] table.bloc-table .warning,
+html[data-theme="dark"] table.other-blocs-table .warning { color: #e8a33d; }
+
 /* 島の画面 */
 .island-header h1 { margin-bottom: 0; }
 .island-header p { margin-top: 4px; }

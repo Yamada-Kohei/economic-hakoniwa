@@ -10,7 +10,7 @@
       {% for b in trade.blocs %}
       <div class="bloc">
         <h3>{{ b.name }}</h3>
-        <table class="info">
+        <table class="info bloc-info">
           <tr><th>{% translate "代表" %}</th><td>{{ b.rep_name }}{% if b.is_rep %} {% translate "（この国）" %}{% endif %}</td></tr>
           <tr><th>{% translate "加盟国" %}</th><td>{% for x in b.members %}<a href="{% url 'island_trade' x.id %}">{{ x.name }}</a>{% if not forloop.last %}・{% endif %}{% endfor %}</td></tr>
           <tr><th>{% translate "加盟" %}</th><td>{% if b.open %}{% translate "誰でも入れる" %}{% else %}{% translate "代表の承認が要る" %}{% endif %}</td></tr>

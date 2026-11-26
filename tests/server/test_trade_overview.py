@@ -349,3 +349,16 @@ def test_trade_partner_route_stat_with_a_bad_name_fails_loudly(world):
     browser = _client(owner)
     with pytest.raises(ValueError):
         browser.get(f"/api/islands/{island.id}/trade")
+
+
+def test_trade_tables_use_theme_variables_in_dark():
+    """貿易の表と貿易圏の資源一覧の配色が、暗いときは 13 の枠の共通変数へつながっている
+    （台帳 P2 の 12・9。明るいときは今までの色のまま）。"""
+    from pathlib import Path
+
+    css = Path("server/static/css/site.css").read_text(encoding="utf-8")
+    for cls in ("trade-overview", "trade-partners", "bloc-info", "bloc-table", "other-blocs-table"):
+        assert f'html[data-theme="dark"] table.{cls}' in css
+    block = css.split("貿易の表の配色", 1)[1].split("/* 島の画面 */", 1)[0]
+    assert "background: var(--bg-base); color: var(--text-base);" in block
+    assert "border-color: var(--line-base);" in block
