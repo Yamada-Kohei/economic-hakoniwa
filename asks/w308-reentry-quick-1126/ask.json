@@ -1,0 +1,731 @@
+{
+ "name": "w308-reentry-quick-1126",
+ "commit": "1a5cc83d4e327c54135976afb3c4838674b1c6ed",
+ "pool": "any",
+ "files": [
+  "w308_reentry_quick_probe.py"
+ ],
+ "patches": [],
+ "runs": [
+  {
+   "name": "q-off-plan-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "q-off-plan-s1.jsonl.gz"
+   ],
+   "summary": [
+    "q-off-plan-s1.jsonl.gz",
+    "q-off-plan-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-off-plan-s2",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "2",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "q-off-plan-s2.jsonl.gz"
+   ],
+   "summary": [
+    "q-off-plan-s2.jsonl.gz",
+    "q-off-plan-s2.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-off-plan-s3",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "3",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "q-off-plan-s3.jsonl.gz"
+   ],
+   "summary": [
+    "q-off-plan-s3.jsonl.gz",
+    "q-off-plan-s3.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-off-none-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "none",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "q-off-none-s1.jsonl.gz"
+   ],
+   "summary": [
+    "q-off-none-s1.jsonl.gz",
+    "q-off-none-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-off-none-s2",
+   "args": [
+    "probe",
+    "--scenario",
+    "none",
+    "--seed",
+    "2",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "q-off-none-s2.jsonl.gz"
+   ],
+   "summary": [
+    "q-off-none-s2.jsonl.gz",
+    "q-off-none-s2.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-off-none-s3",
+   "args": [
+    "probe",
+    "--scenario",
+    "none",
+    "--seed",
+    "3",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "q-off-none-s3.jsonl.gz"
+   ],
+   "summary": [
+    "q-off-none-s3.jsonl.gz",
+    "q-off-none-s3.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-off-independent-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "q-off-independent-s1.jsonl.gz"
+   ],
+   "summary": [
+    "q-off-independent-s1.jsonl.gz",
+    "q-off-independent-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-off-independent-s2",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "2",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "q-off-independent-s2.jsonl.gz"
+   ],
+   "summary": [
+    "q-off-independent-s2.jsonl.gz",
+    "q-off-independent-s2.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-off-independent-s3",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "3",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "q-off-independent-s3.jsonl.gz"
+   ],
+   "summary": [
+    "q-off-independent-s3.jsonl.gz",
+    "q-off-independent-s3.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-off-small-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "small",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "q-off-small-s1.jsonl.gz"
+   ],
+   "summary": [
+    "q-off-small-s1.jsonl.gz",
+    "q-off-small-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-off-small-s2",
+   "args": [
+    "probe",
+    "--scenario",
+    "small",
+    "--seed",
+    "2",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "q-off-small-s2.jsonl.gz"
+   ],
+   "summary": [
+    "q-off-small-s2.jsonl.gz",
+    "q-off-small-s2.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-off-small-s3",
+   "args": [
+    "probe",
+    "--scenario",
+    "small",
+    "--seed",
+    "3",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "q-off-small-s3.jsonl.gz"
+   ],
+   "summary": [
+    "q-off-small-s3.jsonl.gz",
+    "q-off-small-s3.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-off-open-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "open",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "q-off-open-s1.jsonl.gz"
+   ],
+   "summary": [
+    "q-off-open-s1.jsonl.gz",
+    "q-off-open-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-off-open-s2",
+   "args": [
+    "probe",
+    "--scenario",
+    "open",
+    "--seed",
+    "2",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "q-off-open-s2.jsonl.gz"
+   ],
+   "summary": [
+    "q-off-open-s2.jsonl.gz",
+    "q-off-open-s2.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-off-open-s3",
+   "args": [
+    "probe",
+    "--scenario",
+    "open",
+    "--seed",
+    "3",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "q-off-open-s3.jsonl.gz"
+   ],
+   "summary": [
+    "q-off-open-s3.jsonl.gz",
+    "q-off-open-s3.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-off-war-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "war",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "q-off-war-s1.jsonl.gz"
+   ],
+   "summary": [
+    "q-off-war-s1.jsonl.gz",
+    "q-off-war-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-off-war-s2",
+   "args": [
+    "probe",
+    "--scenario",
+    "war",
+    "--seed",
+    "2",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "q-off-war-s2.jsonl.gz"
+   ],
+   "summary": [
+    "q-off-war-s2.jsonl.gz",
+    "q-off-war-s2.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-off-war-s3",
+   "args": [
+    "probe",
+    "--scenario",
+    "war",
+    "--seed",
+    "3",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "q-off-war-s3.jsonl.gz"
+   ],
+   "summary": [
+    "q-off-war-s3.jsonl.gz",
+    "q-off-war-s3.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-on-plan-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "q-on-plan-s1.jsonl.gz"
+   ],
+   "summary": [
+    "q-on-plan-s1.jsonl.gz",
+    "q-on-plan-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-on-plan-s2",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "2",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "q-on-plan-s2.jsonl.gz"
+   ],
+   "summary": [
+    "q-on-plan-s2.jsonl.gz",
+    "q-on-plan-s2.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-on-plan-s3",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "3",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "q-on-plan-s3.jsonl.gz"
+   ],
+   "summary": [
+    "q-on-plan-s3.jsonl.gz",
+    "q-on-plan-s3.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-on-none-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "none",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "q-on-none-s1.jsonl.gz"
+   ],
+   "summary": [
+    "q-on-none-s1.jsonl.gz",
+    "q-on-none-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-on-none-s2",
+   "args": [
+    "probe",
+    "--scenario",
+    "none",
+    "--seed",
+    "2",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "q-on-none-s2.jsonl.gz"
+   ],
+   "summary": [
+    "q-on-none-s2.jsonl.gz",
+    "q-on-none-s2.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-on-none-s3",
+   "args": [
+    "probe",
+    "--scenario",
+    "none",
+    "--seed",
+    "3",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "q-on-none-s3.jsonl.gz"
+   ],
+   "summary": [
+    "q-on-none-s3.jsonl.gz",
+    "q-on-none-s3.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-on-independent-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "q-on-independent-s1.jsonl.gz"
+   ],
+   "summary": [
+    "q-on-independent-s1.jsonl.gz",
+    "q-on-independent-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-on-independent-s2",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "2",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "q-on-independent-s2.jsonl.gz"
+   ],
+   "summary": [
+    "q-on-independent-s2.jsonl.gz",
+    "q-on-independent-s2.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-on-independent-s3",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "3",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "q-on-independent-s3.jsonl.gz"
+   ],
+   "summary": [
+    "q-on-independent-s3.jsonl.gz",
+    "q-on-independent-s3.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-on-small-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "small",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "q-on-small-s1.jsonl.gz"
+   ],
+   "summary": [
+    "q-on-small-s1.jsonl.gz",
+    "q-on-small-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-on-small-s2",
+   "args": [
+    "probe",
+    "--scenario",
+    "small",
+    "--seed",
+    "2",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "q-on-small-s2.jsonl.gz"
+   ],
+   "summary": [
+    "q-on-small-s2.jsonl.gz",
+    "q-on-small-s2.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-on-small-s3",
+   "args": [
+    "probe",
+    "--scenario",
+    "small",
+    "--seed",
+    "3",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "q-on-small-s3.jsonl.gz"
+   ],
+   "summary": [
+    "q-on-small-s3.jsonl.gz",
+    "q-on-small-s3.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-on-open-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "open",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "q-on-open-s1.jsonl.gz"
+   ],
+   "summary": [
+    "q-on-open-s1.jsonl.gz",
+    "q-on-open-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-on-open-s2",
+   "args": [
+    "probe",
+    "--scenario",
+    "open",
+    "--seed",
+    "2",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "q-on-open-s2.jsonl.gz"
+   ],
+   "summary": [
+    "q-on-open-s2.jsonl.gz",
+    "q-on-open-s2.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-on-open-s3",
+   "args": [
+    "probe",
+    "--scenario",
+    "open",
+    "--seed",
+    "3",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "q-on-open-s3.jsonl.gz"
+   ],
+   "summary": [
+    "q-on-open-s3.jsonl.gz",
+    "q-on-open-s3.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-on-war-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "war",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "q-on-war-s1.jsonl.gz"
+   ],
+   "summary": [
+    "q-on-war-s1.jsonl.gz",
+    "q-on-war-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-on-war-s2",
+   "args": [
+    "probe",
+    "--scenario",
+    "war",
+    "--seed",
+    "2",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "q-on-war-s2.jsonl.gz"
+   ],
+   "summary": [
+    "q-on-war-s2.jsonl.gz",
+    "q-on-war-s2.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-on-war-s3",
+   "args": [
+    "probe",
+    "--scenario",
+    "war",
+    "--seed",
+    "3",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "q-on-war-s3.jsonl.gz"
+   ],
+   "summary": [
+    "q-on-war-s3.jsonl.gz",
+    "q-on-war-s3.gate.json"
+   ],
+   "large": []
+  }
+ ]
+}
