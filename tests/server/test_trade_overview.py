@@ -382,3 +382,34 @@ def test_trade_pages_dark_theme_covers_whole_page():
     assert 'html[data-theme="dark"] .trade-page button' in block
     layout = Path("server/templates/web/trade_layout.html").read_text(encoding="utf-8")
     assert "report-layout trade-page" in layout
+
+
+def test_common_frame_dark_theme():
+    """共通の枠（題字の帯・島の入口の帯・タブ・命令の列の帯・下の帯・窓）は、
+    暗いときも明るい地のまま残らず、貿易の画面でそろえた暗いときの色と
+    共通変数で出し直される（台帳 P2。13 の枠を全画面の枠へ広げる）。
+    見出しの紺の字も、暗い地では共通変数の字の色になる。"""
+    from pathlib import Path
+
+    css = Path("server/static/css/site.css").read_text(encoding="utf-8")
+    block = css.split("共通の枠の暗いときの配色", 1)[1]
+    for sel in (
+        ".site-header",
+        ".island-nav a",
+        ".island-subnav",
+        ".orders-bar",
+        ".screen-help a",
+        ".site-footer",
+        "dialog.bug-report",
+        "dialog.site-news",
+        ".letter-notice-card",
+    ):
+        assert f'html[data-theme="dark"] {sel}' in block
+    # 枠の地と罫線は、貿易の表・画面全体で使った暗いときの色と共通変数にそろう
+    assert "background: #1c2536" in block
+    assert "background: #232f47" in block
+    assert "var(--line-base)" in block
+    # 見出しの紺の字は暗い地に沈むので、共通変数の字の色に替える
+    assert 'html[data-theme="dark"] h1 { color: var(--text-base);' in block
+    # ブラウザが描く部品（枠の窓・入力欄）も暗くなる
+    assert "color-scheme: dark;" in css

@@ -17,6 +17,7 @@
   --line-base: #b7c9f0;  /* = --rule */
 }
 html[data-theme="dark"] {
+  color-scheme: dark;  /* 枠の窓や入力欄など、ブラウザが描く部品も暗くする */
   --bg-base: #161c28;
   --text-base: #dfe6fb;
   --line-base: #41527a;
@@ -676,3 +677,73 @@ dialog.site-news h2 { margin: 0 0 6px; font-size: 1.1em; }
 .diet-food { background: #9b8ae0; }
 table.info.diet-table th { width: auto; }
 .diet-table td { text-align: right; width: 16%; }
+
+/* 共通の枠の暗いときの配色（台帳 P2。13 の枠を全画面の枠へ広げる）:
+   全部の画面に共通する枠（サイトの題字の帯・島の入口の帯・入口の中のタブ・
+   命令の列の帯・画面の上の手引きの札・下の帯・知らせの窓とダイアログ）は、
+   暗いとき（html の data-theme="dark"）も明るい地のまま残らないように、
+   貿易の画面でそろえた暗いときの色（地 #1c2536・薄い地 #232f47・罫線は
+   共通変数 --line-base・リンク #8ab4ff・訪問済み #c9a7ff・薄い字 #9aa9cc）
+   で出し直す。見出し（h1・h3）の紺の字と、h1 の横の小さい字（.page-title）も、
+   暗い地では共通変数の字の色と薄い字の色にする（紺のままでは暗い地に沈んで
+   読めない）。明るいときは何も変わらない。本文の部品（パネルや表）の
+   全面展開は、この枠と貿易の見本を見て会議で決める。 */
+html[data-theme="dark"] .site-header { background: linear-gradient(#232f47, #1c2536); }
+html[data-theme="dark"] .brand { color: var(--text-base); }
+html[data-theme="dark"] .site-header nav a { color: #8ab4ff; }
+html[data-theme="dark"] .site-header nav a:visited { color: #c9a7ff; }
+html[data-theme="dark"] .account-menu summary { color: #9aa9cc; }
+html[data-theme="dark"] .account-menu-items {
+  background: #1c2536; border-color: var(--line-base); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+html[data-theme="dark"] .account-menu-items button {
+  background: #232f47; color: var(--text-base); border: 1px solid var(--line-base);
+}
+html[data-theme="dark"] h1 { color: var(--text-base); text-shadow: 2px 2px 0 var(--line-base); }
+html[data-theme="dark"] main h3 { color: var(--text-base); border-bottom-color: var(--line-base); }
+html[data-theme="dark"] .page-title { color: #9aa9cc; }
+html[data-theme="dark"] .screen-help a, html[data-theme="dark"] .screen-help a:visited {
+  background: #1c2536; color: #8ab4ff; border-color: var(--line-base);
+}
+html[data-theme="dark"] .screen-help a:hover { background: #232f47; }
+html[data-theme="dark"] .island-nav a {
+  background: #1c2536; color: #8ab4ff; border-color: var(--line-base);
+}
+html[data-theme="dark"] .island-nav a:visited { color: #c9a7ff; }
+html[data-theme="dark"] .island-nav a:hover { background: #232f47; }
+html[data-theme="dark"] .island-nav a[aria-current="page"] { background: var(--accent); color: #fff; }
+html[data-theme="dark"] .island-subnav { border-bottom-color: var(--line-base); }
+html[data-theme="dark"] .island-subnav a { color: #8ab4ff; }
+html[data-theme="dark"] .island-subnav a:visited { color: #c9a7ff; }
+html[data-theme="dark"] .island-subnav a:hover { background: #232f47; }
+html[data-theme="dark"] .island-subnav a[aria-current="page"] { color: var(--text-base); }
+html[data-theme="dark"] .orders-bar, html[data-theme="dark"] .orders-bar:visited {
+  background: #232f47; color: var(--text-base);
+  border-color: var(--line-base); border-left-color: var(--accent);
+}
+html[data-theme="dark"] .orders-bar:hover { background: #2c3a58; }
+html[data-theme="dark"] .orders-bar[aria-current="page"] { background: #1c2536; }
+html[data-theme="dark"] .orders-bar-go { color: #8ab4ff; }
+html[data-theme="dark"] .site-footer { color: #9aa9cc; border-top-color: var(--line-base); }
+html[data-theme="dark"] .site-footer a { color: #8ab4ff; }
+html[data-theme="dark"] .site-footer a:visited { color: #c9a7ff; }
+html[data-theme="dark"] .flash { background: #1c2536; border-color: var(--line-base); }
+html[data-theme="dark"] .flash.error { color: #ff9e94; }
+html[data-theme="dark"] dialog.bug-report, html[data-theme="dark"] dialog.site-news {
+  background: #1c2536; color: var(--text-base); border-color: var(--line-base);
+}
+html[data-theme="dark"] dialog.bug-report .hint, html[data-theme="dark"] dialog.site-news .hint,
+html[data-theme="dark"] dialog.site-news .site-news-list time { color: #9aa9cc; }
+html[data-theme="dark"] dialog.bug-report button, html[data-theme="dark"] dialog.site-news button {
+  background: #232f47; color: var(--text-base); border: 1px solid var(--line-base);
+}
+html[data-theme="dark"] dialog.bug-report button.primary, html[data-theme="dark"] dialog.site-news button.primary {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+html[data-theme="dark"] .letter-notice-card {
+  background: #1c2536; color: var(--text-base); box-shadow: 2px 2px 0 var(--line-base);
+}
+html[data-theme="dark"] .letter-notice-card a { color: #8ab4ff; }
+html[data-theme="dark"] .letter-notice-card button {
+  background: #232f47; color: var(--text-base); border: 1px solid var(--line-base);
+}
