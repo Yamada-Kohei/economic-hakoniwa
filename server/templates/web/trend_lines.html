@@ -1,0 +1,1 @@
+{% if trends %}<svg class="trend-lines" width="84" height="20" viewBox="0 0 84 20" aria-hidden="true" focusable="false">{% for line in trends %}<path d="{{ line.path }}" fill="none" stroke="{{ line.color }}" stroke-width="1.2" stroke-linejoin="round"/>{% endfor %}</svg>{% endif %}

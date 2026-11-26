@@ -47,7 +47,9 @@ function environment({ failedUrl, failedDraw = false } = {}) {
     attachControls: () => ({}),
     MissileTarget: class {}, TilePanel: class {},
     drawIsland() { if (failedDraw) throw new Error("描けません"); drawings += 1; },
-    drawMinimap() {}, drawRuler() {}, readRulerShown: () => false, writeRulerShown() {}, loadSprites: async () => new Map(),
+    drawMinimap() {}, drawRuler() {}, readRulerShown: () => false, writeRulerShown() {},
+    changeMarks: () => new Map(), readChangesShown: () => false, writeChangesShown() {},
+    loadSprites: async () => new Map(),
     spritePriorityKeys: () => new Set(),
   };
   return { context: vm.createContext(context), element, frames, timers,

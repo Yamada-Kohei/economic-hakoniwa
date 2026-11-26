@@ -10,8 +10,9 @@
   <img class="country-flag" src="{{ c.flag.url }}" alt="{% blocktranslate with name=island.name %}{{ name }}の国旗{% endblocktranslate %}"{% if c.flag.width %} width="{{ c.flag.width }}" height="{{ c.flag.height }}"{% endif %}>
   <div class="country-head-body">
     <h2>{{ c.head.name }}{% if c.head.inactive %} <small class="muted">{% translate "（休止中）" %}</small>{% endif %}</h2>
-    {% if c.awards or c.titles %}
+    {% if c.awards or c.titles or c.anniversary %}
     <div class="country-honours" aria-label="{% translate '賞・称号' %}">
+      {% if c.anniversary %}<span class="title-badge">{% blocktranslate with years=c.anniversary.years %}建国{{ years }}年{% endblocktranslate %}</span>{% endif %}
       {% for a in c.awards %}{% include "web/award_badge.html" with name=a.name detail=a.detail %}{% endfor %}
       {% for t in c.titles %}<span class="title-badge">{{ t }}</span>{% endfor %}
     </div>
@@ -41,13 +42,14 @@
 
 <section class="panel" id="timeline">
   <h2>{% translate "年表" %}</h2>
-  <p class="hint">{% translate "建国・選挙・憲法の改正・条約・戦争などの主な出来事を、新しい順に並べています。日付は、この国が選んだ紀年で書いています。" %}</p>
+  <p class="hint">{% translate "建国・選挙・憲法の改正・条約・戦争などの主な出来事を、新しい順に並べています。日付は、この国が選んだ紀年で書き、紀年ごとに区切っています。節目の出来事には色を付けています。" %}</p>
   <div class="table-scroll">
   <table class="goods country-timeline">
     <thead><tr><th>{% translate "日付" %}</th><th>{% translate "出来事" %}</th></tr></thead>
     <tbody>
     {% for row in c.timeline reversed %}
-      <tr><td>{{ row.date }}</td><td>{{ row.text }}</td></tr>
+      {% ifchanged row.period %}<tr class="timeline-period"><th colspan="2">{{ row.period }}</th></tr>{% endifchanged %}
+      <tr{% if row.milestone %} class="timeline-milestone"{% endif %}><td>{{ row.date }}</td><td>{{ row.text }}</td></tr>
     {% empty %}
       <tr><td colspan="2" class="muted">{% translate "まだ出来事がありません。" %}</td></tr>
     {% endfor %}

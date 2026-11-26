@@ -3,13 +3,14 @@
 // ほかのマスを押すとそのマスの情報だけに替わる。地図を動かすと窓もマスに付いて動く。
 
 import { attachControls } from "./controls.js";
+import { changeMarks, readChangesShown, writeChangesShown } from "./changes.js";
 import { drawMinimap, minimapTile } from "./minimap.js";
 import { BARS, FILL, overlayLegend, readOverlayMode, writeOverlayMode } from "./overlays/bars.js";
 import { overlayList } from "./overlays/index.js";
 import { lift, tileToWorld, worldToTile } from "./projection.js";
 import { drawIsland } from "./renderer.js";
 import { drawRuler, readRulerShown, writeRulerShown } from "./ruler.js";
-import { loadSprites, spritePriorityKeys } from "./sprites.js";
+import { loadFlag, loadSprites, spritePriorityKeys } from "./sprites.js";
 import { OrderQueue } from "../island/orders.js";
 import { TilePanel } from "../island/panel.js";
 import { MissileTarget } from "../island/missiles.js";
@@ -54,8 +55,9 @@ const storage = (() => {
 })();
 const state = {
   selected: null, marked: new Set(), overlay: null, overlayMode: readOverlayMode(storage),
-  sprites: new Map(), undergroundLabel: words().hidden,
+  sprites: new Map(), flag: null, undergroundLabel: words().hidden,
   ruler: readRulerShown(storage), // 縁の目盛りと座標（UI-85）。既定は出さない
+  changes: readChangesShown(storage), changeMarks: null, // 前のターンから変わったマスの印（案3 の静止版）。既定は出さない
 };
 let pending = false;
 
@@ -285,6 +287,33 @@ if (overlaySelect) {
   overlaySelect.addEventListener("change", () => showOverlay(overlaySelect.value));
 }
 
+// 前のターンから変わったマスの印（案3 の静止版）。材料は初めて出したときに地図の API から読む。
+// 出すかどうかは覚え、次に開いたときも使う（座標の目盛りと同じ流儀）
+const changesToggle = document.getElementById("map-changes");
+const changesLegend = document.getElementById("changes-legend");
+async function applyChanges() {
+  if (changesLegend) changesLegend.hidden = !state.changes;
+  if (state.changes && map.changed === undefined) {
+    try {
+      const extra = await fetch(`${canvas.dataset.api}?changes=1`).then((r) => r.json());
+      map.changed = extra.changed || [];
+    } catch {
+      map.changed = [];
+    }
+  }
+  state.changeMarks = state.changes ? changeMarks(map) : null;
+  redraw();
+}
+if (changesToggle) {
+  changesToggle.checked = state.changes;
+  changesToggle.addEventListener("change", () => {
+    state.changes = changesToggle.checked;
+    writeChangesShown(storage, state.changes);
+    applyChanges();
+  });
+  if (state.changes) applyChanges();
+}
+
 // 棒と塗り分けの切り替え（UI-79）。選んだ表し方は覚え、次に開いたときも使う
 if (barsToggle) {
   barsToggle.checked = state.overlayMode === BARS;
@@ -345,6 +374,9 @@ if (map.mine) {
 // 絵は 1 枚読めるごとに描き直す（読み込むまでは色の箱で描く）。この島で使う絵を先に読み、
 // 残りはあとに回す。redraw は requestAnimationFrame でまとめられるので描き直しは増えすぎない
 loadSprites(theme, { into: state.sprites, priority: spritePriorityKeys(theme, map, defs), onLoad: () => redraw() });
+
+// 首都のマスに立てる旗（その国の旗の画像）。読めたら描き直す
+if (canvas.dataset.flag) loadFlag(canvas.dataset.flag, (flag) => { state.flag = flag; redraw(); });
 
 // ターンログのリンクなどから ?x=..&y=.. で来たら、そのマスを選ぶ
 const params = new URLSearchParams(location.search);

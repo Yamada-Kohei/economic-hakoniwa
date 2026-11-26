@@ -251,6 +251,12 @@ pre.prompt { white-space: pre-wrap; overflow-wrap: anywhere; }
 /* 見出しに添える日付（箱庭暦） */
 .heading-date { font-size: 0.75em; font-weight: normal; color: #6a7aa0; margin-left: 4px; }
 #overlay-legend { margin-left: 8px; }
+/* 前のターンから変わったマスの印の凡例（案3 の静止版）。色は地図の印（map/changes.js）と同じ */
+#changes-legend { margin-left: 8px; }
+.change-swatch { font-weight: bold; }
+.change-swatch.built { color: #2e7d32; }
+.change-swatch.removed { color: #c62828; }
+.change-swatch.stage { color: #ef6c00; }
 
 /* 統計の画面 */
 .stat-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 12px 0; }
@@ -323,6 +329,8 @@ table.ranking-table td:nth-child(2), table.ranking-table th:nth-child(2),
 table.titles-table td:nth-child(-n+4), table.titles-table th:nth-child(-n+4),
 table.foreign-bonds-table td:nth-child(2), table.foreign-bonds-table th:nth-child(2) { text-align: left; }
 table.ranking-table td:nth-child(3), table.titles-table th, table.titles-table td { white-space: nowrap; }
+/* 国名の横の小さな推移グラフ（人口・GDP・1人あたり所得の直近2年） */
+.trend-lines { vertical-align: middle; margin-left: 6px; }
 .plain-list { padding-left: 1.2em; margin: 4px 0; }
 /* 統計と命令を縦に並べ、横長の表は表の中だけ横に送る。 */
 .report-layout { min-width: 0; }
@@ -384,6 +392,9 @@ dl.good-facts dd { margin: 0; }
 .country-link > span { min-width: 0; overflow-wrap: anywhere; }
 .country-timeline td { padding: 8px 10px; }
 .country-timeline td:first-child { width: 13em; font-weight: bold; color: var(--navy); }
+.country-timeline tr.timeline-period th { background: var(--pale); color: var(--navy); text-align: left; padding: 6px 10px; letter-spacing: 0.08em; border-top: 2px solid var(--rule); }
+.country-timeline tr.timeline-milestone td { background: #fff5d6; }
+.country-timeline tr.timeline-milestone td:nth-child(2) { font-weight: bold; }
 table.goods.country-timeline td:nth-child(n+2), table.goods.country-timeline th:nth-child(n+2) { text-align: left; }
 .country-page details summary { cursor: pointer; padding: 8px 0; font-weight: bold; }
 .country-editor > summary { color: var(--navy); }

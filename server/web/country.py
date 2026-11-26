@@ -12,6 +12,7 @@ from typing import Any
 from django.db.models import Q
 from django.urls import reverse
 
+from hakoniwa_core import milestones
 from server.country import services
 from server.country.models import Flag, Note, Profile
 from server.turns.models import TurnLog
@@ -74,9 +75,23 @@ DIPLOMACY_KINDS = (
 )
 
 
+# 年表で節目として目立たせる出来事（国の歴史の転機: 建国・憲法の改正・戦争の始まりと終わりと、
+# 建国記念日・人口と GDP の節目）
+MILESTONE_KINDS = (
+    "island_founded",
+    "constitution_amended",
+    "war_declared",
+    "war_declared_on",
+    "war_ended",
+    "anniversary_founding",
+    "milestone_population",
+    "milestone_gdp",
+)
+
+
 def timeline(island: m.Island, profile: Profile | None) -> list[dict[str, Any]]:
     """この国の年表（古い順）: ターンログの主な出来事（建国・選挙・憲法の改正など）と、外交の出来事
-    （宣戦・停戦・講和・条約）。"""
+    （宣戦・停戦・講和・条約）。各行に、紀年ごとの区切り（period）と節目かどうか（milestone）を付ける。"""
     kinds = TurnLog.objects.filter(top.headline_filter() | Q(kind__in=DIPLOMACY_KINDS))
     logs = list(kinds.filter(island=island).order_by("-turn", "-id")[:TIMELINE])
     logs.reverse()
@@ -84,6 +99,8 @@ def timeline(island: m.Island, profile: Profile | None) -> list[dict[str, Any]]:
         {
             "turn": log.turn,
             "date": services.date_text(island, profile, log.turn),
+            "period": services.period_text(island, profile, log.turn),
+            "milestone": log.kind in MILESTONE_KINDS,
             "text": entry["text"],
         }
         for log, entry in zip(logs, display.log_entries(logs), strict=True)
@@ -91,8 +108,15 @@ def timeline(island: m.Island, profile: Profile | None) -> list[dict[str, Any]]:
 
 
 def timeline_text(rows: list[dict[str, Any]]) -> str:
-    """年表を、外の wiki にそのまま貼れる文にする（1 行に 1 つの出来事）。"""
-    return "\n".join(f"* {r['date']}: {r['text']}" for r in rows)
+    """年表を、外の wiki にそのまま貼れる文にする（区切りの見出し＋1 行に 1 つの出来事）。"""
+    lines: list[str] = []
+    period: str | None = None
+    for r in rows:
+        if r["period"] != period:
+            period = r["period"]
+            lines.append(f"== {period} ==")
+        lines.append(f"* {r['date']}: {r['text']}")
+    return "\n".join(lines)
 
 
 def notes(island: m.Island, profile: Profile | None) -> list[dict[str, Any]]:
@@ -119,6 +143,8 @@ def country_data(island: m.Island, mine: bool, viewer: m.Island | None = None) -
     head = overview.island_head(island)
     _, stats = display.latest_stats(island)
     rows = timeline(island, profile)
+    # 建国記念日の年（満○年を迎えた後の1年間）なら、その年数（案27。それ以外は None）
+    anniversary = milestones.anniversary_years(services.founded_turn(island), island.world.turn)
     intro_hidden = bool(profile and profile.intro_hidden)
     data: dict[str, Any] = {
         "flag": flag_info(island, mine),
@@ -136,6 +162,7 @@ def country_data(island: m.Island, mine: bool, viewer: m.Island | None = None) -
             "inactive": island.inactive,
         },
         "era": era_info(island, profile, mine),
+        "anniversary": {"years": anniversary} if anniversary is not None else None,
         "awards": awards.holders(island.world, only=island.id).get(island.id, []),
         "titles": rankings.island_strengths(island, stats)["titles"],
         "intro": "" if (intro_hidden or not profile) else profile.intro,

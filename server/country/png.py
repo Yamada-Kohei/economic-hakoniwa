@@ -135,6 +135,8 @@ def provisional_flag(island_id: int, name: str) -> str:
         colors[2] = PALETTE[(digest[2] + 2) % len(PALETTE)]
     a, b, c = colors
     shape = digest[3] % 5
+    if digest[4] % 4 == 0:  # 一部の国は新しい型（5〜8）。残りの国は今までの型のまま
+        shape = 5 + digest[5] % 4
     if shape == 0:  # 横の三色
         body = (
             f'<rect width="90" height="20" fill="{a}"/><rect y="20" width="90" height="20" '
@@ -154,10 +156,34 @@ def provisional_flag(island_id: int, name: str) -> str:
             f'<rect width="90" height="60" fill="{a}"/><rect x="24" width="14" height="60" '
             f'fill="{b}"/><rect y="23" width="90" height="14" fill="{b}"/>'
         )
-    else:  # 斜め
+    elif shape == 4:  # 斜め
         body = (
             f'<rect width="90" height="60" fill="{a}"/><polygon points="0,60 90,0 90,60" '
             f'fill="{b}"/><circle cx="26" cy="20" r="8" fill="{c}"/>'
+        )
+    elif shape == 5:  # 横の帯と星
+        body = (
+            f'<rect width="90" height="60" fill="{a}"/><rect y="21" width="90" height="18" '
+            f'fill="{b}"/><polygon points="45,20 47.4,26.8 54.5,26.9 48.8,31.2 50.9,38.1 '
+            f'45,34 39.1,38.1 41.2,31.2 35.5,26.9 42.6,26.8" fill="{c}"/>'
+        )
+    elif shape == 6:  # 地に星
+        body = (
+            f'<rect width="90" height="60" fill="{a}"/><polygon points="45,14 48.8,24.8 '
+            f'60.2,25.1 51.1,32 54.4,42.9 45,36.4 35.6,42.9 38.9,32 29.8,25.1 41.2,24.8" '
+            f'fill="{b}"/>'
+        )
+    elif shape == 7:  # 山並みと日
+        body = (
+            f'<rect width="90" height="60" fill="{a}"/><circle cx="68" cy="15" r="7" '
+            f'fill="{c}"/><polygon points="0,60 24,28 46,60" fill="{b}"/>'
+            f'<polygon points="34,60 60,24 90,60" fill="{b}"/>'
+        )
+    else:  # 紋章（盾）
+        body = (
+            f'<rect width="90" height="60" fill="{a}"/><path d="M45 8 L69 15 V31 '
+            f'C69 43 59 51 45 57 C31 51 21 43 21 31 V15 Z" fill="{b}"/>'
+            f'<circle cx="45" cy="29" r="8" fill="{c}"/>'
         )
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 60" width="90" height="60">'

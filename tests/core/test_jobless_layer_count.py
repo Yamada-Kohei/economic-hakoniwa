@@ -22,7 +22,7 @@ def test_records_count_the_jobless_layer_at_the_same_time_as_unemployment(game):
     paid = island.economy.households[JOBLESS]["persons"]
     assert paid > 0
     _jobless_workers(game, island, 3)  # 人口の段の後
-    Records().run_island(island, context(game, island))
+    Records().run_island(island, context(game))
     households = island.economy.households
     assert households[JOBLESS]["persons"] == jobless_persons(game.defs, island) < paid
     assert island.stats[f"layer.{JOBLESS}.persons"] == households[JOBLESS]["persons"]

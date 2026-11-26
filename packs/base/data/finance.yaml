@@ -9,6 +9,7 @@ equity_return:        {type: journal}   # 出資の払い戻し（施設 → 持
 sale:                 {type: journal}   # 物の代金（買い手 → 売り手）
 ship_order:           {type: journal}   # 船の前注文の代金（海運業 → 造船所。手付け・建造の間・引き渡し。FX-60）
 ship_order_refund:    {type: journal}   # 船の前注文の前払いの返金（造船所 → 海運業。届かずに取り消した注文）
+ship_purchase:        {type: journal}   # 倉庫の船の買い取り（海運業 → 政府。W-308 再参入で後継が国の倉庫の船を買う代金）
 electricity:          {type: journal}   # 電気代（使う施設と家計 → 発電所）
 freight:              {type: journal}   # 運賃（売り手と買い手 → 運送業）
 relocation_freight:   {type: journal}   # 強制移住の運ぶ費用（政府 → 運送業。W-286）

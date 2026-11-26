@@ -63,6 +63,9 @@ HEADLINES = (
     "aid_sent",
     "fx_peg_broken",
     "settlement_grew",
+    "anniversary_founding",
+    "milestone_population",
+    "milestone_gdp",
 )
 
 
