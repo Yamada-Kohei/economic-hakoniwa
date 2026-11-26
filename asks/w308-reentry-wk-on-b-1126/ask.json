@@ -1,0 +1,127 @@
+{
+ "name": "w308-reentry-wk-on-b-1126",
+ "commit": "9ca5044bcb334050297f181c1b1aa96536cbdcaa",
+ "pool": "any",
+ "files": [
+  "w308_reentry_probe.py"
+ ],
+ "patches": [
+  "kprime-expand-reentry-on.diff"
+ ],
+ "runs": [
+  {
+   "name": "plan-s17-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "17",
+    "--turns",
+    "1200",
+    "--label",
+    "WKon",
+    "--out",
+    "reentry-WKon-plan-s17-t1200.json"
+   ],
+   "summary": [
+    "reentry-WKon-plan-s17-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s18-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "18",
+    "--turns",
+    "1200",
+    "--label",
+    "WKon",
+    "--out",
+    "reentry-WKon-plan-s18-t1200.json"
+   ],
+   "summary": [
+    "reentry-WKon-plan-s18-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s19-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "19",
+    "--turns",
+    "1200",
+    "--label",
+    "WKon",
+    "--out",
+    "reentry-WKon-plan-s19-t1200.json"
+   ],
+   "summary": [
+    "reentry-WKon-plan-s19-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s20-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "20",
+    "--turns",
+    "1200",
+    "--label",
+    "WKon",
+    "--out",
+    "reentry-WKon-plan-s20-t1200.json"
+   ],
+   "summary": [
+    "reentry-WKon-plan-s20-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s21-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "21",
+    "--turns",
+    "1200",
+    "--label",
+    "WKon",
+    "--out",
+    "reentry-WKon-plan-s21-t1200.json"
+   ],
+   "summary": [
+    "reentry-WKon-plan-s21-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s22-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "22",
+    "--turns",
+    "1200",
+    "--label",
+    "WKon",
+    "--out",
+    "reentry-WKon-plan-s22-t1200.json"
+   ],
+   "summary": [
+    "reentry-WKon-plan-s22-t1200.json"
+   ],
+   "large": []
+  }
+ ]
+}
