@@ -11,6 +11,7 @@ import { BARS, FILL, overlayLegend, readOverlayMode, writeOverlayMode } from "./
 import { overlayList } from "./overlays/index.js";
 import { lift, tileToWorld, worldToTile } from "./projection.js";
 import { drawIsland } from "./renderer.js";
+import { downloadCanvas, renderMapCanvas } from "./export.js";
 import { drawRuler, readRulerShown, writeRulerShown } from "./ruler.js";
 import { loadFlag, loadSprites, spritePriorityKeys } from "./sprites.js";
 import { marksByCell, readBattlesShown, readLifeShown, readMoneyShown, readProsperityShown, readSeasonShown, writeBattlesShown, writeLifeShown, writeMoneyShown, writeProsperityShown, writeSeasonShown } from "./wave4.js";
@@ -528,6 +529,21 @@ if (map.mine) {
     const notice = document.getElementById("rebel-map-notice");
     notice.textContent = words().error;
     notice.hidden = false;
+  });
+}
+
+// 地図の書き出し（案30 の基盤）: 今の地図を UI の無い一枚絵にして PNG で保存する。
+// 季節の色を選ぶと絵はがきになる。絵の読み込みが済んでいない分は色の箱で描かれる
+const exportButton = document.getElementById("export-map");
+if (exportButton) {
+  exportButton.addEventListener("click", () => {
+    const style = document.getElementById("export-style")?.value;
+    const canvas2 = renderMapCanvas(map, defs, {
+      sprites: state.sprites,
+      flag: state.flagShown ? state.flag : null,
+      season: style === "season",
+    });
+    downloadCanvas(canvas2, `map-${canvas.dataset.island}.png`);
   });
 }
 

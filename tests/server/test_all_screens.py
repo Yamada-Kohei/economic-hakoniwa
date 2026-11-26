@@ -42,6 +42,8 @@ ISLAND_PAGES = [
     "island_diplomacy",
     "island_military",
     "island_country",
+    "island_card",
+    "island_paper",
     "diary",
     "island_orders",
 ]

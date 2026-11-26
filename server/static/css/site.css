@@ -573,3 +573,22 @@ dialog.site-news h2 { margin: 0 0 6px; font-size: 1.1em; }
 .diet-food { background: #9b8ae0; }
 table.info.diet-table th { width: auto; }
 .diet-table td { text-align: right; width: 16%; }
+
+/* 第5波: 書き出し（案30）・ターンの新聞（案31）・港の壁画（案36）・地名（案34） */
+.map-export { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.card-preview img { max-width: 100%; height: auto; border: 1px solid var(--border); background: var(--pale); }
+.paper-page { max-width: 62em; }
+.paper-masthead { text-align: center; border-bottom: 4px double var(--rule); padding-bottom: 8px; }
+.paper-masthead h2 { font-family: serif; font-size: 2em; margin: 8px 0 4px; }
+.paper-date { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: #5a6672; }
+.paper-lead { font-family: serif; font-size: 1.5em; font-weight: bold; line-height: 1.5; border-bottom: 1px solid var(--rule); padding: 10px 0; }
+.paper-articles { columns: 2; column-gap: 28px; margin: 12px 0; }
+.paper-articles p { break-inside: avoid; margin: 0 0 10px; line-height: 1.7; }
+.paper-map { text-align: center; margin: 12px 0; }
+.paper-map canvas { max-width: 100%; height: auto; border: 1px solid var(--border); }
+.paper-nav { display: flex; justify-content: space-between; gap: 12px; }
+.mural-figure { text-align: center; margin: 8px 0; }
+.mural-figure svg { max-width: 100%; height: auto; }
+.mural-plaque { color: #5a6672; }
+.geonames-list { display: grid; gap: 6px; }
+.geonames-list form { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }

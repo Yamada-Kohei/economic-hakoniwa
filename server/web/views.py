@@ -9,6 +9,7 @@ from django.core.paginator import Paginator
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.translation import gettext
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.trade import contracts, tradable_goods
@@ -35,10 +36,12 @@ from server.web import (
     reports,
     trade,
 )
+from server.web import card as card_views
 from server.web import facility_page as facility_views
 from server.web import (
     news as news_views,
 )
+from server.web import paper as paper_views
 from server.web import politics as politics_views
 from server.web import top as top_page
 from server.world.models import Facility, Island, World
@@ -452,6 +455,24 @@ def country_page(request, island_id: int):
             return redirect("island_country", island.id)
     context["country"] = country.country_data(island, context["mine"], viewer)
     return render(request, "web/country.html", context)
+
+
+def card_page(request, island_id: int):
+    """国のカード（案30）: 旗・国名・首都・元首・人口・GDP・節目と地図を 1 枚の絵にする画面。
+    絵の合成はブラウザ側（card.js）が書き出し基盤（export.js）で行う。"""
+    island, context, _ = _report(request, island_id, "country", gettext("国のカード"))
+    context["card"] = card_views.card_data(island)
+    return render(request, "web/card.html", context)
+
+
+def paper_page(request, island_id: int):
+    """ターンの新聞（案31）: そのターンに起きた主な出来事を新聞の一面の形で見せる。
+    地図の切り抜きは今の地図なので、いちばん新しいターンの新聞にだけ付く（paper.py）。"""
+    island, context, _ = _report(request, island_id, "country", gettext("ターンの新聞"))
+    raw = request.GET.get("turn", "")
+    turn = int(raw) if raw.isdigit() else None
+    context["paper"] = paper_views.paper_data(island, turn, context["mine"])
+    return render(request, "web/paper.html", context)
 
 
 def orders_page(request, island_id: int):

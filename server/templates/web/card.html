@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% load i18n static %}
+{% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+{% include "web/report_header.html" %}
+<link rel="modulepreload" href="{% static 'js/map/export.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/card.js' %}">
+<div class="country-page">
+<section class="panel">
+  <h2>{% translate "国のカード" %}</h2>
+  <p class="hint">{% translate "国旗・国名・首都・元首・人口・GDP・節目と地図を 1 枚の絵にします。地図の見た目は選べます。" %}</p>
+  <p>
+    <label>{% translate "地図の見た目" %}
+      <select id="card-style">
+        <option value="plain">{% translate "通常" %}</option>
+        <option value="season">{% translate "季節の色（絵はがき）" %}</option>
+      </select>
+    </label>
+    <button type="button" id="card-download">{{ card.labels.download }}</button>
+  </p>
+  <p id="card-failed" class="error" role="alert" hidden>{% translate "カードを作れませんでした。再読み込みしてください" %}</p>
+  <div class="card-preview"><img id="card-img" alt="{% blocktranslate with name=island.name %}{{ name }}の国のカード{% endblocktranslate %}"></div>
+  <p><a href="{% url 'island_country' island.id %}">{% translate "国のページへ" %}</a>{% translate "・" %}<a href="{% url 'island' island.id %}">{% translate "地図へ" %}</a></p>
+</section>
+</div>
+{{ card|json_script:"card-data" }}
+<script type="module" src="{% static 'js/map/card.js' %}"></script>
+{% endblock %}

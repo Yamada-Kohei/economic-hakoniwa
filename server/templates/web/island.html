@@ -22,6 +22,7 @@
 <link rel="modulepreload" href="{% static 'js/map/ruler.js' %}">
 <link rel="modulepreload" href="{% static 'js/map/changes.js' %}">
 <link rel="modulepreload" href="{% static 'js/map/flagtoggle.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/export.js' %}">
 <link rel="modulepreload" href="{% static 'js/map/anim.js' %}">
 <link rel="modulepreload" href="{% static 'js/island/orders.js' %}">
 <link rel="modulepreload" href="{% static 'js/calendar.js' %}">
@@ -93,6 +94,17 @@
       <span id="battles-legend" class="hint" hidden>{% translate "直近3ターンの戦闘・ミサイル・占領の跡です。焦げた地面と星の印で、新しいほど濃く出ます。" %}</span>
       <label><input type="checkbox" id="map-money"> {% translate "お金の出来事" %}</label>
       <span id="money-legend" class="hint" hidden>{% translate "直近6ターンのお金の出来事です。銀行の救済は人の列、国債の下支えは首都の上の暗い雲、通貨の固定が崩れたときは人の集まりで出ます。" %}</span>
+      {# 地図の書き出し（案30 の基盤）: UI の無い一枚絵を PNG で保存する。季節の色は絵はがき用 #}
+      <span class="map-export">
+        <label>{% translate "書き出し" %}
+          <select id="export-style">
+            <option value="plain">{% translate "通常の地図" %}</option>
+            <option value="season">{% translate "季節の色（絵はがき）" %}</option>
+          </select>
+        </label>
+        <button type="button" id="export-map">{% translate "PNGで保存" %}</button>
+        <a href="{% url 'island_card' island.id %}">{% translate "国のカード" %}</a>
+      </span>
     </div>
     <p id="map-help" class="hint">{% translate "地図はドラッグで移動、Ctrl＋ホイールか＋－ボタンで拡大縮小できます。スマートフォンでは2本指で拡大縮小できます。通常のホイールはページをスクロールします。" %}</p>
     <p class="hint">{% translate "赤みのあるマスは反乱軍の占領です。" %}{% if mine %} {% translate "赤い輪の反乱軍には兵の数を添えています。" %}{% endif %}</p>
