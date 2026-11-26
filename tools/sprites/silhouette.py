@@ -4404,6 +4404,72 @@ def missile_plant(t):
     ]
 
 
+def missile_base_tiers(t):
+    """ミサイル基地の建て増し（FM-47）。名前のままの絵の姿（コンクリートの台に
+    起き上がった発射機と白いミサイル、丸い格納の蓋、土を盛った管理の壕）を保ちながら、
+    段が上がるほど発射設備が増え、ミサイルが長くなって格が上がって見えるようにする。
+    段 2 は発射機が大きくなってミサイルが長くなり、格納の蓋が 3 つに増え、
+    管理の壕の屋根にアンテナのマストが立つ。
+    段 3 は左手前に小さい発射機がもう 1 基増え、蓋は 4 つ、マストも高くなる。
+    段 4 は発射機が 3 基になり（右の蓋の場所にも 1 基立つ）、主のミサイルが一番長く、
+    管理の壕も大きくなって窓が 2 つになる。"""
+
+    def lid(u, v):
+        # 丸い格納の蓋（基本絵と同じ形）
+        return cylinder(u, v, 0.075, 2.75, 0.7, c=IRON, cap_c=METAL)
+
+    def bunker(u0, v0, u1, v1, h, mast_top):
+        # 土を盛った管理の壕と、屋根のアンテナのマスト（先の赤は小さく 1 か所）
+        cu, cv = (u0 + u1) / 2, (v0 + v1) / 2
+        return [
+            box(u0, v0, u1, v1, 2.75, h, CONCRETE, STONE),
+            gable(u0, v0, u1, v1, 2.75 + h, 1.6, "u", SOIL, SOIL),
+            *pane_row("u", u1, v0 + 0.06, v1 - 0.06, [2.75], 2.0, 1, 0.1, COAL),
+            strut((cu, cv, 2.75 + h + 1.2), (cu, cv, mast_top), 1.2, IRON),
+            cylinder(cu, cv, 0.011, mast_top, 1.4, c=RED),
+        ]
+
+    if t == 2:
+        return [
+            *plinth(),
+            # 大きくなった発射機と、長くなった主のミサイル
+            box(0.30, 0.32, 0.60, 0.62, 2.75, 3.2, MILITARY, MILITARY_DARK),
+            *standing_missile(0.45, 0.47, 5.95, 24),
+            # 格納の蓋は 3 つ
+            *[lid(u, v) for u, v in ((0.72, 0.30), (0.26, 0.78), (0.74, 0.50))],
+            *bunker(0.60, 0.60, 0.82, 0.82, 3.0, 13.5),
+        ]
+    if t == 3:
+        return [
+            *plinth(),
+            box(0.30, 0.32, 0.60, 0.62, 2.75, 3.4, MILITARY, MILITARY_DARK),
+            *standing_missile(0.45, 0.47, 6.15, 27),
+            # 左手前に小さい発射機がもう 1 基（主のミサイルの陰に隠れない場所）
+            box(0.13, 0.52, 0.30, 0.69, 2.75, 2.2, MILITARY, MILITARY_DARK),
+            *standing_missile(0.215, 0.605, 4.95, 16),
+            # 格納の蓋は 4 つ
+            *[lid(u, v) for u, v in ((0.72, 0.30), (0.26, 0.78), (0.74, 0.50), (0.50, 0.78))],
+            *bunker(0.60, 0.60, 0.82, 0.82, 3.0, 15.5),
+        ]
+    # 段 4: 発射機 3 基、主のミサイルは一番長く、管理の壕も大きい
+    return [
+        *plinth(),
+        box(0.29, 0.31, 0.61, 0.63, 2.75, 3.8, MILITARY, MILITARY_DARK),
+        *standing_missile(0.45, 0.47, 6.55, 30),
+        box(0.13, 0.52, 0.30, 0.69, 2.75, 2.6, MILITARY, MILITARY_DARK),
+        *standing_missile(0.215, 0.605, 5.35, 19),
+        # 右の蓋の場所にも発射機が立つ
+        box(0.64, 0.38, 0.84, 0.56, 2.75, 1.8, MILITARY, MILITARY_DARK),
+        *standing_missile(0.74, 0.47, 4.55, 13),
+        *[lid(u, v) for u, v in ((0.72, 0.30), (0.26, 0.78), (0.50, 0.78))],
+        box(0.58, 0.58, 0.84, 0.84, 2.75, 3.6, CONCRETE, STONE),
+        gable(0.58, 0.58, 0.84, 0.84, 6.35, 1.8, "u", SOIL, SOIL),
+        *pane_row("u", 0.84, 0.64, 0.80, [2.75], 2.4, 2, 0.09, COAL),
+        strut((0.71, 0.71, 7.6), (0.71, 0.71, 17), 1.4, IRON),
+        cylinder(0.71, 0.71, 0.011, 17, 1.6, c=RED),
+    ]
+
+
 # --- 土木業者・工事中・区域の指定（W-270・FM-47・フェーズ2）----------------------------------
 
 YARD = "#cfc6b0"  # 資材置き場の砂利敷き
@@ -4689,6 +4755,7 @@ SIZE_TIERS = {
     "copper_smelter": copper_smelter,
     "electronics_plant": electronics_plant,
     "missile_plant": missile_plant,
+    "missile_base": missile_base_tiers,
 }
 for _name, _tiers in SIZE_TIERS.items():
     for _t in (2, 3, 4):
