@@ -13,6 +13,7 @@ import { lift, tileToWorld, worldToTile } from "./projection.js";
 import { drawIsland } from "./renderer.js";
 import { drawRuler, readRulerShown, writeRulerShown } from "./ruler.js";
 import { loadFlag, loadSprites, spritePriorityKeys } from "./sprites.js";
+import { marksByCell, readBattlesShown, readLifeShown, readMoneyShown, readProsperityShown, readSeasonShown, writeBattlesShown, writeLifeShown, writeMoneyShown, writeProsperityShown, writeSeasonShown } from "./wave4.js";
 import { OrderQueue } from "../island/orders.js";
 import { TilePanel } from "../island/panel.js";
 import { MissileTarget } from "../island/missiles.js";
@@ -65,6 +66,12 @@ const state = {
   ruler: readRulerShown(storage), // 縁の目盛りと座標（UI-85）。既定は出さない
   changes: readChangesShown(storage), changeMarks: null, // 前のターンから変わったマスの印（案3）。既定は出さない
   flagShown: readFlagShown(storage), // 首都の旗（案23）を出すか。既定は出す
+  // 第4波の残り: 季節の色調（案18。既定は出す）、暮らしの気配（案13）、繁栄（案14）、
+  // 戦闘の跡（案26）、お金の出来事（案15）。跡と出来事の材料は切り替えたときにだけ読む
+  season: readSeasonShown(storage),
+  life: readLifeShown(storage), prosperity: readProsperityShown(storage),
+  battles: readBattlesShown(storage), battleMarks: null,
+  money: readMoneyShown(storage), moneyMarks: null,
   // 第2波の表示（anim.js）: 煙（案1。既定は出す）、軽量モード（案47。
   // 既定は画面が狭いときだけ入。#6050）
   smoke: readSmokeShown(storage),
@@ -378,6 +385,58 @@ if (flagToggle) {
     writeFlagShown(storage, state.flagShown);
     redraw();
   });
+}
+
+// 第4波の残りの切り替え（案18 季節・案13 暮らしの気配・案14 繁栄）。
+// 出すかどうかは覚え、次に開いたときも使う（変わったマスと同じ流儀）
+for (const [id, key, legendId, write] of [
+  ["map-season", "season", "season-legend", writeSeasonShown],
+  ["map-life", "life", "life-legend", writeLifeShown],
+  ["map-prosperity", "prosperity", "prosperity-legend", writeProsperityShown],
+]) {
+  const toggle = document.getElementById(id);
+  const legend = document.getElementById(legendId);
+  if (legend) legend.hidden = !state[key];
+  if (!toggle) continue;
+  toggle.checked = state[key];
+  toggle.addEventListener("change", () => {
+    state[key] = toggle.checked;
+    write(storage, state[key]);
+    if (legend) legend.hidden = !state[key];
+    redraw();
+  });
+}
+
+// 戦闘の跡（案26）とお金の出来事（案15）の切り替え。材料は初めて出したときに
+// 地図の API から読む（変わったマスと同じ流儀）
+for (const [id, key, marksKey, param, legendId, write] of [
+  ["map-battles", "battles", "battleMarks", "battles", "battles-legend", writeBattlesShown],
+  ["map-money", "money", "moneyMarks", "money", "money-legend", writeMoneyShown],
+]) {
+  const toggle = document.getElementById(id);
+  const legend = document.getElementById(legendId);
+  const apply = async () => {
+    if (legend) legend.hidden = !state[key];
+    if (state[key] && map[param] === undefined) {
+      try {
+        const extra = await fetch(`${canvas.dataset.api}?${param}=1`).then((r) => r.json());
+        map[param] = extra[param] || [];
+      } catch {
+        map[param] = [];
+      }
+    }
+    state[marksKey] = state[key] ? marksByCell(map[param]) : null;
+    redraw();
+  };
+  if (toggle) {
+    toggle.checked = state[key];
+    toggle.addEventListener("change", () => {
+      state[key] = toggle.checked;
+      write(storage, state[key]);
+      apply();
+    });
+    if (state[key]) apply();
+  }
 }
 
 // 煙（案1）と軽量モード（案47）の切り替え（第2波、案44 の表示の切り替え）。

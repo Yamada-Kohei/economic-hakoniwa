@@ -6,6 +6,17 @@ import { barPixels, barsBackToFront, drawsBars, solidColor } from "./overlays/ba
 import { CHANGE_COLORS } from "./changes.js";
 import { lift, tileToWorld } from "./projection.js";
 import { drawSprite } from "./sprites.js";
+import {
+  ERA_BOX_MIX,
+  eraTint,
+  lifeDots,
+  lifeLaundry,
+  monthOfTurn,
+  prosperityBand,
+  PROSPERITY_TINTS,
+  seasonOf,
+  seasonTint,
+} from "./wave4.js";
 
 /**
  * 島を描く。
@@ -18,7 +29,11 @@ import { drawSprite } from "./sprites.js";
  *                あれば首都のマスに小さく立てる）、
  *          smoke（煙を出すか。案1）、animTime（アニメの時刻（秒）。anim.js）、
  *          light（軽量モード。煙を静止した姿で出す。案47）、
- *          glow（変化マスの光の強さ 0〜1。初回表示で一度だけ。案3 の動き）
+ *          glow（変化マスの光の強さ 0〜1。初回表示で一度だけ。案3 の動き）、
+ *          season（季節の色調を出すか。案18。月と気候帯から決める）、
+ *          life（暮らしの気配を出すか。案13）、prosperity（繁栄の飾りを出すか。案14）、
+ *          battleMarks（戦闘の跡の Map "x,y" → {kind, age}。案26）、
+ *          moneyMarks（お金の出来事の Map "x,y" → {kind, age}。案15）
  */
 export function drawIsland(ctx, map, defs, view, options = {}) {
   const theme = defs.theme;
@@ -54,6 +69,20 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       // 施設のあるマスは地形の絵（木や山）を描かず、上面の色だけにする。施設の絵と重ならないように
       drawBlock(ctx, px, py, h, colors, theme, f ? null : sprites.get(`terrain/${terrain}`));
       drawFallout(ctx, map.fallout?.[i], sprites.get("overlay/contaminated"), px, top, theme);
+      // 季節の色調（案18）: 月と気候帯で決まる色を、地形の上面にだけ薄く重ねる。
+      // 建物の絵にはかけない（街並みは案21 の時代の色で読む）
+      if (options.season) {
+        const tint = seasonTint(
+          seasonOf(monthOfTurn(map.turn), map.climate),
+          defs.terrain[terrain]?.land,
+          map.climate,
+        );
+        if (tint) {
+          ctx.fillStyle = tint;
+          diamondPath(ctx, px, top, theme.tile_width / 2, theme.tile_height / 2);
+          ctx.fill();
+        }
+      }
       if (fill) {
         const color = fill.color(map, i, defs);
         if (color) {
@@ -69,7 +98,7 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       // 陣地（塹壕）: 奥の2辺を施設・住宅より先に、手前の2辺をあとに描く（docs/map-art.md）
       const trench = map.trench?.[i];
       if (trench) drawOverlay(ctx, sprites.get("overlay/trench_back"), px, top, theme);
-      if (f) drawFacility(ctx, f, map, defs, px, top, theme, sprites, options.flag);
+      if (f) drawFacility(ctx, f, map, defs, px, top, theme, sprites, options.flag, options);
       // 首都のマスに建物がないときは、地面に直接旗を立てる
       if (!f && options.flag && map.capital && map.capital[0] === x && map.capital[1] === y) {
         drawCapitalFlag(ctx, options.flag, px, top + theme.tile_height / 2, theme);
@@ -95,6 +124,12 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       if (changeKind) {
         drawChangeMark(ctx, changeKind, px, top, theme, options.glow || 0, detailLevel(view.scale));
       }
+      // 戦闘の跡（案26）とお金の出来事（案15）: 出来事の記録（ターンログ）から
+      // サーバーが寄せた印。どちらも時間がたつと薄れる
+      const battle = options.battleMarks?.get(`${x},${y}`);
+      if (battle) drawBattleMark(ctx, battle, px, top, theme);
+      const money = options.moneyMarks?.get(`${x},${y}`);
+      if (money) drawMoneyMark(ctx, money, px, top, theme);
       if (options.marked?.has(`${x},${y}`)) outlineTop(ctx, px, top, theme, "#ff5722");
       if (options.selected && options.selected.x === x && options.selected.y === y) {
         outlineTop(ctx, px, top, theme, "#ffeb3b");
@@ -326,18 +361,31 @@ function coastalSprite(f, defs, map, name, sprites, theme) {
 
 /** 施設: 絵があれば絵、なければ色付きの箱。住宅の高さは住宅地の段階、工事中は枠だけ。
  * 首都の建物が建っていて旗の画像（flag）があれば、建物の上に旗を立てる。
- * 畑（農場）に作柄（f.crop_yield）があれば、その帯の色を絵に効かせる（案19a）。 */
-function drawFacility(ctx, f, map, defs, px, ground, theme, sprites, flag) {
+ * 畑（農場）に作柄（f.crop_yield）があれば、その帯の色を絵に効かせる（案19a）。
+ * 住宅には、段階ごとの時代の色（案21）をいつも効かせ、切り替えが入っていれば
+ * 繁栄の飾り（案14）と暮らしの気配（案13）も足す。 */
+function drawFacility(ctx, f, map, defs, px, ground, theme, sprites, flag, options = {}) {
   const isCapital = map.capital && map.capital[0] === f.x && map.capital[1] === f.y;
   const sprite = facilitySprite(f, defs, map, isCapital, sprites, theme);
   const band = cropBand(f.crop_yield);
+  const housing = f.kind === defs.housing && f.built;
+  // 繁栄（案14）は切り替えを入れたときだけ、時代の色（案21）より先に効かせる
+  const prosperity = housing && options.prosperity
+    ? prosperityBand(map.happiness?.[f.y * map.size + f.x])
+    : null;
+  const era = housing && !prosperity ? eraTint(f.level) : null;
   if (sprite) {
-    drawSprite(ctx, band ? cropSprite(sprite, band) : sprite, px, ground + theme.tile_height);
+    let shown = sprite;
+    if (band) shown = cropSprite(shown, band);
+    else if (prosperity) shown = tintedSprite(shown, PROSPERITY_TINTS[prosperity]);
+    else if (era) shown = tintedSprite(shown, era);
+    drawSprite(ctx, shown, px, ground + theme.tile_height);
     if (f.built) drawStopped(ctx, f, defs, px, ground, theme.tile_height / 2);
     if (isCapital && f.built && flag) {
       // 絵の上の余白ぶん、竿の下端を屋根に少し沈める
       drawCapitalFlag(ctx, flag, px, ground + theme.tile_height - sprite.h + FLAG_SINK, theme);
     }
+    if (housing) drawHousingSigns(ctx, f, map, defs, px, ground, theme, options, prosperity);
     return;
   }
   const style = theme.facilities?.[f.kind] || theme.facility_fallback;
@@ -368,13 +416,17 @@ function drawFacility(ctx, f, map, defs, px, ground, theme, sprites, flag) {
     ctx.setLineDash([]);
     return;
   }
-  const color = band ? cropBoxColor(style.color, band) : style.color;
+  let color = style.color;
+  if (band) color = cropBoxColor(color, band);
+  else if (prosperity) color = mixColor(color, "#d8a42c", prosperity === "rich" ? 0.45 : 0.3);
+  else if (era) color = eraBoxColor(color, f.level);
   sides(ctx, px, top, base, hw, hh, shade(color, 0.78), shade(color, 0.62));
   ctx.fillStyle = isCapital ? theme.capital_roof : color;
   diamondPath(ctx, px, top, hw, hh);
   ctx.fill();
   drawStopped(ctx, f, defs, px, top, hh);
   if (isCapital && flag) drawCapitalFlag(ctx, flag, px, top + hh, theme);
+  if (housing) drawHousingSigns(ctx, f, map, defs, px, ground, theme, options, prosperity);
 }
 
 // 畑の作柄（案19a）: 農場の収穫に掛かる生産性の倍率（サーバーの crop_yield。1.0 がふつう）で
@@ -402,19 +454,19 @@ export const CROP_TINTS = {
   withered: "rgba(146, 110, 44, 0.52)",
 };
 
-const cropSprites = new Map(); // 帯 → WeakMap（元の絵 → 色を効かせた写し）
+const tintedSprites = new Map(); // 色 → WeakMap（元の絵 → 色を効かせた写し）
 
 /**
- * 作柄の色を効かせた絵の写し。元の絵は壊さず、写しは絵と帯の組ごとに 1 回だけ作って
+ * 色を効かせた絵の写し。元の絵は壊さず、写しは絵と色の組ごとに 1 回だけ作って
  * 使い回す。重ねは source-atop（絵のある所にだけ重なる）で、透明な所は透明なまま。
+ * 作柄（案19a）・時代の色（案21）・繁栄（案14）で共用する。
  */
-export function cropSprite(sprite, band) {
-  const tint = CROP_TINTS[band];
+export function tintedSprite(sprite, tint) {
   if (!tint) return sprite;
-  let bySprite = cropSprites.get(band);
+  let bySprite = tintedSprites.get(tint);
   if (!bySprite) {
     bySprite = new WeakMap();
-    cropSprites.set(band, bySprite);
+    tintedSprites.set(tint, bySprite);
   }
   let tinted = bySprite.get(sprite);
   if (tinted) return tinted;
@@ -431,6 +483,12 @@ export function cropSprite(sprite, band) {
   return tinted;
 }
 
+/** 作柄の色を効かせた絵の写し（案19a）。 */
+export function cropSprite(sprite, band) {
+  const tint = CROP_TINTS[band];
+  return tint ? tintedSprite(sprite, tint) : sprite;
+}
+
 // 絵のない畑（色の箱）の作柄の色: 帯の目標色へ寄せる割合。絵の重ねと見え方が
 // そろうよう、豊作は深い緑、凶作は枯れ色へ強く寄せる。
 const CROP_BOX_MIX = {
@@ -439,11 +497,9 @@ const CROP_BOX_MIX = {
   withered: ["#8a6d2f", 0.65],
 };
 
-/** "#rrggbb" を帯の目標色へ寄せた "#rrggbb"（帯が無ければ元のまま）。 */
-export function cropBoxColor(hex, band) {
-  const spec = CROP_BOX_MIX[band];
-  if (!spec || typeof hex !== "string" || !hex.startsWith("#")) return hex;
-  const [target, t] = spec;
+/** "#rrggbb" を目標色へ t の割合で寄せた "#rrggbb"。 */
+export function mixColor(hex, target, t) {
+  if (typeof hex !== "string" || !hex.startsWith("#")) return hex;
   const a = parseInt(hex.slice(1), 16);
   const b = parseInt(target.slice(1), 16);
   const ch = (shift) =>
@@ -451,6 +507,18 @@ export function cropBoxColor(hex, band) {
       .toString(16)
       .padStart(2, "0");
   return `#${ch(16)}${ch(8)}${ch(0)}`;
+}
+
+/** "#rrggbb" を帯の目標色へ寄せた "#rrggbb"（帯が無ければ元のまま）。 */
+export function cropBoxColor(hex, band) {
+  const spec = CROP_BOX_MIX[band];
+  return spec ? mixColor(hex, spec[0], spec[1]) : hex;
+}
+
+/** 絵のない住宅（色の箱）の時代の色（案21）。段階が読めなければ元のまま。 */
+export function eraBoxColor(hex, level) {
+  const spec = ERA_BOX_MIX[level];
+  return spec ? mixColor(hex, spec[0], spec[1]) : hex;
 }
 
 // 首都の旗の竿の下端を、建物のてっぺんに少し沈める量（ピクセル）
@@ -553,6 +621,136 @@ function drawChangeMark(ctx, kind, px, top, theme, glow = 0, detail = "near") {
     ctx.lineTo(px - g, top);
     ctx.closePath();
     ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** マスで決まる小さなずれ（同じ並びでもマスごとに少しだけ違う置き方にする）。 */
+function cellJitter(x, y, mod) {
+  return ((x * 31 + y * 17) % mod + mod) % mod;
+}
+
+/** 人の点: 濃い色の丸に白い縁。建物や地面の色に埋もれないようにする。 */
+function drawPersonDot(ctx, x, y, r) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = "#26324e";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+/**
+ * 住宅の暮らしと繁栄の印（案13・案14）。建物の手前（マスの下の縁）に足す。
+ * - 暮らしの気配（options.life）: 人影の点（数は人口の満ち具合。wave4.js の lifeDots）、
+ *   段の高い住宅には洗濯物の小さな四角 2 つ。
+ * - 繁栄（prosperity が "rich"）: 花の点 3 つ（ピンク・白・黄）。
+ * どちらも新しい絵ではなく、その場で描く印だけにする。
+ */
+function drawHousingSigns(ctx, f, map, defs, px, ground, theme, options, prosperity) {
+  const u = theme.tile_width / 64; // 印の大きさの単位（マスの幅 64 のとき 1）
+  const frontY = ground + theme.tile_height * 0.82;
+  ctx.save();
+  if (options.life) {
+    const capacity = defs.settlements?.[f.level]?.capacity;
+    const dots = lifeDots(map.population?.[f.y * map.size + f.x], capacity);
+    const spread = theme.tile_width * 0.16;
+    for (let k = 0; k < dots; k++) {
+      const dx = (k - (dots - 1) / 2) * spread + (cellJitter(f.x, f.y, 5) - 2) * u;
+      drawPersonDot(ctx, px + dx, frontY - (k % 2) * 2 * u, 2.4 * u);
+    }
+    if (dots && lifeLaundry(f.level)) {
+      // 洗濯物: 建物の手前に干した小さな四角（白と水色）
+      const lx = px - theme.tile_width * 0.26;
+      const ly = ground + theme.tile_height * 0.52;
+      ctx.fillStyle = "#f4f7fa";
+      ctx.fillRect(lx, ly, 5 * u, 4 * u);
+      ctx.fillStyle = "#9fc4e8";
+      ctx.fillRect(lx + 6 * u, ly, 5 * u, 4 * u);
+    }
+  }
+  if (prosperity === "rich") {
+    const colors = ["#ef7fa8", "#f7f3e8", "#f2c230"];
+    colors.forEach((color, k) => {
+      ctx.beginPath();
+      ctx.arc(px + (k - 1) * theme.tile_width * 0.14, frontY + 2 * u, 1.9 * u, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+    });
+  }
+  ctx.restore();
+}
+
+/** 出来事の古さで薄れる割合（age 0 が今のターン）。 */
+export function markFade(age) {
+  return Math.max(0.3, 1 - (age || 0) * 0.18);
+}
+
+/**
+ * 戦闘の跡（案26）: 焦げた地面（上面の暗い菱形）と、爆発の星の印。
+ * kind は "hit"（着弾・戦闘・破壊）か "intercept"（迎撃）。核の出来事は
+ * サーバー側で材料に入れない（#5803: 通常の戦闘だけ）。
+ */
+function drawBattleMark(ctx, mark, px, top, theme) {
+  const hw = theme.tile_width / 2;
+  const hh = theme.tile_height / 2;
+  const fade = markFade(mark.age);
+  const cy = top + hh;
+  ctx.save();
+  ctx.globalAlpha = 0.5 * fade;
+  ctx.fillStyle = "#1d1712";
+  diamondPath(ctx, px, top, hw, hh);
+  ctx.fill();
+  ctx.globalAlpha = fade;
+  ctx.strokeStyle = mark.kind === "intercept" ? "#9aa4ae" : "#e06a1f";
+  ctx.lineWidth = 2;
+  ctx.lineCap = "round";
+  const r = hh * 0.52;
+  ctx.beginPath();
+  for (let k = 0; k < 6; k++) {
+    const a = (Math.PI / 3) * k + 0.3;
+    ctx.moveTo(px + Math.cos(a) * r * 0.35, cy + Math.sin(a) * r * 0.35);
+    ctx.lineTo(px + Math.cos(a) * r, cy + Math.sin(a) * r);
+  }
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(px, cy, r * 0.22, 0, Math.PI * 2);
+  ctx.fillStyle = mark.kind === "intercept" ? "#c8cfd6" : "#f2a03c";
+  ctx.fill();
+  ctx.restore();
+}
+
+/**
+ * お金の出来事（案15）: サーバーが寄せた印（marks.py）を描く。
+ * - "bank"（銀行の救済・債務の肩代わり）: 銀行の前に人の点の列（取り付けの行列）。
+ * - "crowd"（通貨の peg が崩れた）: 銀行の前に人の点の集まり。
+ * - "cloud"（国債の下支え）: 首都の建物の上に暗い雲。
+ */
+function drawMoneyMark(ctx, mark, px, top, theme) {
+  const u = theme.tile_width / 64;
+  const hh = theme.tile_height / 2;
+  const fade = markFade(mark.age);
+  ctx.save();
+  ctx.globalAlpha = fade;
+  if (mark.kind === "cloud") {
+    const cy = top - hh * 0.7;
+    ctx.fillStyle = "rgba(35, 38, 48, 0.62)";
+    ctx.beginPath();
+    ctx.ellipse(px, cy, theme.tile_width * 0.34, hh * 0.52, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(px + theme.tile_width * 0.16, cy + hh * 0.18, theme.tile_width * 0.24, hh * 0.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    const n = mark.kind === "crowd" ? 6 : 4;
+    const frontY = top + theme.tile_height * 0.84;
+    for (let k = 0; k < n; k++) {
+      const dx = (k - (n - 1) / 2) * theme.tile_width * 0.11
+        + (mark.kind === "crowd" ? (cellJitter(k, mark.age || 0, 5) - 2) * u : 0);
+      const dy = mark.kind === "crowd" ? (k % 3) * 2.4 * u : (k % 2) * 1.6 * u;
+      drawPersonDot(ctx, px + dx, frontY - dy, 2.3 * u);
+    }
   }
   ctx.restore();
 }

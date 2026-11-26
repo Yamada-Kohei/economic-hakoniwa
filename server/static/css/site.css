@@ -274,6 +274,13 @@ pre.prompt { white-space: pre-wrap; overflow-wrap: anywhere; }
 .crop-swatch { display: inline-block; width: 0.9em; height: 0.9em; border: 1px solid rgba(0, 0, 0, 0.35); vertical-align: -0.08em; }
 .crop-swatch.rich { background: #3d6b1c; }
 .crop-swatch.withered { background: #a37f33; }
+/* 時代の街並み（案21）の凡例の色見本: 住宅の段階ごとの重ね色の目安 */
+.era-swatch { display: inline-block; width: 0.9em; height: 0.9em; border: 1px solid rgba(0, 0, 0, 0.35); vertical-align: -0.08em; }
+.era-swatch.village { background: #b08d57; }
+.era-swatch.town { background: #b0704f; }
+.era-swatch.city { background: #9a9ea6; }
+.era-swatch.metropolis { background: #7e93a9; }
+.era-swatch.high { background: #a9c2d6; }
 
 /* 統計の画面 */
 .stat-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 12px 0; }
