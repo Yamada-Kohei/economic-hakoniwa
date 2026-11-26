@@ -4,6 +4,7 @@
 
 import { attachControls } from "./controls.js";
 import { changeMarks, readChangesShown, writeChangesShown } from "./changes.js";
+import { readFlagShown, writeFlagShown } from "./flagtoggle.js";
 import { drawMinimap, minimapTile } from "./minimap.js";
 import { BARS, FILL, overlayLegend, readOverlayMode, writeOverlayMode } from "./overlays/bars.js";
 import { overlayList } from "./overlays/index.js";
@@ -58,6 +59,7 @@ const state = {
   sprites: new Map(), flag: null, undergroundLabel: words().hidden,
   ruler: readRulerShown(storage), // 縁の目盛りと座標（UI-85）。既定は出さない
   changes: readChangesShown(storage), changeMarks: null, // 前のターンから変わったマスの印（案3 の静止版）。既定は出さない
+  flagShown: readFlagShown(storage), // 首都の旗（案23）を出すか。既定は出す
 };
 let pending = false;
 
@@ -71,7 +73,7 @@ function redraw() {
   requestAnimationFrame(() => {
     pending = false;
     try {
-      drawIsland(ctx, map, defs, view, state);
+      drawIsland(ctx, map, defs, view, { ...state, flag: state.flagShown ? state.flag : null });
       if (state.ruler) drawRuler(ctx, map, view, theme);
       if (minimap) drawMinimap(minimap, map, defs, state.selected);
       placePopover();
@@ -312,6 +314,18 @@ if (changesToggle) {
     applyChanges();
   });
   if (state.changes) applyChanges();
+}
+
+// 首都の旗（案23）の表示の切り替え（案44 の旗の分）。出すかどうかは覚え、
+// 次に開いたときも使う（変わったマスと同じ流儀）
+const flagToggle = document.getElementById("map-flag");
+if (flagToggle) {
+  flagToggle.checked = state.flagShown;
+  flagToggle.addEventListener("change", () => {
+    state.flagShown = flagToggle.checked;
+    writeFlagShown(storage, state.flagShown);
+    redraw();
+  });
 }
 
 // 棒と塗り分けの切り替え（UI-79）。選んだ表し方は覚え、次に開いたときも使う

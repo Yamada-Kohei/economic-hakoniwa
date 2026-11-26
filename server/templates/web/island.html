@@ -21,6 +21,7 @@
 <link rel="modulepreload" href="{% static 'js/map/sprites.js' %}">
 <link rel="modulepreload" href="{% static 'js/map/ruler.js' %}">
 <link rel="modulepreload" href="{% static 'js/map/changes.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/flagtoggle.js' %}">
 <link rel="modulepreload" href="{% static 'js/island/orders.js' %}">
 <link rel="modulepreload" href="{% static 'js/calendar.js' %}">
 <link rel="modulepreload" href="{% static 'js/island/api.js' %}">
@@ -65,6 +66,8 @@
       {# 量のある重ね表示を、マスの上の半透明の棒で見せるか、マスの塗り分けで見せるか（UI-79。選んだ形はブラウザに覚える） #}
       <label><input type="checkbox" id="overlay-bars" checked> {% translate "棒で表示" %}</label>
       <span id="overlay-legend" class="hint" aria-live="polite"></span>
+      {# 首都の旗（案23）の表示の切り替え（案44 の旗の分）。出すかどうかはブラウザに覚える #}
+      <label><input type="checkbox" id="map-flag"> {% translate "首都の旗" %}</label>
       {% if mine %}
       {# 前のターンから変わったマスの印（案3 の静止版）。出すかどうかはブラウザに覚える #}
       <label><input type="checkbox" id="map-changes"> {% translate "変わったマス" %}</label>
