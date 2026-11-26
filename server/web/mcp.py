@@ -42,7 +42,7 @@ from server import jsonbody
 from server.accounts import keys
 from server.game import get_game
 from server.letters import services as letter_services
-from server.web import display
+from server.web import display, facility_page
 from server.world import models as m
 from server.world.repository import facility_from_row
 
@@ -750,7 +750,9 @@ def _map(request, args):
         rate = f" 稼働 {round(row.operating_rate * 100 / fac.FULL)}%" if row.built else ""
         worn = display.equipment_info(game.defs, game.config, f) if row.built else {}
         if worn and worn["equipment"] < 1:  # 設備が傷んでいれば割合も（回6）
-            rate += f" 設備 {round(worn['equipment'] * 100)}%"
+            # 割合の出し方は施設のページの _pct と同じ決まり（100 未満は切り捨て。
+            # 四捨五入だと 99.7% が「設備 100%」と出て、傷んでいるのに新品に見える）
+            rate += f" 設備 {facility_page._pct(worn['equipment'])}"
         if row.built and island.economy:  # 管財人のもと・閉鎖に入り売りに出している（FM-59・FM-60）
             sale = display.sale_text(row, f, state, (state.names or {}).get("currency_symbol", ""))
             if sale:
