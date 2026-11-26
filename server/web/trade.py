@@ -524,7 +524,9 @@ def partner_rows(
     """貿易の相手ごとの輸出・輸入（#5455）: 統計 partner.* を集計ターンと直近 1 年（12 ターン）
     で足し上げた表。相手は島の番号か海外の商人（merchant）。圏の市場の分も、清算で決まった
     実際の相手の国ごとに分かれる（#5605）。各行には経路（圏の市場・二国間契約・海外の商人）
-    ごとの直近 1 年の内訳 routes を添える。主な品目は直近 1 年の額の大きい順に 3 つまで。
+    ごとの直近 1 年の内訳 routes を添える。表では経路の注を金額の欄の 2 行目に小さく出す
+    ので、輸出・輸入の片側ずつの route_exports・route_imports も添える。主な品目は直近
+    1 年の額の大きい順に 3 つまで。
     記録が無い相手は行に出ない。"""
     turn, _ = display.latest_stats(island)
     if turn is None:
@@ -587,6 +589,23 @@ def partner_rows(
             del entry["_total"]
         return entries
 
+    def route_side_entries(partner: str, side: str) -> list[dict[str, Any]]:
+        """経路の内訳を輸出・輸入の片側だけに絞ったもの。相手国の表では、経路の注を
+        直近 1 年の金額の欄の 2 行目に小さく出すので、欄ごとにその側の額だけを並べる。"""
+        entries = [
+            {
+                "label": ROUTE_LABELS.get(route, route),
+                "amount": display.stat_text(f"trade.{side}", amounts[side], "money", currency),
+                "_total": amounts[side],
+            }
+            for route, amounts in routes.get(partner, {}).items()
+            if amounts[side]
+        ]
+        entries.sort(key=lambda entry: -entry["_total"])
+        for entry in entries:
+            del entry["_total"]
+        return entries
+
     out = []
     for partner, entry in totals.items():
         top = sorted(goods.get(partner, {}).items(), key=lambda kv: -kv[1])[:3]
@@ -609,6 +628,8 @@ def partner_rows(
                 ),
                 "goods": [{"good": g, "name": good_name(g)} for g, _ in top],
                 "routes": route_entries(partner),
+                "route_exports": route_side_entries(partner, "exports"),
+                "route_imports": route_side_entries(partner, "imports"),
                 "_total": entry["exports"] + entry["imports"],
             }
         )

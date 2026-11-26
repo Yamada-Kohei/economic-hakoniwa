@@ -243,7 +243,16 @@ def test_trade_by_good_pies_on_the_overview(world):
     """品目ごとの輸出と輸入の額（export.<財>・import.<財>。W-72）を、貿易の概要の推移に円グラフで
     出す。円グラフの切れの名前は品目の名前（頭の「輸出・」は見出しで足りるので画面が外す）。"""
     owner, island, _, _ = _world_with_offer(world)
-    _stats(island, 5, {"export.grain": 300.0, "export.freight": 20.0, "import.food": 120.0})
+    _stats(
+        island,
+        5,
+        {
+            "export.grain": 300.0,
+            "export.freight": 20.0,
+            "import.food": 120.0,
+            "import.cloth": 40.0,
+        },
+    )
     browser = _client(owner)
     page = browser.get(f"/islands/{island.id}/trade/").content.decode()
     assert 'data-pie="export.*"' in page and 'data-pie="import.*"' in page
@@ -253,6 +262,8 @@ def test_trade_by_good_pies_on_the_overview(world):
     assert data["labels"]["export.grain"] == "輸出・穀物"
     assert data["labels"]["import.food"] == "輸入・食品"
     assert data["labels"]["export.freight"] == "輸出・他国に貸した船の運賃"
+    # 財の定義に無い名前（cloth）も、表示名の定義があれば英字のまま出ない
+    assert data["labels"]["import.cloth"] == "輸入・布地"
     assert data["series"]["export.grain"][-1] == 300
 
 
@@ -303,10 +314,20 @@ def test_trade_partner_stats_table(world):
     routes = {r["route"]: r for r in rows[str(other.id)]["routes"]}
     assert routes["bloc"]["label"] == "圏の市場" and "800" in routes["bloc"]["exports"]
     assert routes["contract"]["label"] == "二国間契約" and "100" in routes["contract"]["imports"]
+    # 表の注用に、輸出・輸入の片側ずつの内訳も出す（その側の額が無い経路は除く）
+    route_exports = rows[str(other.id)]["route_exports"]
+    assert [r["label"] for r in route_exports] == ["圏の市場"]
+    assert "800" in route_exports[0]["amount"]
+    assert [r["label"] for r in rows[str(other.id)]["route_imports"]] == ["二国間契約"]
+    assert "100" in rows[str(other.id)]["route_imports"][0]["amount"]
+    assert [r["label"] for r in rows["merchant"]["route_imports"]] == ["海外の商人"]
     page = browser.get(f"/islands/{island.id}/trade/").content.decode()
     section = _section(page, "trade-partners")
     assert "貿易の相手国" in section and "圏の市場（相手は混ざる）" not in section
     assert "経路" in section and "圏の市場" in section and "二国間契約" in section
     assert other.name in section and "穀物" in section
+    # 経路の注は相手の名前の欄ではなく、直近 1 年の金額の欄の 2 行目に小さく出す
+    assert f"<th>{other.name}</th>" in section
+    assert '<small class="muted route-note">' in section
     # 金額の桁が長くスマホ幅に収まらないので、表は横スクロールの入れ物で包む
     assert '<div class="table-scroll">' in section

@@ -65,6 +65,20 @@ def test_count_python_ignores_docstrings_and_counts_fstrings_once():
     assert guard.count_python_text(source) == 2
 
 
+def test_count_python_ignores_gettext_arguments():
+    source = textwrap.dedent(
+        """\
+        from django.utils.translation import gettext, gettext_lazy, ngettext
+
+        LABEL = gettext_lazy("輸入・布地")
+        ONE = ngettext("{n} 件", "{n} 件", 1)
+        PLAIN = "直書き"
+        """
+    )
+    # gettext 系の直接の引数は数えない。残るのは PLAIN の1件だけ。
+    assert guard.count_python_text(source) == 1
+
+
 def test_count_python_ignores_non_japanese_and_comments():
     source = textwrap.dedent(
         """\

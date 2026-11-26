@@ -294,6 +294,8 @@ figure.chart select { max-width: 100%; }
 table td.num, table th.num { text-align: right; white-space: nowrap; }
 table td.numeric-with-note { white-space: normal; }
 .numeric-value { white-space: nowrap; }
+/* 貿易の相手国の表: 経路の内訳は直近1年の金額の欄の2行目に小さく折り返して出す（表が PC 幅に収まるように） */
+table.trade-partners .route-note { display: block; }
 table.info.money-table td { white-space: nowrap; }
 .loss { color: #c62828; }
 .warning-cell { color: #b26a00; }

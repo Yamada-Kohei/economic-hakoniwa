@@ -9,6 +9,8 @@
 - Python（server/ と hakoniwa_core/ の .py、試験のファイルは除く）:
   AST で読み、docstring を除いた文字列定数のうち日本語を含むものを数える。
   f文字列は断片を二重に数えず、式全体で1件とする。
+  gettext / gettext_lazy / ngettext などの直接の引数は、翻訳の形で
+  書かれた文言なので数えない。
 - JS（server/static/js/ の .js）: 簡易スキャナで文字列リテラルと
   テンプレートリテラルを読み、日本語を含むものを数える。コメントは除く。
 - テンプレート（server/ の templates/ の .html）: {% translate %} と
@@ -53,11 +55,16 @@ def _is_japanese(text: str) -> bool:
 # ---------------------------------------------------------------- Python
 
 
+# gettext 系の呼び出しの直接の引数は、翻訳の形で書かれた文言なので数えない。
+_GETTEXT_FUNCS = {"gettext", "gettext_lazy", "gettext_noop", "ngettext", "ngettext_lazy"}
+
+
 def count_python_text(text: str) -> int:
     """Python のソース1件分の直書き文言の件数。"""
     tree = ast.parse(text)
     docstring_ids: set[int] = set()
     fragment_ids: set[int] = set()
+    gettext_ids: set[int] = set()
     for node in ast.walk(tree):
         if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
             first = node.body[0] if node.body else None
@@ -71,14 +78,26 @@ def count_python_text(text: str) -> int:
             for part in node.values:
                 if isinstance(part, ast.Constant):
                     fragment_ids.add(id(part))
+        if isinstance(node, ast.Call):
+            func = node.func
+            name = None
+            if isinstance(func, ast.Name):
+                name = func.id
+            elif isinstance(func, ast.Attribute):
+                name = func.attr
+            if name in _GETTEXT_FUNCS:
+                for arg in node.args:
+                    gettext_ids.add(id(arg))
     count = 0
     for node in ast.walk(tree):
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            if id(node) in docstring_ids or id(node) in fragment_ids:
+            if id(node) in docstring_ids or id(node) in fragment_ids or id(node) in gettext_ids:
                 continue
             if _is_japanese(node.value):
                 count += 1
         elif isinstance(node, ast.JoinedStr):
+            if id(node) in gettext_ids:
+                continue
             joined = "".join(
                 part.value
                 for part in node.values
