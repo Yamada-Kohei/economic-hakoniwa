@@ -4404,6 +4404,109 @@ def missile_plant(t):
     ]
 
 
+def fortress_tiers(t):
+    """要塞の建て増し（FM-47）。名前のままの絵の姿（八角形の城壁に、斜めの角の
+    砲塔 4 基と、中央の司令棟）を保ちながら、段が上がるほど壁が高く厚くなり、
+    砲塔が増えて大きくなり、司令棟が育って堅固に見えるようにする。
+    段 2 は壁が高くなり、司令棟も高くなって窓の列が 2 段になり、屋根に
+    アンテナのマストが立つ。
+    段 3 は角の砲塔が大きくなり、まっすぐな辺にも小さい砲塔が 4 基増え、
+    マストに横棒のアンテナが付く。
+    段 4 は壁が一番高く厚く、辺の砲塔も角と同じ大きさになり、司令棟の
+    屋根に櫓が載って、マストも一番高く先に赤が付く。"""
+
+    def turret(u, v, d, r, half, blen, top):
+        # 基本絵と同じ作り: 丸い台＋角ばった砲室＋軸に沿った短い砲身。
+        # top は壁の上端で、台・砲室・砲身の置き方は基本絵の相対位置のまま。
+        # 砲塔は丸ごと描く段を分ける: 長い辺の壁と向かいの砲塔が前後を
+        # 循環させるため（名前のままの絵にはその循環が残っている）。
+        # 辺の砲塔はマスの端まで 0.1 しかないので、砲身の先がマスの外へ
+        # 出ないよう短くする
+        parts = [
+            cylinder(u, v, r, top, 2.4, c=CONCRETE, cap_c=STONE),
+            box(u - half, v - half, u + half, v + half, top + 2.4, 2.6, MILITARY, MILITARY_DARK),
+        ]
+        du, dv = d
+        if du:
+            parts.append(
+                box(
+                    u + (half if du > 0 else -blen),
+                    v - 0.016,
+                    u + (blen if du > 0 else -half),
+                    v + 0.016,
+                    top + 3.3,
+                    1.0,
+                    COAL,
+                )
+            )
+        else:
+            parts.append(
+                box(
+                    u - 0.016,
+                    v + (half if dv > 0 else -blen),
+                    u + 0.016,
+                    v + (blen if dv > 0 else -half),
+                    top + 3.3,
+                    1.0,
+                    COAL,
+                )
+            )
+        return tiered(2, *parts)
+
+    def fort(wall_h, wall_t, corner, edge, hall_h, win_zs, mast_top, keep=False):
+        pts = octagon(0.4)
+        top = 0.4 + wall_h
+        parts = [patch(octagon(0.37), PAVEMENT)]
+        parts += tiered(0, box(0.08, 0.08, 0.92, 0.92, 0, 0.4, SOIL, SOIL))
+        for i, p in enumerate(pts):
+            parts.append(wall_slab(p, pts[(i + 1) % 8], wall_t, 0.4, wall_h, CONCRETE, STONE))
+        # 斜めの角の砲塔（基本絵と同じ 4 基）
+        for i, d in ((1, (1, 0)), (3, (1, 0)), (5, (0, 1)), (7, (-1, 0))):
+            a, b = pts[i], pts[(i + 1) % 8]
+            parts += turret((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, d, *corner, top)
+        # まっすぐな辺の砲塔（段 3 から。外向きに砲身を出す）
+        if edge:
+            for i, d in ((0, (0, -1)), (2, (1, 0)), (4, (0, 1)), (6, (-1, 0))):
+                a, b = pts[i], pts[(i + 1) % 8]
+                parts += turret((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, d, *edge, top)
+        # 中央の司令棟
+        roof = 0.4 + hall_h
+        parts += [
+            box(0.4, 0.4, 0.6, 0.6, 0.4, hall_h, CONCRETE, STONE),
+            *pane_row("v", 0.6, 0.44, 0.56, win_zs, 2.4, 1, 0.1, COAL),
+            box(0.385, 0.385, 0.615, 0.615, roof, 1.4, MILITARY_DARK),
+        ]
+        mast_base = roof + 1.4
+        if keep:
+            # 屋根の櫓: 小さい棟とその蓋。マストは櫓の上から立つ。
+            # 櫓も描く段を分ける: 蓋が窓の列より奥に収まり、前後が循環するため
+            parts += tiered(
+                2,
+                box(0.44, 0.44, 0.56, 0.56, mast_base, 3.6, CONCRETE, STONE),
+                box(0.425, 0.425, 0.575, 0.575, mast_base + 3.6, 1.2, MILITARY_DARK),
+            )
+            mast_base += 4.8
+        if mast_top:
+            # マストも描く段を分ける: 屋根の蓋と窓の列と前後が循環するため
+            mast = [strut((0.5, 0.5, mast_base), (0.5, 0.5, mast_top), 1.1, IRON)]
+            if t >= 3:
+                mast.append(box(0.43, 0.484, 0.57, 0.516, mast_top - 1.2, 1.2, METAL))
+            if t >= 4:
+                mast.append(cylinder(0.5, 0.5, 0.011, mast_top, 1.3, c=RED))
+            parts += tiered(2, *mast)
+        return parts
+
+    if t == 2:
+        # 角の砲塔は基本絵と同じ大きさ (r, half, blen)。辺の砲塔はまだ無い
+        return fort(12, 0.10, (0.075, 0.045, 0.14), None, 13, [3.2, 8.2], 20)
+    if t == 3:
+        return fort(14, 0.11, (0.085, 0.052, 0.16), (0.06, 0.034, 0.095), 15, [3.2, 8.2], 23)
+    # 段 4: 辺の砲塔は基本絵の角の砲塔とほぼ同じ大きさ、角はそれより大きい
+    return fort(
+        16, 0.12, (0.095, 0.058, 0.17), (0.07, 0.04, 0.095), 17, [3.2, 8.2, 13.2], 29, keep=True
+    )
+
+
 # --- 土木業者・工事中・区域の指定（W-270・FM-47・フェーズ2）----------------------------------
 
 YARD = "#cfc6b0"  # 資材置き場の砂利敷き
@@ -4689,6 +4792,7 @@ SIZE_TIERS = {
     "copper_smelter": copper_smelter,
     "electronics_plant": electronics_plant,
     "missile_plant": missile_plant,
+    "fortress": fortress_tiers,
 }
 for _name, _tiers in SIZE_TIERS.items():
     for _t in (2, 3, 4):

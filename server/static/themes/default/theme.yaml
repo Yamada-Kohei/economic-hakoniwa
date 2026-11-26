@@ -239,6 +239,9 @@ sprites:
   facility/food_factory@s2: sprites/facility/food_factory@s2.svg
   facility/food_factory@s3: sprites/facility/food_factory@s3.svg
   facility/food_factory@s4: sprites/facility/food_factory@s4.svg
+  facility/fortress@s2: sprites/facility/fortress@s2.svg
+  facility/fortress@s3: sprites/facility/fortress@s3.svg
+  facility/fortress@s4: sprites/facility/fortress@s4.svg
   facility/machinery_plant@s2: sprites/facility/machinery_plant@s2.svg
   facility/machinery_plant@s3: sprites/facility/machinery_plant@s3.svg
   facility/machinery_plant@s4: sprites/facility/machinery_plant@s4.svg
