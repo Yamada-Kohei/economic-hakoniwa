@@ -1,0 +1,3534 @@
+# 用語辞書（多言語対応の「言葉の決め」）
+#
+# ゲームの言葉の骨格になる用語について、言語ごとの訳語をここで固定する。
+# 文そのものの翻訳（locale/<言語>/ の各ファイル）を作るときは、
+# ここにある用語はこの辞書の訳語を使うこと。
+#
+# 元の語:
+# - 名前類は packs/base/locale/ja/ の各ファイルの表示名そのまま。
+#   分類の名前は元のファイル名とそろえてある。
+# - core は messages.yaml の文面に繰り返し出てくる、核になる言葉を拾ったもの。
+#
+# 訳の扱い:
+# - en・zh・ko・ru・de の訳はすべて「下訳」（未検証の仮置き）。
+#   HAL や DeepSeek の下訳と同じ扱いで、そのまま表示に使わず、
+#   必ず分かる人の確認を通してから使うこと。
+# - 確信の持てない言語は空欄にし、uncertain にその言語を挙げてある。
+#   空欄は「まだ決まっていない」という印。
+# - note は訳すときの注意（ゲーム固有の概念など）。
+#
+# このファイルはゲームの読み込み対象ではない
+# （読み込みは locale/<言語>/<種類>.yaml だけ）。置き場所は locale/<言語>/ の隣。
+# 2026-11-26 作成（多言語対応ステップ3、掲示板 #6109）。
+
+# 出どころ: locale/ja/facilities.yaml
+facilities:
+  farm:
+    ja: 農場
+    en: Farm
+    zh: 农场
+    ko: 농장
+    ru: Ферма
+    de: Bauernhof
+  lumber_camp:
+    ja: 林業場
+    en: Lumber Camp
+    zh: 林业场
+    ko: 임업장
+    ru: Лесозаготовка
+    de: Holzfällerlager
+  quarry:
+    ja: 採石場
+    en: Quarry
+    zh: 采石场
+    ko: 채석장
+    ru: Каменоломня
+    de: Steinbruch
+  mine:
+    ja: 鉱山
+    en: Mine
+    zh: 矿山
+    ko: 광산
+    ru: Шахта
+    de: Bergwerk
+  fishing_port:
+    ja: 漁港
+    en: Fishing Port
+    zh: 渔港
+    ko: 어항
+    ru: Рыбацкий порт
+    de: Fischereihafen
+  steel_mill:
+    ja: 製鉄所
+    en: Steel Mill
+    zh: 钢铁厂
+    ko: 제철소
+    ru: Сталелитейный завод
+    de: Stahlwerk
+  building_materials_plant:
+    ja: 建材工場
+    en: Building Materials Plant
+    zh: 建材厂
+    ko: 건재 공장
+    ru: Завод стройматериалов
+    de: Baustoffwerk
+  machinery_plant:
+    ja: 機械工場
+    en: Machinery Plant
+    zh: 机械厂
+    ko: 기계 공장
+    ru: Машиностроительный завод
+    de: Maschinenfabrik
+  food_factory:
+    ja: 食品工場
+    en: Food Factory
+    zh: 食品厂
+    ko: 식품 공장
+    ru: Пищевой завод
+    de: Lebensmittelfabrik
+  consumer_goods_factory:
+    ja: 消費財工場
+    en: Consumer Goods Factory
+    zh: 消费品厂
+    ko: 소비재 공장
+    ru: Завод потребительских товаров
+    de: Konsumgüterfabrik
+  thermal_power_plant:
+    ja: 火力発電所
+    en: Thermal Power Plant
+    zh: 火力发电厂
+    ko: 화력 발전소
+    ru: Тепловая электростанция
+    de: Wärmekraftwerk
+  hydro_power_plant:
+    ja: 水力発電所
+    en: Hydroelectric Power Plant
+    zh: 水力发电厂
+    ko: 수력 발전소
+    ru: Гидроэлектростанция
+    de: Wasserkraftwerk
+  government_office:
+    ja: 中央省庁
+    en: Central Government Office
+    zh: 中央政府机关
+    ko: 중앙 관청
+    ru: Центральное министерство
+    de: Zentralministerium
+  police:
+    ja: 警察署
+    en: Police Station
+    zh: 警察局
+    ko: 경찰서
+    ru: Полицейский участок
+    de: Polizeiwache
+  barracks:
+    ja: 兵舎
+    en: Barracks
+    zh: 兵营
+    ko: 병영
+    ru: Казарма
+    de: Kaserne
+  naval_base:
+    ja: 軍港
+    en: Naval Base
+    zh: 军港
+    ko: 군항
+    ru: Военно-морская база
+    de: Marinehafen
+  radar:
+    ja: レーダー
+    en: Radar
+    zh: 雷达
+    ko: 레이더
+    ru: Радар
+    de: Radar
+  fortress:
+    ja: 要塞
+    en: Fortress
+    zh: 要塞
+    ko: 요새
+    ru: Крепость
+    de: Festung
+  missile_base:
+    ja: ミサイル基地
+    en: Missile Base
+    zh: 导弹基地
+    ko: 미사일 기지
+    ru: Ракетная база
+    de: Raketenbasis
+  air_defense:
+    ja: 防空陣地
+    en: Air Defense Position
+    zh: 防空阵地
+    ko: 방공 진지
+    ru: Позиция ПВО
+    de: Flugabwehrstellung
+  missile_plant:
+    ja: ミサイル工場
+    en: Missile Plant
+    zh: 导弹工厂
+    ko: 미사일 공장
+    ru: Ракетный завод
+    de: Raketenfabrik
+  nuclear_facility:
+    ja: 核施設
+    en: Nuclear Facility
+    zh: 核设施
+    ko: 핵 시설
+    ru: Ядерный объект
+    de: Nuklearanlage
+  exploration_team:
+    ja: 探鉱隊
+    en: Prospecting Team
+    zh: 探矿队
+    ko: 탐광대
+    ru: Геологоразведочная партия
+    de: Prospektierungsteam
+  bank:
+    ja: 銀行
+    en: Bank
+    zh: 银行
+    ko: 은행
+    ru: Банк
+    de: Bank
+  school:
+    ja: 学校
+    en: School
+    zh: 学校
+    ko: 학교
+    ru: Школа
+    de: Schule
+  university:
+    ja: 大学
+    en: University
+    zh: 大学
+    ko: 대학교
+    ru: Университет
+    de: Universität
+  transport:
+    ja: 運送会社
+    en: Transport Company
+    zh: 运输公司
+    ko: 운송 회사
+    ru: Транспортная компания
+    de: Transportunternehmen
+  contractor:
+    ja: 土木業者
+    en: Civil Engineering Contractor
+    zh: 土木工程商
+    ko: 토목 업자
+    ru: Строительный подрядчик
+    de: Bauunternehmen
+  port:
+    ja: 港
+    en: Port
+    zh: 港口
+    ko: 항구
+    ru: Порт
+    de: Hafen
+  shipping:
+    ja: 海運会社
+    en: Shipping Company
+    zh: 海运公司
+    ko: 해운 회사
+    ru: Судоходная компания
+    de: Reederei
+  shipyard:
+    ja: 造船所
+    en: Shipyard
+    zh: 造船厂
+    ko: 조선소
+    ru: Верфь
+    de: Werft
+  trading:
+    ja: 商社
+    en: Trading Company
+    zh: 贸易公司
+    ko: 무역 회사
+    ru: Торговая компания
+    de: Handelshaus
+  oil_well:
+    ja: 油井
+    en: Oil Well
+    zh: 油井
+    ko: 유정
+    ru: Нефтяная скважина
+    de: Ölquelle
+  refinery:
+    ja: 製油所
+    en: Refinery
+    zh: 炼油厂
+    ko: 정유소
+    ru: Нефтеперерабатывающий завод
+    de: Raffinerie
+  aluminium_smelter:
+    ja: アルミ精錬所
+    en: Aluminium Smelter
+    zh: 铝冶炼厂
+    ko: 알루미늄 제련소
+    ru: Алюминиевый завод
+    de: Aluminiumhütte
+  copper_smelter:
+    ja: 銅の精錬所
+    en: Copper Smelter
+    zh: 铜冶炼厂
+    ko: 구리 제련소
+    ru: Медный завод
+    de: Kupferhütte
+  electronics_plant:
+    ja: 電子機器工場
+    en: Electronics Plant
+    zh: 电子设备厂
+    ko: 전자 기기 공장
+    ru: Завод электроники
+    de: Elektronikfabrik
+  arms_plant:
+    ja: 兵器工場
+    en: Arms Plant
+    zh: 兵工厂
+    ko: 병기 공장
+    ru: Оружейный завод
+    de: Waffenfabrik
+  textile_mill:
+    ja: 繊維工場
+    en: Textile Mill
+    zh: 纺织厂
+    ko: 섬유 공장
+    ru: Текстильная фабрика
+    de: Textilfabrik
+  ranch:
+    ja: 牧場
+    en: Ranch
+    zh: 牧场
+    ko: 목장
+    ru: Ранчо
+    de: Ranch
+  automobile_plant:
+    ja: 自動車工場
+    en: Automobile Plant
+    zh: 汽车厂
+    ko: 자동차 공장
+    ru: Автомобильный завод
+    de: Automobilfabrik
+  auto_parts_plant:
+    ja: 自動車部品工場
+    en: Auto Parts Plant
+    zh: 汽车零件厂
+    ko: 자동차 부품 공장
+    ru: Завод автозапчастей
+    de: Autoteilefabrik
+  housing:
+    ja: 町
+    en:
+    zh:
+    ko:
+    ru:
+    de:
+    uncertain: [en, zh, ko, ru, de]
+    note: ja は「町」。施設としての住宅地を指す
+  services:
+    ja: 商業・サービス業
+    en: Commerce & Services
+    zh: 商业与服务业
+    ko: 상업·서비스업
+    ru: Торговля и услуги
+    de: Handel und Dienstleistungen
+  shop:
+    ja: 商店
+    en: Shop
+    zh: 商店
+    ko: 상점
+    ru: Магазин
+    de: Geschäft
+  department_store:
+    ja: 百貨店
+    en: Department Store
+    zh: 百货商店
+    ko: 백화점
+    ru: Универмаг
+    de: Kaufhaus
+  monument_monolith:
+    ja: モノリス
+    en: Monolith
+    zh: 巨石碑
+    ko: 모노리스
+    ru: Монолит
+    de: Monolith
+  monument_custom:
+    ja: 自作の記念碑
+    en: Custom Monument
+    zh: 自制纪念碑
+    ko: 자작 기념비
+    ru: Самодельный памятник
+    de: Eigenes Denkmal
+  monument_founding:
+    ja: 建国記念碑
+    en: Founding Monument
+    zh: 建国纪念碑
+    ko: 건국 기념비
+    ru: Памятник основанию государства
+    de: Gründungsdenkmal
+  monument_peace:
+    ja: 平和記念碑
+    en: Peace Monument
+    zh: 和平纪念碑
+    ko: 평화 기념비
+    ru: Памятник миру
+    de: Friedensdenkmal
+  monument_battle:
+    ja: 戦いの碑
+    en: Battle Memorial
+    zh: 战役纪念碑
+    ko: 전투 기념비
+    ru: Памятник битве
+    de: Kriegsdenkmal
+  monument_cenotaph:
+    ja: 慰霊碑
+    en: Cenotaph
+    zh: 慰灵碑
+    ko: 위령비
+    ru: Кенотаф
+    de: Ehrenmal
+  monument_leader:
+    ja: 元首の像
+    en: Statue of the Leader
+    zh: 元首像
+    ko:
+    ru: Статуя вождя
+    de: Führerstatue
+    uncertain: [ko]
+  monument_worker:
+    ja: 労働者の像
+    en: Statue of the Worker
+    zh: 劳动者像
+    ko: 노동자상
+    ru: Статуя рабочего
+    de: Arbeiterstatue
+  monument_tower:
+    ja: 展望塔
+    en: Observation Tower
+    zh: 瞭望塔
+    ko: 전망탑
+    ru: Смотровая башня
+    de: Aussichtsturm
+  monument_ledger:
+    ja: 帳簿の碑
+    en: Ledger Monument
+    zh: 账簿碑
+    ko: 장부의 비
+    ru: Памятник бухгалтерской книге
+    de: Denkmal des Hauptbuchs
+  monument_verification:
+    ja: 検証の碑
+    en: Verification Monument
+    zh: 验证碑
+    ko: 검증의 비
+    ru: Памятник проверке
+    de: Denkmal der Überprüfung
+
+# 出どころ: locale/ja/goods.yaml
+goods:
+  grain:
+    ja: 穀物
+    en: Grain
+    zh: 谷物
+    ko: 곡물
+    ru: Зерно
+    de: Getreide
+  fish:
+    ja: 魚
+    en: Fish
+    zh: 鱼
+    ko: 생선
+    ru: Рыба
+    de: Fisch
+  wood:
+    ja: 木材
+    en: Wood
+    zh: 木材
+    ko: 목재
+    ru: Древесина
+    de: Holz
+  stone:
+    ja: 石材
+    en: Stone
+    zh: 石材
+    ko: 석재
+    ru: Камень
+    de: Stein
+  iron_ore:
+    ja: 鉄鉱石
+    en: Iron Ore
+    zh: 铁矿石
+    ko: 철광석
+    ru: Железная руда
+    de: Eisenerz
+  coal:
+    ja: 石炭
+    en: Coal
+    zh: 煤炭
+    ko: 석탄
+    ru: Уголь
+    de: Kohle
+  steel:
+    ja: 鋼鉄
+    en: Steel
+    zh: 钢铁
+    ko: 강철
+    ru: Сталь
+    de: Stahl
+  building_materials:
+    ja: 建材
+    en: Building Materials
+    zh: 建材
+    ko: 건재
+    ru: Стройматериалы
+    de: Baustoffe
+  food:
+    ja: 食品
+    en: Food
+    zh: 食品
+    ko: 식품
+    ru: Продовольствие
+    de: Lebensmittel
+  machinery:
+    ja: 機械
+    en: Machinery
+    zh: 机械
+    ko: 기계
+    ru: Машины
+    de: Maschinen
+  consumer_goods:
+    ja: 消費財
+    en: Consumer Goods
+    zh: 消费品
+    ko: 소비재
+    ru: Потребительские товары
+    de: Konsumgüter
+  electricity:
+    ja: 電力
+    en: Electricity
+    zh: 电力
+    ko: 전력
+    ru: Электроэнергия
+    de: Strom
+  transport_ship:
+    ja: 輸送船
+    en: Transport Ship
+    zh: 运输船
+    ko: 수송선
+    ru: Транспортное судно
+    de: Transportschiff
+  crude_oil:
+    ja: 原油
+    en: Crude Oil
+    zh: 原油
+    ko: 원유
+    ru: Сырая нефть
+    de: Rohöl
+  bauxite:
+    ja: ボーキサイト
+    en: Bauxite
+    zh: 铝土矿
+    ko: 보크사이트
+    ru: Боксит
+    de: Bauxit
+  cotton:
+    ja: 綿
+    en: Cotton
+    zh: 棉花
+    ko: 면화
+    ru: Хлопок
+    de: Baumwolle
+  luxury_crop:
+    ja: 嗜好品
+    en: Luxury Crop
+    zh:
+    ko: 기호 작물
+    ru:
+    de:
+    uncertain: [zh, ru, de]
+    note: コーヒー・タバコ等の嗜好品作物
+  fuel:
+    ja: 石油燃料
+    en: Petroleum Fuel
+    zh: 石油燃料
+    ko: 석유 연료
+    ru: Нефтяное топливо
+    de: Kraftstoff
+  chemicals:
+    ja: 化学品
+    en: Chemicals
+    zh: 化学品
+    ko: 화학품
+    ru: Химикаты
+    de: Chemikalien
+  aluminium:
+    ja: アルミ
+    en: Aluminium
+    zh: 铝
+    ko: 알루미늄
+    ru: Алюминий
+    de: Aluminium
+  meat:
+    ja: 肉
+    en: Meat
+    zh: 肉
+    ko: 고기
+    ru: Мясо
+    de: Fleisch
+  clothing:
+    ja: 衣料
+    en: Clothing
+    zh: 服装
+    ko: 의류
+    ru: Одежда
+    de: Kleidung
+  automobile:
+    ja: 自動車
+    en: Automobile
+    zh: 汽车
+    ko: 자동차
+    ru: Автомобиль
+    de: Automobil
+  auto_parts:
+    ja: 自動車部品
+    en: Auto Parts
+    zh: 汽车零件
+    ko: 자동차 부품
+    ru: Автозапчасти
+    de: Autoteile
+  services:
+    ja: サービス
+    en: Services
+    zh: 服务
+    ko: 서비스
+    ru: Услуги
+    de: Dienstleistungen
+  retail:
+    ja: 小売り
+    en: Retail
+    zh: 零售
+    ko: 소매
+    ru: Розничная торговля
+    de: Einzelhandel
+  copper_ore:
+    ja: 銅鉱石
+    en: Copper Ore
+    zh: 铜矿石
+    ko: 구리 광석
+    ru: Медная руда
+    de: Kupfererz
+  uranium_ore:
+    ja: ウラン鉱石
+    en: Uranium Ore
+    zh: 铀矿石
+    ko: 우라늄 광석
+    ru: Урановая руда
+    de: Uranerz
+  nuclear_warhead:
+    ja: 核弾頭
+    en: Nuclear Warhead
+    zh: 核弹头
+    ko: 핵탄두
+    ru: Ядерная боеголовка
+    de: Atomsprengkopf
+  copper:
+    ja: 銅
+    en: Copper
+    zh: 铜
+    ko: 구리
+    ru: Медь
+    de: Kupfer
+  electronics:
+    ja: 電子機器
+    en: Electronics
+    zh: 电子设备
+    ko: 전자 기기
+    ru: Электроника
+    de: Elektronik
+  weapons:
+    ja: 武器
+    en: Weapons
+    zh: 武器
+    ko: 무기
+    ru: Оружие
+    de: Waffen
+  ammunition:
+    ja: 弾薬
+    en: Ammunition
+    zh: 弹药
+    ko: 탄약
+    ru: Боеприпасы
+    de: Munition
+  military_vehicle:
+    ja: 軍用車両
+    en: Military Vehicle
+    zh: 军用车辆
+    ko: 군용 차량
+    ru: Военная техника
+    de: Militärfahrzeug
+  missile:
+    ja: ミサイル
+    en: Missile
+    zh: 导弹
+    ko: 미사일
+    ru: Ракета
+    de: Rakete
+  interceptor:
+    ja: 迎撃ミサイル
+    en: Interceptor Missile
+    zh: 拦截导弹
+    ko: 요격 미사일
+    ru: Ракета-перехватчик
+    de: Abfangrakete
+  warship:
+    ja: 軍艦
+    en: Warship
+    zh: 军舰
+    ko: 군함
+    ru: Военный корабль
+    de: Kriegsschiff
+  frigate:
+    ja: フリゲート
+    en: Frigate
+    zh: 护卫舰
+    ko: 호위함
+    ru: Фрегат
+    de: Fregatte
+  submarine:
+    ja: 潜水艦
+    en: Submarine
+    zh: 潜艇
+    ko: 잠수함
+    ru: Подводная лодка
+    de: U-Boot
+
+# 出どころ: locale/ja/industries.yaml
+industries:
+  agriculture:
+    ja: 農業
+    en: Agriculture
+    zh: 农业
+    ko: 농업
+    ru: Сельское хозяйство
+    de: Landwirtschaft
+  mining:
+    ja: 鉱業
+    en: Mining
+    zh: 矿业
+    ko: 광업
+    ru: Горнодобывающая промышленность
+    de: Bergbau
+  steel:
+    ja: 鉄鋼業
+    en: Steel Industry
+    zh: 钢铁业
+    ko: 철강업
+    ru: Сталелитейная промышленность
+    de: Stahlindustrie
+  nonferrous:
+    ja: 非鉄
+    en: Nonferrous Metals
+    zh: 有色金属
+    ko: 비철금속
+    ru: Цветная металлургия
+    de: NE-Metalle
+  machinery:
+    ja: 機械
+    en: Machinery
+    zh: 机械
+    ko: 기계
+    ru: Машиностроение
+    de: Maschinenbau
+  automobile:
+    ja: 自動車
+    en: Automobile
+    zh: 汽车
+    ko: 자동차
+    ru: Автомобилестроение
+    de: Automobilindustrie
+  textile:
+    ja: 繊維
+    en: Textiles
+    zh: 纺织
+    ko: 섬유
+    ru: Текстильная промышленность
+    de: Textilindustrie
+  petroleum:
+    ja: 石油
+    en: Petroleum
+    zh: 石油
+    ko: 석유
+    ru: Нефтяная промышленность
+    de: Erdölindustrie
+  food:
+    ja: 食品
+    en: Food
+    zh: 食品
+    ko: 식품
+    ru: Пищевая промышленность
+    de: Lebensmittelindustrie
+  consumer_goods:
+    ja: 消費財
+    en: Consumer Goods
+    zh: 消费品
+    ko: 소비재
+    ru: Потребительские товары
+    de: Konsumgüter
+  shipbuilding:
+    ja: 造船
+    en: Shipbuilding
+    zh: 造船
+    ko: 조선
+    ru: Судостроение
+    de: Schiffbau
+  energy:
+    ja: エネルギー
+    en: Energy
+    zh: 能源
+    ko: 에너지
+    ru: Энергетика
+    de: Energie
+  electronics:
+    ja: 電子機器
+    en: Electronics
+    zh: 电子
+    ko: 전자
+    ru: Электроника
+    de: Elektronik
+  arms:
+    ja: 兵器
+    en: Arms
+    zh: 兵器
+    ko: 병기
+    ru: Вооружение
+    de: Rüstung
+
+# 出どころ: locale/ja/infrastructure.yaml
+infrastructure:
+  road:
+    ja: 道路
+    en: Road
+    zh: 道路
+    ko: 도로
+    ru: Дорога
+    de: Straße
+  rail:
+    ja: 鉄道
+    en: Railway
+    zh: 铁路
+    ko: 철도
+    ru: Железная дорога
+    de: Eisenbahn
+  water:
+    ja: 上下水道
+    en: Water & Sewage
+    zh: 上下水道
+    ko: 상하수도
+    ru: Водоснабжение и канализация
+    de: Wasser und Abwasser
+  power:
+    ja: 送電網
+    en: Power Grid
+    zh: 输电网
+    ko: 송전망
+    ru: Электросеть
+    de: Stromnetz
+
+# 出どころ: locale/ja/terrain.yaml
+terrain:
+  sea:
+    ja: 海
+    en: Sea
+    zh: 海洋
+    ko: 바다
+    ru: Море
+    de: Meer
+  shallows:
+    ja: 浅瀬
+    en: Shallows
+    zh: 浅滩
+    ko: 얕은 바다
+    ru: Мелководье
+    de: Flachwasser
+  plain:
+    ja: 平地
+    en: Plain
+    zh: 平地
+    ko: 평지
+    ru: Равнина
+    de: Ebene
+  forest:
+    ja: 森
+    en: Forest
+    zh: 森林
+    ko: 숲
+    ru: Лес
+    de: Wald
+  mountain:
+    ja: 山
+    en: Mountain
+    zh: 山地
+    ko: 산
+    ru: Гора
+    de: Berg
+
+# 出どころ: locale/ja/climate.yaml
+climate:
+  cold:
+    ja: 寒冷
+    en: Cold
+    zh: 寒冷
+    ko: 한랭
+    ru: Холодный
+    de: Kalt
+  temperate:
+    ja: 温帯
+    en: Temperate
+    zh: 温带
+    ko: 온대
+    ru: Умеренный
+    de: Gemäßigt
+  tropical:
+    ja: 熱帯
+    en: Tropical
+    zh: 热带
+    ko: 열대
+    ru: Тропический
+    de: Tropisch
+
+# 出どころ: locale/ja/settlements.yaml
+settlements:
+  village:
+    ja: 村
+    en: Village
+    zh: 村庄
+    ko: 마을
+    ru: Деревня
+    de: Dorf
+  town:
+    ja: 町
+    en: Town
+    zh: 城镇
+    ko: 읍
+    ru: Городок
+    de: Kleinstadt
+  city:
+    ja: 都市
+    en: City
+    zh: 城市
+    ko: 도시
+    ru: Город
+    de: Stadt
+  metropolis:
+    ja: 大都市
+    en: Metropolis
+    zh: 大都市
+    ko: 대도시
+    ru: Мегаполис
+    de: Großstadt
+  high_rise:
+    ja: 高層都市
+    en: High-Rise City
+    zh: 高层城市
+    ko: 고층 도시
+    ru: Высотный город
+    de: Hochhausstadt
+  skyscraper:
+    ja: 超高層都市
+    en: Skyscraper City
+    zh: 摩天城市
+    ko: 초고층 도시
+    ru: Город небоскрёбов
+    de: Wolkenkratzerstadt
+
+# 出どころ: locale/ja/regimes.yaml
+regimes:
+  democracy:
+    ja: 民主主義
+    en: Democracy
+    zh: 民主主义
+    ko: 민주주의
+    ru: Демократия
+    de: Demokratie
+  authoritarian:
+    ja: 権威主義
+    en: Authoritarianism
+    zh: 威权主义
+    ko: 권위주의
+    ru: Авторитаризм
+    de: Autoritarismus
+  totalitarian:
+    ja: 全体主義
+    en: Totalitarianism
+    zh: 极权主义
+    ko: 전체주의
+    ru: Тоталитаризм
+    de: Totalitarismus
+  monarchy:
+    ja: 君主制
+    en: Monarchy
+    zh: 君主制
+    ko: 군주제
+    ru: Монархия
+    de: Monarchie
+  republic:
+    ja: 共和制
+    en: Republic
+    zh: 共和制
+    ko: 공화제
+    ru: Республика
+    de: Republik
+  market:
+    ja: 市場経済
+    en: Market Economy
+    zh: 市场经济
+    ko: 시장 경제
+    ru: Рыночная экономика
+    de: Marktwirtschaft
+  mixed:
+    ja: 混合経済
+    en: Mixed Economy
+    zh: 混合经济
+    ko: 혼합 경제
+    ru: Смешанная экономика
+    de: Gemischte Wirtschaft
+  planned:
+    ja: 計画経済
+    en: Planned Economy
+    zh: 计划经济
+    ko: 계획 경제
+    ru: Плановая экономика
+    de: Planwirtschaft
+
+# 出どころ: locale/ja/army.yaml
+army:
+  infantry:
+    ja: 歩兵部隊
+    en: Infantry Unit
+    zh: 步兵部队
+    ko: 보병 부대
+    ru: Пехотное подразделение
+    de: Infanterieeinheit
+  armor:
+    ja: 機甲部隊
+    en: Armored Unit
+    zh: 装甲部队
+    ko: 기갑 부대
+    ru: Бронетанковое подразделение
+    de: Panzereinheit
+  corvette:
+    ja: 小さな軍艦の艦隊
+    en: Corvette Fleet
+    zh: 轻型护卫舰舰队
+    ko: 초계함 함대
+    ru: Флотилия корветов
+    de: Korvettengeschwader
+    note: ja は「小さな軍艦の艦隊」
+  frigate:
+    ja: フリゲートの艦隊
+    en: Frigate Fleet
+    zh: 护卫舰舰队
+    ko: 호위함 함대
+    ru: Флотилия фрегатов
+    de: Fregattengeschwader
+  submarine:
+    ja: 潜水艦の艦隊
+    en: Submarine Fleet
+    zh: 潜艇舰队
+    ko: 잠수함 함대
+    ru: Подводная флотилия
+    de: U-Boot-Geschwader
+  transport:
+    ja: 輸送船団
+    en: Transport Convoy
+    zh: 运输船队
+    ko: 수송 선단
+    ru: Транспортный конвой
+    de: Transportkonvoi
+
+# 出どころ: locale/ja/workers.yaml
+workers:
+  general:
+    ja: 一般労働者
+    en: General Worker
+    zh: 普通工人
+    ko: 일반 노동자
+    ru: Разнорабочий
+    de: Allgemeiner Arbeiter
+  engineer:
+    ja: 技術者
+    en: Engineer
+    zh: 工程师
+    ko: 기술자
+    ru: Инженер
+    de: Ingenieur
+    note: ja は「技術者」
+
+# 出どころ: locale/ja/units.yaml
+units:
+  ton:
+    ja: トン
+    en: Ton
+    zh: 吨
+    ko: 톤
+    ru: Тонна
+    de: Tonne
+  cubic_meter:
+    ja: m³
+    en: m³
+    zh: m³
+    ko: m³
+    ru: м³
+    de: m³
+  piece:
+    ja: 台
+    en: Units
+    zh: 台
+    ko: 대
+    ru: Штука
+    de: Stück
+    note: ja は「台」
+  item:
+    ja: 個
+    en: Item
+    zh: 个
+    ko: 개
+    ru: Штука
+    de: Stück
+    note: ja は「個」
+  megawatt_hour:
+    ja: MWh
+    en: MWh
+    zh: MWh
+    ko: MWh
+    ru: МВт·ч
+    de: MWh
+  ship:
+    ja: 隻
+    en:
+    zh: 艘
+    ko: 척
+    ru:
+    de:
+    uncertain: [en, ru, de]
+    note: ja は「隻」（船の助数詞）
+  set:
+    ja: 組
+    en: Set
+    zh: 组
+    ko: 조
+    ru: Комплект
+    de: Satz
+    note: ja は「組」
+  gallon:
+    ja: ガロン
+    en: Gallon
+    zh: 加仑
+    ko: 갤런
+    ru: Галлон
+    de: Gallone
+  barrel:
+    ja: バレル
+    en: Barrel
+    zh: 桶
+    ko: 배럴
+    ru: Баррель
+    de: Barrel
+  person_month:
+    ja: 人月
+    en: Person-Month
+    zh: 人月
+    ko: 인월
+    ru: Человеко-месяц
+    de: Personenmonat
+
+# 出どころ: locale/ja/recipes.yaml
+recipes:
+  mine_iron_ore:
+    ja: 鉄鉱石採掘
+    en: Iron Ore Mining
+    zh: 铁矿石开采
+    ko: 철광석 채굴
+    ru: Добыча железной руды
+    de: Eisenerzabbau
+  mine_coal:
+    ja: 石炭採掘
+    en: Coal Mining
+    zh: 煤炭开采
+    ko: 석탄 채굴
+    ru: Добыча угля
+    de: Kohleabbau
+  building_materials_plant_stone:
+    ja: 石材から製造
+    en: Made from Stone
+    zh: 由石材制造
+    ko: 석재로 제조
+    ru: Из камня
+    de: Aus Stein gefertigt
+  building_materials_plant_wood:
+    ja: 木材から製造
+    en: Made from Wood
+    zh: 由木材制造
+    ko: 목재로 제조
+    ru: Из древесины
+    de: Aus Holz gefertigt
+  consumer_goods_factory_default:
+    ja: 鋼鉄と木材から製造
+    en: Made from Steel & Wood
+    zh: 由钢铁和木材制造
+    ko: 강철과 목재로 제조
+    ru: Из стали и древесины
+    de: Aus Stahl und Holz gefertigt
+  consumer_goods_factory_wood:
+    ja: 木材から製造
+    en: Made from Wood
+    zh: 由木材制造
+    ko: 목재로 제조
+    ru: Из древесины
+    de: Aus Holz gefertigt
+  mine_bauxite:
+    ja: ボーキサイト採掘
+    en: Bauxite Mining
+    zh: 铝土矿开采
+    ko: 보크사이트 채굴
+    ru: Добыча бокситов
+    de: Bauxitabbau
+  consumer_goods_factory_chemicals:
+    ja: 化学品から製造
+    en: Made from Chemicals
+    zh: 由化学品制造
+    ko: 화학품으로 제조
+    ru: Из химикатов
+    de: Aus Chemikalien gefertigt
+  farm_default:
+    ja: 穀物
+    en: Grain
+    zh: 谷物
+    ko: 곡물
+    ru: Зерно
+    de: Getreide
+  farm_fertilized:
+    ja: 穀物（肥料あり）
+    en: Grain (Fertilized)
+    zh: 谷物（施肥）
+    ko: 곡물 (비료 사용)
+    ru: Зерно (с удобрениями)
+    de: Getreide (mit Dünger)
+  farm_cotton:
+    ja: 綿
+    en: Cotton
+    zh: 棉花
+    ko: 면화
+    ru: Хлопок
+    de: Baumwolle
+  farm_cotton_fertilized:
+    ja: 綿（肥料あり）
+    en: Cotton (Fertilized)
+    zh: 棉花（施肥）
+    ko: 면화 (비료 사용)
+    ru: Хлопок (с удобрениями)
+    de: Baumwolle (mit Dünger)
+  farm_luxury_crop:
+    ja: 嗜好品
+    en: Luxury Crop
+    zh:
+    ko: 기호 작물
+    ru:
+    de:
+    uncertain: [zh, ru, de]
+    note: 嗜好品作物の訳語は goods.luxury_crop と合わせて決める
+  farm_luxury_crop_fertilized:
+    ja: 嗜好品（肥料あり）
+    en: Luxury Crop (Fertilized)
+    zh:
+    ko: 기호 작물 (비료 사용)
+    ru:
+    de:
+    uncertain: [zh, ru, de]
+  farm_default_mechanized:
+    ja: 穀物（機械化）
+    en: Grain (Mechanized)
+    zh: 谷物（机械化）
+    ko: 곡물 (기계화)
+    ru: Зерно (механизированное)
+    de: Getreide (mechanisiert)
+  farm_fertilized_mechanized:
+    ja: 穀物（肥料あり・機械化）
+    en: Grain (Fertilized, Mechanized)
+    zh: 谷物（施肥、机械化）
+    ko: 곡물 (비료 사용·기계화)
+    ru: Зерно (с удобрениями, механизированное)
+    de: Getreide (mit Dünger, mechanisiert)
+  farm_cotton_mechanized:
+    ja: 綿（機械化）
+    en: Cotton (Mechanized)
+    zh: 棉花（机械化）
+    ko: 면화 (기계화)
+    ru: Хлопок (механизированный)
+    de: Baumwolle (mechanisiert)
+  farm_cotton_fertilized_mechanized:
+    ja: 綿（肥料あり・機械化）
+    en: Cotton (Fertilized, Mechanized)
+    zh: 棉花（施肥、机械化）
+    ko: 면화 (비료 사용·기계화)
+    ru: Хлопок (с удобрениями, механизированный)
+    de: Baumwolle (mit Dünger, mechanisiert)
+  farm_luxury_crop_mechanized:
+    ja: 嗜好品（機械化）
+    en: Luxury Crop (Mechanized)
+    zh:
+    ko: 기호 작물 (기계화)
+    ru:
+    de:
+    uncertain: [zh, ru, de]
+  farm_luxury_crop_fertilized_mechanized:
+    ja: 嗜好品（肥料あり・機械化）
+    en: Luxury Crop (Fertilized, Mechanized)
+    zh:
+    ko: 기호 작물 (비료 사용·기계화)
+    ru:
+    de:
+    uncertain: [zh, ru, de]
+  farm_fertilized_modern:
+    ja: 穀物（近代化）
+    en: Grain (Modernized)
+    zh: 谷物（现代化）
+    ko: 곡물 (근대화)
+    ru: Зерно (модернизированное)
+    de: Getreide (modernisiert)
+  farm_cotton_fertilized_modern:
+    ja: 綿（近代化）
+    en: Cotton (Modernized)
+    zh: 棉花（现代化）
+    ko: 면화 (근대화)
+    ru: Хлопок (модернизированный)
+    de: Baumwolle (modernisiert)
+    note: キーは fertilized を含むが ja の表示名は「綿（近代化）」で肥料の言及なし。ja に合わせた
+  farm_luxury_crop_fertilized_modern:
+    ja: 嗜好品（近代化）
+    en: Luxury Crop (Modernized)
+    zh:
+    ko: 기호 작물 (근대화)
+    ru:
+    de:
+    uncertain: [zh, ru, de]
+  thermal_power_plant_default:
+    ja: 石炭で発電
+    en: Coal-Fired Generation
+    zh: 燃煤发电
+    ko: 석탄 발전
+    ru: Генерация на угле
+    de: Stromerzeugung mit Kohle
+  thermal_power_plant_fuel:
+    ja: 石油燃料で発電
+    en: Oil-Fired Generation
+    zh: 燃油发电
+    ko: 석유 연료 발전
+    ru: Генерация на нефтяном топливе
+    de: Stromerzeugung mit Öl
+  automobile_plant_default:
+    ja: 部品を組み立て
+    en: Assembling Parts
+    zh: 组装零件
+    ko: 부품 조립
+    ru: Сборка из деталей
+    de: Teile montieren
+  auto_parts_plant_default:
+    ja: 鋼鉄から製造
+    en: Made from Steel
+    zh: 由钢铁制造
+    ko: 강철로 제조
+    ru: Из стали
+    de: Aus Stahl gefertigt
+  auto_parts_plant_aluminium:
+    ja: 鋼鉄とアルミから製造
+    en: Made from Steel & Aluminium
+    zh: 由钢铁和铝制造
+    ko: 강철과 알루미늄으로 제조
+    ru: Из стали и алюминия
+    de: Aus Stahl und Aluminium gefertigt
+  electronics_plant_aluminium:
+    ja: 銅の代わりにアルミで製造
+    en: Made with Aluminium Instead of Copper
+    zh: 用铝代替铜制造
+    ko: 구리 대신 알루미늄으로 제조
+    ru: Из алюминия вместо меди
+    de: Mit Aluminium statt Kupfer gefertigt
+  shipyard_default:
+    ja: 鋼鉄から建造
+    en: Built from Steel
+    zh: 由钢铁建造
+    ko: 강철로 건조
+    ru: Строительство из стали
+    de: Aus Stahl gebaut
+  shipyard_aluminium:
+    ja: 鋼鉄とアルミから建造
+    en: Built from Steel & Aluminium
+    zh: 由钢铁和铝建造
+    ko: 강철과 알루미늄으로 건조
+    ru: Строительство из стали и алюминия
+    de: Aus Stahl und Aluminium gebaut
+  mine_copper_ore:
+    ja: 銅鉱石採掘
+    en: Copper Ore Mining
+    zh: 铜矿石开采
+    ko: 구리 광석 채굴
+    ru: Добыча медной руды
+    de: Kupfererzabbau
+  mine_uranium_ore:
+    ja: ウラン鉱石採掘
+    en: Uranium Ore Mining
+    zh: 铀矿石开采
+    ko: 우라늄 광석 채굴
+    ru: Добыча урановой руды
+    de: Uranerzabbau
+  automobile_plant_military_vehicle:
+    ja: 軍用車両を製造
+    en: Producing Military Vehicles
+    zh: 制造军用车辆
+    ko: 군용 차량 제조
+    ru: Производство военной техники
+    de: Militärfahrzeuge herstellen
+  shipyard_warship:
+    ja: 軍艦を建造
+    en: Building Warships
+    zh: 建造军舰
+    ko: 군함 건조
+    ru: Строительство военных кораблей
+    de: Kriegsschiffe bauen
+  shipyard_frigate:
+    ja: フリゲートを建造
+    en: Building Frigates
+    zh: 建造护卫舰
+    ko: 호위함 건조
+    ru: Строительство фрегатов
+    de: Fregatten bauen
+  shipyard_submarine:
+    ja: 潜水艦を建造
+    en: Building Submarines
+    zh: 建造潜艇
+    ko: 잠수함 건조
+    ru: Строительство подводных лодок
+    de: U-Boote bauen
+  arms_plant_default:
+    ja: 武器を製造
+    en: Producing Weapons
+    zh: 制造武器
+    ko: 무기 제조
+    ru: Производство оружия
+    de: Waffen herstellen
+  arms_plant_ammunition:
+    ja: 弾薬を製造
+    en: Producing Ammunition
+    zh: 制造弹药
+    ko: 탄약 제조
+    ru: Производство боеприпасов
+    de: Munition herstellen
+  missile_plant_default:
+    ja: ミサイルを製造
+    en: Producing Missiles
+    zh: 制造导弹
+    ko: 미사일 제조
+    ru: Производство ракет
+    de: Raketen herstellen
+  missile_plant_interceptor:
+    ja: 迎撃ミサイルを製造
+    en: Producing Interceptor Missiles
+    zh: 制造拦截导弹
+    ko: 요격 미사일 제조
+    ru: Производство ракет-перехватчиков
+    de: Abfangraketen herstellen
+  nuclear_facility_default:
+    ja: 核弾頭を製造
+    en: Producing Nuclear Warheads
+    zh: 制造核弹头
+    ko: 핵탄두 제조
+    ru: Производство ядерных боеголовок
+    de: Atomsprengköpfe herstellen
+  steel_mill_automated:
+    ja: 電子機器で自動化して製造
+    en: Automated Production with Electronics
+    zh: 用电子设备自动化制造
+    ko: 전자 기기로 자동화 제조
+    ru: Автоматизированное производство с электроникой
+    de: Mit Elektronik automatisiert fertigen
+  building_materials_plant_automated:
+    ja: 電子機器で自動化して製造
+    en: Automated Production with Electronics
+    zh: 用电子设备自动化制造
+    ko: 전자 기기로 자동화 제조
+    ru: Автоматизированное производство с электроникой
+    de: Mit Elektronik automatisiert fertigen
+  machinery_plant_automated:
+    ja: 電子機器で自動化して製造
+    en: Automated Production with Electronics
+    zh: 用电子设备自动化制造
+    ko: 전자 기기로 자동화 제조
+    ru: Автоматизированное производство с электроникой
+    de: Mit Elektronik automatisiert fertigen
+  food_factory_automated:
+    ja: 電子機器で自動化して製造
+    en: Automated Production with Electronics
+    zh: 用电子设备自动化制造
+    ko: 전자 기기로 자동화 제조
+    ru: Автоматизированное производство с электроникой
+    de: Mit Elektronik automatisiert fertigen
+  food_factory_default:
+    ja: 穀物から製造
+    en: Made from Grain
+    zh: 由谷物制造
+    ko: 곡물로 제조
+    ru: Из зерна
+    de: Aus Getreide gefertigt
+  food_factory_fish:
+    ja: 魚から製造
+    en: Made from Fish
+    zh: 由鱼制造
+    ko: 생선으로 제조
+    ru: Из рыбы
+    de: Aus Fisch gefertigt
+  consumer_goods_factory_automated:
+    ja: 電子機器で自動化して製造
+    en: Automated Production with Electronics
+    zh: 用电子设备自动化制造
+    ko: 전자 기기로 자동화 제조
+    ru: Автоматизированное производство с электроникой
+    de: Mit Elektronik automatisiert fertigen
+  refinery_automated:
+    ja: 電子機器で自動化して精製
+    en: Automated Refining with Electronics
+    zh: 用电子设备自动化精炼
+    ko: 전자 기기로 자동화 정제
+    ru: Автоматизированная переработка с электроникой
+    de: Mit Elektronik automatisiert raffinieren
+  aluminium_smelter_automated:
+    ja: 電子機器で自動化して精錬
+    en: Automated Smelting with Electronics
+    zh: 用电子设备自动化冶炼
+    ko: 전자 기기로 자동화 제련
+    ru: Автоматизированная плавка с электроникой
+    de: Mit Elektronik automatisiert verhütten
+  copper_smelter_automated:
+    ja: 電子機器で自動化して精錬
+    en: Automated Smelting with Electronics
+    zh: 用电子设备自动化冶炼
+    ko: 전자 기기로 자동화 제련
+    ru: Автоматизированная плавка с электроникой
+    de: Mit Elektronik automatisiert verhütten
+  electronics_plant_automated:
+    ja: 電子機器で自動化して製造
+    en: Automated Production with Electronics
+    zh: 用电子设备自动化制造
+    ko: 전자 기기로 자동화 제조
+    ru: Автоматизированное производство с электроникой
+    de: Mit Elektronik automatisiert fertigen
+  textile_mill_automated:
+    ja: 電子機器で自動化して製造
+    en: Automated Production with Electronics
+    zh: 用电子设备自动化制造
+    ko: 전자 기기로 자동화 제조
+    ru: Автоматизированное производство с электроникой
+    de: Mit Elektronik automatisiert fertigen
+  auto_parts_plant_automated:
+    ja: 電子機器で自動化して製造
+    en: Automated Production with Electronics
+    zh: 用电子设备自动化制造
+    ko: 전자 기기로 자동화 제조
+    ru: Автоматизированное производство с электроникой
+    de: Mit Elektronik automatisiert fertigen
+  automobile_plant_automated:
+    ja: 電子機器で自動化して組み立て
+    en: Automated Assembly with Electronics
+    zh: 用电子设备自动化组装
+    ko: 전자 기기로 자동화 조립
+    ru: Автоматизированная сборка с электроникой
+    de: Mit Elektronik automatisiert montieren
+  shipyard_automated:
+    ja: 電子機器で自動化して建造
+    en: Automated Shipbuilding with Electronics
+    zh: 用电子设备自动化建造
+    ko: 전자 기기로 자동화 건조
+    ru: Автоматизированное судостроение с электроникой
+    de: Mit Elektronik automatisiert bauen
+  government_office_default:
+    ja: 紙と人手の事務
+    en: Paper & Manual Office Work
+    zh: 纸质与人工办公
+    ko: 종이와 수작업 사무
+    ru: Бумажная и ручная канцелярия
+    de: Papier und Handarbeit im Büro
+  bank_default:
+    ja: 人手の窓口と帳簿
+    en: Manual Counters & Ledgers
+    zh: 人工柜台与账簿
+    ko: 수작업 창구와 장부
+    ru:
+    de:
+    uncertain: [ru, de]
+  school_default:
+    ja: 教科書と黒板
+    en: Textbooks & Blackboard
+    zh: 教科书与黑板
+    ko: 교과서와 칠판
+    ru: Учебники и доска
+    de: Lehrbücher und Tafel
+  school_digital:
+    ja: 電子機器を教材に
+    en: Electronics as Teaching Material
+    zh: 以电子设备为教材
+    ko: 전자 기기를 교재로
+    ru: Электроника как учебный материал
+    de: Elektronik als Lehrmaterial
+  university_default:
+    ja: 教科書と黒板
+    en: Textbooks & Blackboard
+    zh: 教科书与黑板
+    ko: 교과서와 칠판
+    ru: Учебники и доска
+    de: Lehrbücher und Tafel
+  university_digital:
+    ja: 電子機器を教材に
+    en: Electronics as Teaching Material
+    zh: 以电子设备为教材
+    ko: 전자 기기를 교재로
+    ru: Электроника как учебный материал
+    de: Elektronik als Lehrmaterial
+
+# 出どころ: locale/ja/finance.yaml
+finance:
+  grant:
+    ja: 建国の給付
+    en: Founding Grant
+    zh: 建国补助
+    ko: 건국 지원금
+    ru: Учредительный грант
+    de: Gründungszuschuss
+  capital_injection:
+    ja: 出資
+    en: Capital Injection
+    zh: 出资
+    ko: 출자
+    ru: Вложение капитала
+    de: Kapitaleinlage
+  equity_return:
+    ja: 出資の払い戻し
+    en: Return of Capital
+    zh: 出资返还
+    ko: 출자 환급
+    ru: Возврат вложений
+    de: Rückzahlung der Einlage
+  sale:
+    ja: 代金
+    en: Sales Proceeds
+    zh: 货款
+    ko: 대금
+    ru: Выручка
+    de: Verkaufserlös
+  ship_order:
+    ja: 船の前注文の代金
+    en: Ship Pre-Order Payment
+    zh: 船只预订款
+    ko: 선박 선주문 대금
+    ru: Предоплата за заказ судна
+    de: Vorauszahlung für Schiffsbestellung
+  ship_order_refund:
+    ja: 船の前注文の返金
+    en: Ship Pre-Order Refund
+    zh: 船只预订退款
+    ko: 선박 선주문 환급
+    ru: Возврат предоплаты за судно
+    de: Rückerstattung der Schiffsvorauszahlung
+  ship_purchase:
+    ja: 倉庫の船の買い取り
+    en: Purchase of Warehoused Ship
+    zh: 收购仓库船只
+    ko: 창고의 선박 매입
+    ru: Выкуп судна со склада
+    de: Aufkauf eines gelagerten Schiffs
+  electricity:
+    ja: 電気代
+    en: Electricity Bill
+    zh: 电费
+    ko: 전기 요금
+    ru: Плата за электроэнергию
+    de: Stromkosten
+  freight:
+    ja: 運賃
+    en: Freight
+    zh: 运费
+    ko: 운임
+    ru: Фрахт
+    de: Fracht
+  relocation_freight:
+    ja: 強制移住の運賃
+    en: Forced Relocation Freight
+    zh: 强制迁移运费
+    ko: 강제 이주 운임
+    ru: Фрахт принудительного переселения
+    de: Fracht für Zwangsumsiedlung
+  contract:
+    ja: 二国間契約の代金
+    en: Bilateral Contract Payment
+    zh: 双边合同款项
+    ko: 양자 계약 대금
+    ru: Платёж по двустороннему контракту
+    de: Zahlung für bilateralen Vertrag
+    note: ja ファイル内で同名キーが2回定義され（公共事業の請負の代金／二国間契約の代金）、読み込みでは後のものが勝つ。ここでは後のものを採る
+  wage:
+    ja: 賃金
+    en: Wages
+    zh: 工资
+    ko: 임금
+    ru: Заработная плата
+    de: Löhne
+  unemployment_benefit:
+    ja: 失業手当
+    en: Unemployment Benefit
+    zh: 失业补贴
+    ko: 실업 수당
+    ru: Пособие по безработице
+    de: Arbeitslosengeld
+  severance:
+    ja: 解雇手当
+    en: Severance Pay
+    zh: 解雇补贴
+    ko: 해고 수당
+    ru: Выходное пособие
+    de: Abfindung
+  family_support:
+    ja: 家計の支え合い
+    en: Household Mutual Support
+    zh: 家庭互助
+    ko:
+    ru:
+    de: Gegenseitige Haushaltsunterstützung
+    uncertain: [ko, ru]
+  tax_income:
+    ja: 所得税
+    en: Income Tax
+    zh: 所得税
+    ko: 소득세
+    ru: Подоходный налог
+    de: Einkommensteuer
+  tax_consumption:
+    ja: 消費税
+    en: Consumption Tax
+    zh: 消费税
+    ko: 소비세
+    ru: Налог на потребление
+    de: Verbrauchsteuer
+  tax_corporate:
+    ja: 法人税
+    en: Corporate Tax
+    zh: 法人税
+    ko: 법인세
+    ru: Корпоративный налог
+    de: Körperschaftsteuer
+  dividend:
+    ja: 配当・納付
+    en: Dividends & Payments to State
+    zh: 分红与上缴
+    ko:
+    ru:
+    de: Dividenden und Abgaben
+    uncertain: [ko, ru]
+  interest_deposit:
+    ja: 預金の利子
+    en: Deposit Interest
+    zh: 存款利息
+    ko: 예금 이자
+    ru: Проценты по вкладам
+    de: Einlagenzinsen
+  interest_reserve:
+    ja: 準備預金の利子
+    en: Reserve Deposit Interest
+    zh: 准备金利息
+    ko: 준비예금 이자
+    ru: Проценты по резервным вкладам
+    de: Zinsen auf Reserveeinlagen
+  cb_payment:
+    ja: 中央銀行の納付
+    en: Central Bank Remittance
+    zh: 中央银行上缴
+    ko: 중앙은행 납부
+    ru: Отчисления центрального банка
+    de: Abgabe der Zentralbank
+  deposit_switch:
+    ja: 預金の預け替え
+    en: Deposit Transfer
+    zh: 存款转存
+    ko:
+    ru: Перевод вкладов
+    de:
+    uncertain: [ko, de]
+  treasury_deposit:
+    ja: 政府の預金への預け入れ
+    en: Deposit into Government Account
+    zh: 存入政府存款
+    ko:
+    ru: Внесение средств на счёт правительства
+    de: Einzahlung auf das Regierungskonto
+    uncertain: [ko]
+  treasury_recall:
+    ja: 政府の預金の引き出し
+    en: Withdrawal from Government Account
+    zh: 提取政府存款
+    ko: 정부 예금 인출
+    ru: Снятие средств со счёта правительства
+    de: Abhebung vom Regierungskonto
+  loan:
+    ja: 融資
+    en: Loan
+    zh: 贷款
+    ko: 융자
+    ru: Кредит
+    de: Kredit
+  interest_loan:
+    ja: 融資の利子
+    en: Loan Interest
+    zh: 贷款利息
+    ko: 융자 이자
+    ru: Проценты по кредиту
+    de: Kreditzinsen
+  loan_repayment:
+    ja: 融資の返済
+    en: Loan Repayment
+    zh: 贷款偿还
+    ko: 융자 상환
+    ru: Погашение кредита
+    de: Kredittilgung
+  loan_write_off:
+    ja: 貸し倒れ
+    en: Loan Write-Off
+    zh: 坏账
+    ko: 대손
+    ru: Списание безнадёжных долгов
+    de: Forderungsausfall
+  interbank:
+    ja: 銀行間の貸し借り
+    en: Interbank Lending
+    zh: 银行间借贷
+    ko: 은행 간 대출
+    ru: Межбанковское кредитование
+    de: Interbankenkredite
+  interest_interbank:
+    ja: 銀行間の利子
+    en: Interbank Interest
+    zh: 银行间利息
+    ko: 은행 간 이자
+    ru: Межбанковские проценты
+    de: Interbankenzinsen
+  cb_loan:
+    ja: 中央銀行の貸し出し
+    en: Central Bank Lending
+    zh: 中央银行贷款
+    ko: 중앙은행 대출
+    ru: Кредитование центральным банком
+    de: Zentralbankkredite
+  interest_cb_loan:
+    ja: 中央銀行への利子
+    en: Interest to Central Bank
+    zh: 付中央银行利息
+    ko: 중앙은행 이자
+    ru: Проценты центральному банку
+    de: Zinsen an die Zentralbank
+  equity_loss:
+    ja: 出資の取り消し
+    en: Cancellation of Capital Contribution
+    zh: 出资撤销
+    ko: 출자 취소
+    ru: Аннулирование вложений
+    de: Stornierung der Einlage
+  equity_transfer:
+    ja: 出資の付け替え
+    en: Transfer of Capital Contribution
+    zh:
+    ko:
+    ru: Передача вложений
+    de:
+    uncertain: [zh, ko, de]
+    note: ja の「付け替え」は言い回しが固い
+  foreclosure_sale:
+    ja: 差し押さえ施設の売却
+    en: Sale of Seized Facility
+    zh: 出售查封设施
+    ko: 압류 시설 매각
+    ru: Продажа арестованного объекта
+    de: Verkauf beschlagnahmter Anlage
+  foreclosure_recovery:
+    ja: 差し押さえ施設の残り
+    en: Remainder from Seized Facility
+    zh: 查封设施余款
+    ko: 압류 시설 잔액
+    ru:
+    de:
+    uncertain: [ru, de]
+  receiver_advance:
+    ja: 管財人の運転資金（政府）
+    en: Receiver's Working Capital (Government)
+    zh: 接管人运营资金（政府）
+    ko:
+    ru:
+    de:
+    uncertain: [ko, ru, de]
+    note: 管財人は破綻処理の役職名。訳語の確定が要る
+  receiver_repayment:
+    ja: 管財人の運転資金の返済
+    en: Repayment of Receiver's Working Capital
+    zh: 偿还接管人运营资金
+    ko:
+    ru:
+    de:
+    uncertain: [ko, ru, de]
+  bank_transfer:
+    ja: 銀行の引き継ぎ
+    en: Bank Takeover Transfer
+    zh: 银行移交
+    ko: 은행 인수
+    ru: Передача банка
+    de: Bankübernahme
+  bank_merger:
+    ja: 銀行の合併の代金
+    en: Bank Merger Payment
+    zh: 银行合并款项
+    ko: 은행 합병 대금
+    ru: Платёж при слиянии банков
+    de: Zahlung bei Bankenfusion
+  bank_bailout:
+    ja: 公的資金
+    en: Public Funds (Bank Bailout)
+    zh: 公共资金
+    ko: 공적 자금
+    ru: Государственная помощь
+    de: Öffentliche Mittel
+  deposit_insurance:
+    ja: 預金保護
+    en: Deposit Insurance
+    zh: 存款保险
+    ko: 예금 보호
+    ru: Страхование вкладов
+    de: Einlagensicherung
+  deposit_cut:
+    ja: 預金の切り捨て
+    en: Deposit Haircut
+    zh: 存款减记
+    ko: 예금 삭감
+    ru: Списание части вкладов
+    de: Einlagenkürzung
+  interbank_loss:
+    ja: 銀行間の貸し倒れ
+    en: Interbank Bad Debt
+    zh: 银行间坏账
+    ko: 은행 간 대손
+    ru: Межбанковские безнадёжные долги
+    de: Interbanken-Forderungsausfall
+  subsidy:
+    ja: 補助金
+    en: Subsidy
+    zh: 补贴
+    ko: 보조금
+    ru: Субсидия
+    de: Subvention
+  subsidy_refund:
+    ja: 補助金の返還
+    en: Subsidy Refund
+    zh: 补贴返还
+    ko: 보조금 반환
+    ru: Возврат субсидии
+    de: Rückzahlung der Subvention
+  nationalization:
+    ja: 国有化の買い取り
+    en: Nationalization Buyout
+    zh: 国有化收购
+    ko: 국유화 매입
+    ru: Выкуп при национализации
+    de: Aufkauf bei Verstaatlichung
+  privatization:
+    ja: 民営化の売却
+    en: Privatization Sale
+    zh: 民营化出售
+    ko: 민영화 매각
+    ru: Продажа при приватизации
+    de: Verkauf bei Privatisierung
+  bond_issue:
+    ja: 国債の発行
+    en: Government Bond Issuance
+    zh: 国债发行
+    ko: 국채 발행
+    ru: Выпуск гособлигаций
+    de: Ausgabe von Staatsanleihen
+  bond_purchase:
+    ja: 国債の買い入れ
+    en: Government Bond Purchase
+    zh: 国债买入
+    ko: 국채 매입
+    ru: Покупка гособлигаций
+    de: Ankauf von Staatsanleihen
+  bond_interest:
+    ja: 国債の利払い
+    en: Government Bond Interest
+    zh: 国债利息
+    ko: 국채 이자
+    ru: Проценты по гособлигациям
+    de: Zinsen auf Staatsanleihen
+  bond_redemption:
+    ja: 国債の償還
+    en: Government Bond Redemption
+    zh: 国债偿还
+    ko: 국채 상환
+    ru: Погашение гособлигаций
+    de: Tilgung von Staatsanleihen
+  bond_trade:
+    ja: 国債の売買
+    en: Government Bond Trading
+    zh: 国债买卖
+    ko: 국채 매매
+    ru: Торговля гособлигациями
+    de: Handel mit Staatsanleihen
+  bond_default:
+    ja: 国債の不履行
+    en: Government Bond Default
+    zh: 国债违约
+    ko: 국채 채무 불이행
+    ru: Дефолт по гособлигациям
+    de: Staatsanleihen-Ausfall
+  layer_transfer:
+    ja: 層の移動
+    en:
+    zh:
+    ko:
+    ru:
+    de:
+    uncertain: [en, zh, ko, ru, de]
+    note: 「層」はゲーム固有の概念。意味を確かめてから訳す
+  housing_rent:
+    ja: 国の床の家賃
+    en:
+    zh:
+    ko:
+    ru:
+    de:
+    uncertain: [en, zh, ko, ru, de]
+    note: 「国の床」はゲーム固有の概念（国営住宅の仕組み）。意味を確かめてから訳す
+  wage_arrears:
+    ja: 賃金の未払い
+    en: Wage Arrears
+    zh: 拖欠工资
+    ko: 임금 체불
+    ru: Задолженность по зарплате
+    de: Lohnrückstände
+  wage_arrears_paid:
+    ja: 未払い賃金の支払い
+    en: Payment of Wage Arrears
+    zh: 支付拖欠工资
+    ko: 체불 임금 지급
+    ru: Выплата задолженности по зарплате
+    de: Auszahlung von Lohnrückständen
+  wage_arrears_lost:
+    ja: 未払い賃金の切り捨て
+    en: Write-Off of Wage Arrears
+    zh: 核销拖欠工资
+    ko: 체불 임금 삭감
+    ru: Списание задолженности по зарплате
+    de: Abschreibung von Lohnrückständen
+  tax_arrears:
+    ja: 税の未払い
+    en: Tax Arrears
+    zh: 欠税
+    ko: 세금 체납
+    ru: Налоговая задолженность
+    de: Steuerrückstände
+  tax_arrears_paid:
+    ja: 未払いの税の支払い
+    en: Payment of Tax Arrears
+    zh: 缴纳欠税
+    ko: 체납 세금 납부
+    ru: Уплата налоговой задолженности
+    de: Begleichung von Steuerrückständen
+  tax_arrears_lost:
+    ja: 未払いの税の切り捨て
+    en: Write-Off of Tax Arrears
+    zh: 核销欠税
+    ko: 체납 세금 삭감
+    ru: Списание налоговой задолженности
+    de: Abschreibung von Steuerrückständen
+  trade:
+    ja: 貿易圏の市場の代金
+    en: Trade Bloc Market Proceeds
+    zh: 贸易区市场款项
+    ko: 무역권 시장 대금
+    ru: Выручка рынка торгового блока
+    de: Erlöse des Handelsblock-Marktes
+  fx_exchange:
+    ja: 為替の売り買い
+    en: Foreign Exchange Trading
+    zh: 外汇买卖
+    ko: 외환 매매
+    ru: Валютные операции
+    de: Devisenhandel
+  port_fee:
+    ja: 港の使用料
+    en: Port Fee
+    zh: 港口使用费
+    ko: 항만 사용료
+    ru: Портовый сбор
+    de: Hafengebühr
+  shipping_freight:
+    ja: 船の運賃
+    en: Shipping Freight
+    zh: 船舶运费
+    ko: 선박 운임
+    ru: Морской фрахт
+    de: Seefracht
+  merchant:
+    ja: 海外の商人への代金
+    en: Payment to Foreign Merchant
+    zh: 付海外商人款项
+    ko: 해외 상인 대금
+    ru: Платёж иностранному купцу
+    de: Zahlung an ausländischen Händler
+  merchant_export:
+    ja: 海外の商人が買った物の代金
+    en: Proceeds from Foreign Merchant Purchases
+    zh: 海外商人购货款
+    ko: 해외 상인 구매 대금
+    ru: Выручка от продаж иностранным купцам
+    de: Erlöse aus Verkäufen an ausländische Händler
+  tariff:
+    ja: 関税
+    en: Tariff
+    zh: 关税
+    ko: 관세
+    ru: Пошлина
+    de: Zoll
+  export_subsidy:
+    ja: 輸出補助金
+    en: Export Subsidy
+    zh: 出口补贴
+    ko: 수출 보조금
+    ru: Экспортная субсидия
+    de: Exportsubvention
+  price_gap_subsidy:
+    ja: 価格差の補給金
+    en: Price Gap Subsidy
+    zh: 价格差补贴
+    ko: 가격차 보전금
+    ru: Компенсация разницы цен
+    de: Preisdifferenzausgleich
+  fx_intervention:
+    ja: 為替の介入
+    en: FX Intervention
+    zh: 外汇干预
+    ko: 외환 개입
+    ru: Валютная интервенция
+    de: Devisenintervention
+  aid:
+    ja: 援助
+    en: Aid
+    zh: 援助
+    ko: 원조
+    ru: Помощь
+    de: Hilfe
+  remittance:
+    ja: 仕送り
+    en: Remittance
+    zh: 汇款
+    ko: 송금
+    ru: Денежный перевод
+    de: Überweisung
+  migrant_deposits:
+    ja: 移民の持ち出した預金
+    en: Deposits Taken Out by Emigrants
+    zh: 移民带走的存款
+    ko: 이민자가 가져간 예금
+    ru: Вклады, выведенные эмигрантами
+    de: Von Auswanderern mitgenommene Einlagen
+  emigrant_seized:
+    ja: 出国した人の預金の引き取り
+    en: Collection of Departed Persons' Deposits
+    zh: 收取离境者存款
+    ko:
+    ru:
+    de:
+    uncertain: [ko, ru, de]
+  fx_swap:
+    ja: 中央銀行どうしの融通
+    en: Central Bank Swap
+    zh: 中央银行互换
+    ko: 중앙은행 통화 스와프
+    ru: Своп между центральными банками
+    de: Zentralbank-Swap
+  swap_interest:
+    ja: 中央銀行どうしの融通の利子
+    en: Central Bank Swap Interest
+    zh: 中央银行互换利息
+    ko: 중앙은행 스와프 이자
+    ru: Проценты по свопу центральных банков
+    de: Zinsen auf Zentralbank-Swap
+  fx_deposit:
+    ja: 外貨の預け入れと引き出し（計画経済）
+    en: Foreign Currency Deposits & Withdrawals (Planned Economy)
+    zh: 外币存取（计划经济）
+    ko:
+    ru: Внесение и снятие иностранной валюты (плановая экономика)
+    de: Fremdwährungs-Ein- und Auszahlungen (Planwirtschaft)
+    uncertain: [ko]
+  fx_plan_loan:
+    ja: 融通で借りた外貨の受け渡し（計画経済）
+    en: Delivery of Swap-Borrowed Foreign Currency (Planned Economy)
+    zh:
+    ko:
+    ru:
+    de:
+    uncertain: [zh, ko, ru, de]
+    note: 言い回しが固い。仕組みを確かめてから訳す
+  bond_1y:
+    ja: 1年国債
+    en: 1-Year Government Bond
+    zh: 1年期国债
+    ko: 1년 국채
+    ru: 1-летние гособлигации
+    de: 1-jährige Staatsanleihe
+  bond_5y:
+    ja: 5年国債
+    en: 5-Year Government Bond
+    zh: 5年期国债
+    ko: 5년 국채
+    ru: 5-летние гособлигации
+    de: 5-jährige Staatsanleihe
+  bond_10y:
+    ja: 10年国債
+    en: 10-Year Government Bond
+    zh: 10年期国债
+    ko: 10년 국채
+    ru: 10-летние гособлигации
+    de: 10-jährige Staatsanleihe
+  firm_sweep:
+    ja: 企業への資金の吸い上げ
+    en: Fund Sweep from Firms
+    zh:
+    ko:
+    ru:
+    de:
+    uncertain: [zh, ko, ru, de]
+    note: 「吸い上げ」はゲーム内の言い回し。仕組みを確かめてから訳す
+  firm_support:
+    ja: 企業からの資金の支え
+    en: Fund Support from Firms
+    zh:
+    ko:
+    ru:
+    de:
+    uncertain: [zh, ko, ru, de]
+    note: 「支え」はゲーム内の言い回し。仕組みを確かめてから訳す
+
+# 出どころ: locale/ja/orders.yaml
+orders:
+  rename_island:
+    ja: 国名の変更
+    en: Rename Country
+    zh: 更改国名
+    ko: 국명 변경
+    ru: Переименование страны
+    de: Land umbenennen
+  rename_place:
+    ja: 地名の変更
+    en: Rename Place
+    zh: 更改地名
+    ko: 지명 변경
+    ru: Переименование места
+    de: Ortsname ändern
+  rename_facility:
+    ja: 施設名の変更
+    en: Rename Facility
+    zh: 更改设施名
+    ko: 시설명 변경
+    ru: Переименование объекта
+    de: Anlage umbenennen
+  build:
+    ja: 施設の建設
+    en: Build Facility
+    zh: 建设设施
+    ko: 시설 건설
+    ru: Строительство объекта
+    de: Anlage bauen
+  demolish:
+    ja: 撤去
+    en: Demolish
+    zh: 拆除
+    ko: 철거
+    ru: Снос
+    de: Abriss
+  build_housing:
+    ja: 住宅の建設（国の床）
+    en:
+    zh:
+    ko:
+    ru:
+    de:
+    uncertain: [en, zh, ko, ru, de]
+    note: 「国の床」はゲーム固有の概念。意味を確かめてから訳す
+  force_relocate:
+    ja: 強制移住
+    en: Forced Relocation
+    zh: 强制迁移
+    ko: 강제 이주
+    ru: Принудительное переселение
+    de: Zwangsumsiedlung
+  explore:
+    ja: 探鉱
+    en: Prospecting
+    zh: 探矿
+    ko: 탐광
+    ru: Геологоразведка
+    de: Prospektierung
+  build_power_line:
+    ja: 送電線の敷設
+    en: Build Power Lines
+    zh: 铺设输电线
+    ko: 송전선 부설
+    ru: Прокладка линий электропередач
+    de: Stromleitungen verlegen
+  build_infrastructure:
+    ja: インフラの工事
+    en: Infrastructure Works
+    zh: 基础设施工程
+    ko: 인프라 공사
+    ru: Инфраструктурные работы
+    de: Infrastrukturarbeiten
+  set_no_development:
+    ja: 開発禁止区域の指定
+    en: Designate No-Development Zone
+    zh: 指定禁建区
+    ko: 개발 금지 구역 지정
+    ru: Назначение зоны запрета застройки
+    de: Entwicklungsverbotszone ausweisen
+  set_priority:
+    ja: 優先度の変更
+    en: Change Priority
+    zh: 更改优先级
+    ko: 우선순위 변경
+    ru: Изменение приоритета
+    de: Priorität ändern
+  change_recipe:
+    ja: 生産方式の変更
+    en: Change Production Method
+    zh: 更改生产方式
+    ko: 생산 방식 변경
+    ru: Изменение способа производства
+    de: Produktionsweise ändern
+  set_taxes:
+    ja: 税率の変更
+    en: Change Tax Rates
+    zh: 更改税率
+    ko: 세율 변경
+    ru: Изменение налоговых ставок
+    de: Steuersätze ändern
+  set_budget:
+    ja: 予算の変更
+    en: Change Budget
+    zh: 更改预算
+    ko: 예산 변경
+    ru: Изменение бюджета
+    de: Budget ändern
+  set_public_works:
+    ja: 公共事業の決まり（役所の決まった事業と優先度）
+    en: Public Works Rules (Standing Works & Priorities)
+    zh:
+    ko:
+    ru:
+    de:
+    uncertain: [zh, ko, ru, de]
+    note: 「役所の決まった事業」はゲーム内の言い回し
+  set_labor_policy:
+    ja: 最低賃金・失業手当・解雇の決まりの変更
+    en: Change Labor Rules (Minimum Wage, Benefits, Dismissal)
+    zh: 更改劳动规则（最低工资、失业补贴、解雇）
+    ko:
+    ru: Изменение трудовых правил (минимальная зарплата, пособия, увольнения)
+    de: Arbeitsregeln ändern (Mindestlohn, Arbeitslosengeld, Kündigung)
+    uncertain: [ko]
+  set_retail_policy:
+    ja: 小売りの政策の変更
+    en: Change Retail Policy
+    zh: 更改零售政策
+    ko: 소매 정책 변경
+    ru: Изменение политики розничной торговли
+    de: Einzelhandelspolitik ändern
+  set_price_cap:
+    ja: 値段の上限（公共料金など）の変更
+    en: Change Price Caps (Utilities etc.)
+    zh: 更改价格上限（公共费用等）
+    ko: 가격 상한 변경 (공공요금 등)
+    ru: Изменение предельных цен (коммунальные услуги и др.)
+    de: Preisobergrenzen ändern (öffentliche Tarife u. a.)
+  warehouse_trade:
+    ja: 国の倉庫のこのターンの売り買い
+    en: State Warehouse Trading (This Turn)
+    zh: 国家仓库本回合买卖
+    ko:
+    ru:
+    de:
+    uncertain: [ko, ru, de]
+  set_warehouse_standing:
+    ja: 国の倉庫の決まった売り買い
+    en: State Warehouse Standing Orders
+    zh:
+    ko:
+    ru:
+    de:
+    uncertain: [zh, ko, ru, de]
+    note: 「決まった売り買い」はゲーム内の言い回し
+  set_warehouse_release:
+    ja: 備蓄の放出の決まり
+    en: Reserve Release Rules
+    zh: 储备释放规则
+    ko: 비축 방출 규칙
+    ru: Правила высвобождения резервов
+    de: Regeln zur Reservefreigabe
+  set_accounting:
+    ja: 国営施設の会計方式の変更
+    en: Change Accounting Method of State Facilities
+    zh: 更改国有设施会计方式
+    ko: 국영 시설 회계 방식 변경
+    ru: Изменение метода учёта государственных объектов
+    de: Abrechnungsweise staatlicher Anlagen ändern
+  set_zone:
+    ja: 工業団地・オフィス街の指定
+    en: Designate Industrial Park / Office District
+    zh: 指定工业园区与办公区
+    ko: 공업 단지·오피스 지구 지정
+    ru: Назначение промзоны и делового района
+    de: Industriegebiet / Büroviertel ausweisen
+  set_subsidy:
+    ja: 補助金の変更
+    en: Change Subsidies
+    zh: 更改补贴
+    ko: 보조금 변경
+    ru: Изменение субсидий
+    de: Subventionen ändern
+  nationalize:
+    ja: 国有化
+    en: Nationalize
+    zh: 国有化
+    ko: 국유화
+    ru: Национализация
+    de: Verstaatlichung
+  privatize:
+    ja: 民営化
+    en: Privatize
+    zh: 民营化
+    ko: 민영화
+    ru: Приватизация
+    de: Privatisierung
+  nationalize_firm:
+    ja: 企業の国有化
+    en: Nationalize Firm
+    zh: 企业国有化
+    ko: 기업 국유화
+    ru: Национализация предприятия
+    de: Unternehmen verstaatlichen
+  privatize_firm:
+    ja: 国営企業の民営化
+    en: Privatize State Firm
+    zh: 国有企业民营化
+    ko: 국영 기업 민영화
+    ru: Приватизация госпредприятия
+    de: Staatsunternehmen privatisieren
+  set_monetary_policy:
+    ja: 金融政策の変更
+    en: Change Monetary Policy
+    zh: 更改货币政策
+    ko: 금융 정책 변경
+    ru: Изменение денежно-кредитной политики
+    de: Geldpolitik ändern
+  set_central_bank_independence:
+    ja: 中央銀行の独立
+    en: Central Bank Independence
+    zh: 中央银行独立性
+    ko: 중앙은행 독립
+    ru: Независимость центрального банка
+    de: Unabhängigkeit der Zentralbank
+  set_bond_policy:
+    ja: 国債の政策の変更
+    en: Change Bond Policy
+    zh: 更改国债政策
+    ko: 국채 정책 변경
+    ru: Изменение политики гособлигаций
+    de: Anleihepolitik ändern
+  set_bond_payment:
+    ja: 国債の利払いの停止・再開
+    en: Suspend/Resume Bond Interest Payments
+    zh: 停止/恢复国债付息
+    ko: 국채 이자 지급 중단·재개
+    ru: Приостановка/возобновление выплат по гособлигациям
+    de: Zinszahlungen für Staatsanleihen aussetzen/wieder aufnehmen
+  set_bank_policy:
+    ja: 銀行の政策の変更
+    en: Change Bank Policy
+    zh: 更改银行政策
+    ko: 은행 정책 변경
+    ru: Изменение банковской политики
+    de: Bankenpolitik ändern
+  grant_bank_license:
+    ja: 銀行の免許
+    en: Grant Bank License
+    zh: 颁发银行牌照
+    ko: 은행 면허 부여
+    ru: Выдача банковской лицензии
+    de: Banklizenz erteilen
+  emergency_loan:
+    ja: 銀行への緊急の貸し出し
+    en: Emergency Loan to Bank
+    zh: 向银行紧急贷款
+    ko: 은행 긴급 대출
+    ru: Экстренный кредит банку
+    de: Notkredit an Bank
+  resolve_bank:
+    ja: 破綻した銀行の処理
+    en: Resolve Failed Bank
+    zh: 处理破产银行
+    ko: 파산 은행 처리
+    ru:
+    de: Abwicklung einer gescheiterten Bank
+    uncertain: [ru]
+  create_bloc:
+    ja: 貿易圏を作る
+    en: Create Trade Bloc
+    zh: 建立贸易区
+    ko: 무역권 창설
+    ru: Создание торгового блока
+    de: Handelsblock gründen
+  join_bloc:
+    ja: 貿易圏に入る
+    en: Join Trade Bloc
+    zh: 加入贸易区
+    ko: 무역권 가입
+    ru: Вступление в торговый блок
+    de: Handelsblock beitreten
+  leave_bloc:
+    ja: 貿易圏を抜ける
+    en: Leave Trade Bloc
+    zh: 退出贸易区
+    ko: 무역권 탈퇴
+    ru: Выход из торгового блока
+    de: Handelsblock verlassen
+  bloc_settings:
+    ja: 貿易圏の設定
+    en: Trade Bloc Settings
+    zh: 贸易区设置
+    ko: 무역권 설정
+    ru: Настройки торгового блока
+    de: Einstellungen des Handelsblocks
+  transfer_bloc:
+    ja: 貿易圏の代表を譲る
+    en: Transfer Bloc Leadership
+    zh: 转让贸易区代表
+    ko: 무역권 대표 양도
+    ru: Передача лидерства в блоке
+    de: Blockführung übertragen
+  take_over_bloc:
+    ja: 貿易圏の代表を引き継ぐ
+    en: Take Over Bloc Leadership
+    zh: 接任贸易区代表
+    ko: 무역권 대표 인수
+    ru: Принятие лидерства в блоке
+    de: Blockführung übernehmen
+  propose_contract:
+    ja: 二国間契約の申し込み
+    en: Propose Bilateral Contract
+    zh: 提出双边合同
+    ko: 양자 계약 신청
+    ru: Предложение двустороннего контракта
+    de: Bilateralen Vertrag vorschlagen
+  accept_contract:
+    ja: 二国間契約を受ける
+    en: Accept Bilateral Contract
+    zh: 接受双边合同
+    ko: 양자 계약 수락
+    ru: Принятие двустороннего контракта
+    de: Bilateralen Vertrag annehmen
+  cancel_contract:
+    ja: 二国間契約をやめる
+    en: Cancel Bilateral Contract
+    zh: 取消双边合同
+    ko: 양자 계약 해지
+    ru: Расторжение двустороннего контракта
+    de: Bilateralen Vertrag kündigen
+  set_contract_delivery:
+    ja: 契約で届いた物の行き先を替える
+    en: Change Destination of Contract Deliveries
+    zh:
+    ko:
+    ru:
+    de:
+    uncertain: [zh, ko, ru, de]
+  propose_contract_change:
+    ja: 二国間契約の条件の変更を申し込む
+    en: Propose Bilateral Contract Change
+    zh: 提出双边合同条件变更
+    ko: 양자 계약 조건 변경 신청
+    ru: Предложение изменения условий контракта
+    de: Änderung des bilateralen Vertrags vorschlagen
+  accept_contract_change:
+    ja: 二国間契約の条件の変更を受ける
+    en: Accept Bilateral Contract Change
+    zh: 接受双边合同条件变更
+    ko: 양자 계약 조건 변경 수락
+    ru: Принятие изменения условий контракта
+    de: Änderung des bilateralen Vertrags annehmen
+  set_tariff:
+    ja: 関税
+    en: Set Tariff
+    zh: 设置关税
+    ko: 관세 설정
+    ru: Установка пошлин
+    de: Zoll festlegen
+  set_export_subsidy:
+    ja: 輸出補助
+    en: Set Export Subsidy
+    zh: 设置出口补贴
+    ko: 수출 보조 설정
+    ru: Установка экспортной субсидии
+    de: Exportsubvention festlegen
+  set_import_quota:
+    ja: 輸入の割り当て
+    en: Set Import Quota
+    zh: 设置进口配额
+    ko: 수입 할당 설정
+    ru: Установка импортной квоты
+    de: Importquote festlegen
+  set_embargo:
+    ja: 禁輸
+    en: Set Embargo
+    zh: 设置禁运
+    ko: 금수 설정
+    ru: Установка эмбарго
+    de: Embargo verhängen
+  set_ship_lending:
+    ja: 船の貸し出し
+    en: Ship Lending
+    zh: 船舶借贷
+    ko: 선박 대여
+    ru: Аренда судов
+    de: Schiffsverleih
+  send_aid:
+    ja: 援助
+    en: Send Aid
+    zh: 提供援助
+    ko: 원조 제공
+    ru: Отправка помощи
+    de: Hilfe senden
+  set_capital_controls:
+    ja: 資本取引の制限
+    en: Capital Controls
+    zh: 资本交易限制
+    ko: 자본 거래 제한
+    ru: Ограничения на движение капитала
+    de: Kapitalverkehrskontrollen
+  set_fx_intervention:
+    ja: 為替の介入
+    en: FX Intervention
+    zh: 外汇干预
+    ko: 외환 개입
+    ru: Валютная интервенция
+    de: Devisenintervention
+  set_fx_peg:
+    ja: 固定相場
+    en: Fixed Exchange Rate
+    zh: 固定汇率
+    ko: 고정 환율
+    ru: Фиксированный курс
+    de: Fester Wechselkurs
+  set_foreign_bonds:
+    ja: 外国の国債の売り買い
+    en: Trade Foreign Government Bonds
+    zh: 买卖外国国债
+    ko: 외국 국채 매매
+    ru: Торговля иностранными гособлигациями
+    de: Mit ausländischen Staatsanleihen handeln
+  set_press:
+    ja: 報道と集会の扱い
+    en: Press & Assembly Policy
+    zh: 新闻与集会政策
+    ko:
+    ru: Политика в отношении прессы и собраний
+    de: Umgang mit Presse und Versammlungen
+    uncertain: [ko]
+    note: ja の「扱い」は政策の度合いを指す
+  set_immigration:
+    ja: 移民の受け入れ
+    en: Immigration Policy
+    zh: 移民接纳
+    ko: 이민 수용
+    ru: Приём иммигрантов
+    de: Einwanderung
+  set_emigration:
+    ja: 出国の扱い
+    en: Emigration Policy
+    zh: 出境政策
+    ko:
+    ru: Политика в отношении выезда
+    de: Umgang mit Ausreise
+    uncertain: [ko]
+  dissolve_parliament:
+    ja: 議会の解散
+    en: Dissolve Parliament
+    zh: 解散议会
+    ko: 의회 해산
+    ru: Роспуск парламента
+    de: Parlament auflösen
+  amend_constitution:
+    ja: 憲法改正
+    en: Amend Constitution
+    zh: 修改宪法
+    ko: 헌법 개정
+    ru: Поправка к конституции
+    de: Verfassungsänderung
+  change_economy:
+    ja: 経済体制の変更
+    en: Change Economic System
+    zh: 更改经济体制
+    ko: 경제 체제 변경
+    ru: Изменение экономической системы
+    de: Wirtschaftssystem ändern
+  mobilize_labor:
+    ja: 労働の動員
+    en: Labor Mobilization
+    zh: 劳动动员
+    ko: 노동 동원
+    ru: Трудовая мобилизация
+    de: Arbeitsmobilisierung
+  rename_leader:
+    ja: 国家元首の名前
+    en: Rename Head of State
+    zh: 更改国家元首名
+    ko: 국가 원수 이름 변경
+    ru: Переименование главы государства
+    de: Staatsoberhaupt umbenennen
+  set_official_price:
+    ja: 公定価格の変更
+    en: Change Official Prices
+    zh: 更改官方价格
+    ko:
+    ru: Изменение официальных цен
+    de: Amtliche Preise ändern
+    uncertain: [ko]
+    note: 公定価格の韓訳は「공정 가격（公正価格）」と紛らわしい
+  review_official_prices:
+    ja: 公定価格の改定
+    en: Revise Official Prices
+    zh: 修订官方价格
+    ko:
+    ru: Пересмотр официальных цен
+    de: Amtliche Preise überarbeiten
+    uncertain: [ko]
+  set_official_price_rules:
+    ja: 公定価格の決まりの変更
+    en: Change Official Price Rules
+    zh: 更改官方定价规则
+    ko:
+    ru: Изменение правил официальных цен
+    de: Regeln für amtliche Preise ändern
+    uncertain: [ko]
+  set_retail_price:
+    ja: 小売の値段の変更
+    en: Change Retail Prices
+    zh: 更改零售价格
+    ko: 소매 가격 변경
+    ru: Изменение розничных цен
+    de: Einzelhandelspreise ändern
+  set_priority_industries:
+    ja: 重点産業の変更
+    en: Change Priority Industries
+    zh: 更改重点产业
+    ko: 중점 산업 변경
+    ru: Изменение приоритетных отраслей
+    de: Schwerpunktindustrien ändern
+  set_staff_plan:
+    ja: 人員計画
+    en: Staffing Plan
+    zh: 人员计划
+    ko: 인원 계획
+    ru: Кадровый план
+    de: Personalplan
+  set_export_plan:
+    ja: 輸出の計画
+    en: Export Plan
+    zh: 出口计划
+    ko: 수출 계획
+    ru: Экспортный план
+    de: Exportplan
+  set_price_floor:
+    ja: 値段の下限の変更
+    en: Change Price Floors
+    zh: 更改价格下限
+    ko: 가격 하한 변경
+    ru: Изменение минимальных цен
+    de: Preisuntergrenzen ändern
+  declare_war:
+    ja: 宣戦布告
+    en: Declare War
+    zh: 宣战
+    ko: 선전 포고
+    ru: Объявление войны
+    de: Kriegserklärung
+  propose_treaty:
+    ja: 条約の提案
+    en: Propose Treaty
+    zh: 提出条约
+    ko: 조약 제안
+    ru: Предложение договора
+    de: Vertrag vorschlagen
+  sign_treaty:
+    ja: 条約への署名
+    en: Sign Treaty
+    zh: 签署条约
+    ko: 조약 서명
+    ru: Подписание договора
+    de: Vertrag unterzeichnen
+  refuse_treaty:
+    ja: 条約を断る
+    en: Refuse Treaty
+    zh: 拒绝条约
+    ko: 조약 거절
+    ru: Отклонение договора
+    de: Vertrag ablehnen
+  withdraw_treaty:
+    ja: 条約の提案の取り下げ
+    en: Withdraw Treaty Proposal
+    zh: 撤回条约提案
+    ko: 조약 제안 철회
+    ru: Отзыв предложения договора
+    de: Vertragsvorschlag zurückziehen
+  denounce_treaty:
+    ja: 条約の破棄
+    en: Denounce Treaty
+    zh: 废除条约
+    ko: 조약 파기
+    ru: Денонсация договора
+    de: Vertrag kündigen
+  set_defense:
+    ja: 国防費の変更
+    en: Change Defense Spending
+    zh: 更改国防开支
+    ko: 국방비 변경
+    ru: Изменение оборонных расходов
+    de: Verteidigungsausgaben ändern
+  recruit:
+    ja: 志願兵の募集
+    en: Recruit Volunteers
+    zh: 招募志愿兵
+    ko: 지원병 모집
+    ru: Набор добровольцев
+    de: Freiwillige rekrutieren
+  conscript:
+    ja: 徴兵
+    en: Conscription
+    zh: 征兵
+    ko: 징병
+    ru: Призыв
+    de: Wehrpflicht
+  discharge:
+    ja: 除隊
+    en: Discharge
+    zh: 退伍
+    ko: 전역
+    ru: Увольнение из армии
+    de: Entlassung aus dem Dienst
+  form_unit:
+    ja: 部隊の編成
+    en: Form Unit
+    zh: 组建部队
+    ko: 부대 편성
+    ru: Формирование подразделения
+    de: Einheit aufstellen
+  disband_unit:
+    ja: 部隊の解散
+    en: Disband Unit
+    zh: 解散部队
+    ko: 부대 해산
+    ru: Расформирование подразделения
+    de: Einheit auflösen
+  move_unit:
+    ja: 部隊の移動
+    en: Move Unit
+    zh: 移动部队
+    ko: 부대 이동
+    ru: Передвижение подразделения
+    de: Einheit bewegen
+  dig_trench:
+    ja: 陣地を掘る
+    en: Dig Trenches
+    zh: 挖掘阵地
+    ko: 진지 구축
+    ru: Рытьё окопов
+    de: Stellungen ausheben
+  stop_unit:
+    ja: 部隊の命令を止める
+    en: Stop Unit Orders
+    zh: 停止部队命令
+    ko: 부대 명령 중지
+    ru: Остановка приказов подразделению
+    de: Einheitsbefehle stoppen
+  form_fleet:
+    ja: 艦隊の編成
+    en: Form Fleet
+    zh: 组建舰队
+    ko: 함대 편성
+    ru: Формирование флота
+    de: Flotte aufstellen
+  sail_fleet:
+    ja: 艦隊の航海
+    en: Sail Fleet
+    zh: 舰队航行
+    ko: 함대 항해
+    ru: Плавание флота
+    de: Flotte in See stechen lassen
+  fleet_duty:
+    ja: 艦隊の務め（護衛・見張り・封鎖）
+    en: Fleet Duties (Escort, Patrol, Blockade)
+    zh: 舰队任务（护卫、巡逻、封锁）
+    ko: 함대 임무 (호위·경계·봉쇄)
+    ru: Задачи флота (эскорт, дозор, блокада)
+    de: Flottenaufgaben (Geleit, Wache, Blockade)
+  set_neutral_ships:
+    ja: 中立国の船の扱い
+    en: Neutral Ships Policy
+    zh: 中立国船只政策
+    ko:
+    ru: Политика в отношении судов нейтральных стран
+    de: Umgang mit Schiffen neutraler Länder
+    uncertain: [ko]
+  fire_missile:
+    ja: ミサイル攻撃
+    en: Missile Attack
+    zh: 导弹攻击
+    ko: 미사일 공격
+    ru: Ракетный удар
+    de: Raketenangriff
+  load_unit:
+    ja: 部隊を船に載せる
+    en: Embark Unit
+    zh: 部队登船
+    ko: 부대 승선
+    ru: Посадка подразделения на судно
+    de: Einheit einschiffen
+  unload_unit:
+    ja: 部隊を船から降ろす
+    en: Disembark Unit
+    zh: 部队下船
+    ko: 부대 하선
+    ru: Высадка подразделения
+    de: Einheit ausschiffen
+  load_supplies:
+    ja: 輸送船団に補給を積む
+    en: Load Supplies onto Convoy
+    zh: 给运输船队装载补给
+    ko: 수송 선단에 보급 적재
+    ru: Погрузка снабжения на конвой
+    de: Versorgung auf Konvoi laden
+  set_requisition:
+    ja: 占領地の取り立てを切り替える
+    en: Toggle Requisition in Occupied Territory
+    zh:
+    ko:
+    ru:
+    de:
+    uncertain: [zh, ko, ru, de]
+    note: 「取り立て」は占領地からの徴収を指すゲーム内の言い回し
+  choose_regime:
+    ja: 体制を選び直す
+    en: Re-Choose Regime
+    zh: 重新选择体制
+    ko: 체제 재선택
+    ru: Повторный выбор строя
+    de: Regime erneut wählen
+
+# 出どころ: locale/ja/start_island.yaml
+start_island:
+  default:
+    ja: 標準
+    en: Standard
+    zh: 标准
+    ko: 표준
+    ru: Стандартный
+    de: Standard
+
+# 核になる言葉（出どころ: locale/ja/messages.yaml の文面）
+core:
+  turn:
+    ja: ターン
+    en: Turn
+    zh: 回合
+    ko: 턴
+    ru: Ход
+    de: Runde
+  cell:
+    ja: マス
+    en: Tile
+    zh: 格
+    ko: 칸
+    ru: Клетка
+    de: Feld
+  island:
+    ja: 島
+    en: Island
+    zh: 岛屿
+    ko: 섬
+    ru: Остров
+    de: Insel
+  country:
+    ja: 国
+    en: Country
+    zh: 国家
+    ko: 국가
+    ru: Страна
+    de: Land
+  capital:
+    ja: 首都
+    en: Capital
+    zh: 首都
+    ko: 수도
+    ru: Столица
+    de: Hauptstadt
+  population:
+    ja: 人口
+    en: Population
+    zh: 人口
+    ko: 인구
+    ru: Население
+    de: Bevölkerung
+  funds:
+    ja: 資金
+    en: Funds
+    zh: 资金
+    ko: 자금
+    ru: Средства
+    de: Geldmittel
+  budget:
+    ja: 予算
+    en: Budget
+    zh: 预算
+    ko: 예산
+    ru: Бюджет
+    de: Budget
+  tax_rate:
+    ja: 税率
+    en: Tax Rate
+    zh: 税率
+    ko: 세율
+    ru: Налоговая ставка
+    de: Steuersatz
+  government_bond:
+    ja: 国債
+    en: Government Bond
+    zh: 国债
+    ko: 국채
+    ru: Гособлигации
+    de: Staatsanleihe
+  debt:
+    ja: 債務
+    en: Debt
+    zh: 债务
+    ko: 채무
+    ru: Долг
+    de: Schulden
+  admin_power:
+    ja: 行政力
+    en: Administrative Power
+    zh: 行政力
+    ko: 행정력
+    ru: Административный ресурс
+    de: Verwaltungskraft
+    note: 行政を回す力の残量を指すゲームの言葉
+  scale:
+    ja: 規模
+    en: Scale
+    zh: 规模
+    ko: 규모
+    ru: Масштаб
+    de: Größe
+    note: 施設の規模（段）を指すことが多い
+  stock:
+    ja: 在庫
+    en: Stock
+    zh: 库存
+    ko: 재고
+    ru: Запасы
+    de: Bestand
+  warehouse:
+    ja: 倉庫
+    en: Warehouse
+    zh: 仓库
+    ko: 창고
+    ru: Склад
+    de: Lager
+  reserves:
+    ja: 備蓄
+    en: Reserves
+    zh: 储备
+    ko: 비축
+    ru: Резервы
+    de: Reserven
+  export:
+    ja: 輸出
+    en: Export
+    zh: 出口
+    ko: 수출
+    ru: Экспорт
+    de: Export
+  import:
+    ja: 輸入
+    en: Import
+    zh: 进口
+    ko: 수입
+    ru: Импорт
+    de: Import
+  trade:
+    ja: 貿易
+    en: Trade
+    zh: 贸易
+    ko: 무역
+    ru: Торговля
+    de: Handel
+  trade_bloc:
+    ja: 貿易圏
+    en: Trade Bloc
+    zh: 贸易区
+    ko: 무역권
+    ru: Торговый блок
+    de: Handelsblock
+  contract:
+    ja: 契約
+    en: Contract
+    zh: 合同
+    ko: 계약
+    ru: Контракт
+    de: Vertrag
+  tariff:
+    ja: 関税
+    en: Tariff
+    zh: 关税
+    ko: 관세
+    ru: Пошлина
+    de: Zoll
+  price:
+    ja: 価格
+    en: Price
+    zh: 价格
+    ko: 가격
+    ru: Цена
+    de: Preis
+  official_price:
+    ja: 公定価格
+    en: Official Price
+    zh: 官方价格
+    ko:
+    ru: Официальная цена
+    de: Amtlicher Preis
+    uncertain: [ko]
+    note: 公定価格の韓訳は「공정 가격（公正価格）」と紛らわしい
+  wage:
+    ja: 賃金
+    en: Wage
+    zh: 工资
+    ko: 임금
+    ru: Заработная плата
+    de: Lohn
+  minimum_wage:
+    ja: 最低賃金
+    en: Minimum Wage
+    zh: 最低工资
+    ko: 최저 임금
+    ru: Минимальная зарплата
+    de: Mindestlohn
+  unemployment:
+    ja: 失業
+    en: Unemployment
+    zh: 失业
+    ko: 실업
+    ru: Безработица
+    de: Arbeitslosigkeit
+  worker:
+    ja: 労働者
+    en: Worker
+    zh: 工人
+    ko: 노동자
+    ru: Рабочий
+    de: Arbeiter
+  construction:
+    ja: 建設
+    en: Construction
+    zh: 建设
+    ko: 건설
+    ru: Строительство
+    de: Bau
+  expansion:
+    ja: 建て増し
+    en: Expansion
+    zh: 扩建
+    ko: 증축
+    ru: Расширение
+    de: Ausbau
+  demolition:
+    ja: 撤去
+    en: Demolition
+    zh: 拆除
+    ko: 철거
+    ru: Снос
+    de: Abriss
+  electricity:
+    ja: 電力
+    en: Electric Power
+    zh: 电力
+    ko: 전력
+    ru: Электроэнергия
+    de: Strom
+  production:
+    ja: 生産
+    en: Production
+    zh: 生产
+    ko: 생산
+    ru: Производство
+    de: Produktion
+  consumption:
+    ja: 消費
+    en: Consumption
+    zh: 消费
+    ko: 소비
+    ru: Потребление
+    de: Verbrauch
+  shortage:
+    ja: 不足
+    en: Shortage
+    zh: 不足
+    ko: 부족
+    ru: Нехватка
+    de: Mangel
+  bankruptcy:
+    ja: 破綻
+    en: Bankruptcy
+    zh: 破产
+    ko: 파산
+    ru: Банкротство
+    de: Bankrott
+    note: 銀行の破綻と財政の破綻の両方に使う
+  bank:
+    ja: 銀行
+    en: Bank
+    zh: 银行
+    ko: 은행
+    ru: Банк
+    de: Bank
+  central_bank:
+    ja: 中央銀行
+    en: Central Bank
+    zh: 中央银行
+    ko: 중앙은행
+    ru: Центральный банк
+    de: Zentralbank
+  deposit:
+    ja: 預金
+    en: Deposit
+    zh: 存款
+    ko: 예금
+    ru: Вклад
+    de: Einlage
+  loan:
+    ja: 融資
+    en: Loan
+    zh: 贷款
+    ko: 융자
+    ru: Кредит
+    de: Kredit
+  interest_rate:
+    ja: 金利
+    en: Interest Rate
+    zh: 利率
+    ko: 금리
+    ru: Процентная ставка
+    de: Zinssatz
+  fx:
+    ja: 為替
+    en: Foreign Exchange
+    zh: 外汇
+    ko: 외환
+    ru: Валютный курс
+    de: Devisen
+    note: 為替相場の意味では相場寄りの訳になる
+  currency:
+    ja: 通貨
+    en: Currency
+    zh: 货币
+    ko: 통화
+    ru: Валюта
+    de: Währung
+  price_level:
+    ja: 物価
+    en: Price Level
+    zh: 物价
+    ko: 물가
+    ru: Уровень цен
+    de: Preisniveau
+  subsidy:
+    ja: 補助金
+    en: Subsidy
+    zh: 补贴
+    ko: 보조금
+    ru: Субсидия
+    de: Subvention
+  nationalization:
+    ja: 国有化
+    en: Nationalization
+    zh: 国有化
+    ko: 국유화
+    ru: Национализация
+    de: Verstaatlichung
+  privatization:
+    ja: 民営化
+    en: Privatization
+    zh: 民营化
+    ko: 민영화
+    ru: Приватизация
+    de: Privatisierung
+  immigration:
+    ja: 移民
+    en: Immigration
+    zh: 移民
+    ko: 이민
+    ru: Иммиграция
+    de: Einwanderung
+  war:
+    ja: 戦争
+    en: War
+    zh: 战争
+    ko: 전쟁
+    ru: Война
+    de: Krieg
+  treaty:
+    ja: 条約
+    en: Treaty
+    zh: 条约
+    ko: 조약
+    ru: Договор
+    de: Vertrag
+  fleet:
+    ja: 艦隊
+    en: Fleet
+    zh: 舰队
+    ko: 함대
+    ru: Флот
+    de: Flotte
+  unit_military:
+    ja: 部隊
+    en: Unit
+    zh: 部队
+    ko: 부대
+    ru: Подразделение
+    de: Einheit
+  freight:
+    ja: 運賃
+    en: Freight Charge
+    zh: 运费
+    ko: 운임
+    ru: Фрахт
+    de: Fracht
+  merchant:
+    ja: 商人
+    en: Merchant
+    zh: 商人
+    ko: 상인
+    ru: Купец
+    de: Händler
+  government:
+    ja: 政府
+    en: Government
+    zh: 政府
+    ko: 정부
+    ru: Правительство
+    de: Regierung
+  government_office:
+    ja: 役所
+    en: Government Office
+    zh: 政府机关
+    ko: 관청
+    ru: Администрация
+    de: Behörde
+  order:
+    ja: 命令
+    en: Order
+    zh: 命令
+    ko: 명령
+    ru: Приказ
+    de: Befehl
+  regime:
+    ja: 体制
+    en: Regime
+    zh: 体制
+    ko: 체제
+    ru: Строй
+    de: Regime
+  head_of_state:
+    ja: 元首
+    en: Head of State
+    zh: 国家元首
+    ko: 국가 원수
+    ru: Глава государства
+    de: Staatsoberhaupt
+  parliament:
+    ja: 議会
+    en: Parliament
+    zh: 议会
+    ko: 의회
+    ru: Парламент
+    de: Parlament
+  election:
+    ja: 選挙
+    en: Election
+    zh: 选举
+    ko: 선거
+    ru: Выборы
+    de: Wahl
+  happiness:
+    ja: 幸福
+    en: Happiness
+    zh: 幸福
+    ko: 행복
+    ru: Счастье
+    de: Glück
+  profit:
+    ja: 利益
+    en: Profit
+    zh: 利润
+    ko: 이익
+    ru: Прибыль
+    de: Gewinn
+  firm:
+    ja: 企業
+    en: Firm
+    zh: 企业
+    ko: 기업
+    ru: Предприятие
+    de: Unternehmen
+  company:
+    ja: 会社
+    en: Company
+    zh: 公司
+    ko: 회사
+    ru: Компания
+    de: Firma
+  retail:
+    ja: 小売
+    en: Retail
+    zh: 零售
+    ko: 소매
+    ru: Розничная торговля
+    de: Einzelhandel
+  infrastructure:
+    ja: インフラ
+    en: Infrastructure
+    zh: 基础设施
+    ko: 인프라
+    ru: Инфраструктура
+    de: Infrastruktur
+  resources:
+    ja: 資源
+    en: Resources
+    zh: 资源
+    ko: 자원
+    ru: Ресурсы
+    de: Ressourcen
+  raw_materials:
+    ja: 原料
+    en: Raw Materials
+    zh: 原料
+    ko: 원료
+    ru: Сырьё
+    de: Rohstoffe
+  food:
+    ja: 食料
+    en: Food
+    zh: 食物
+    ko: 식량
+    ru: Продовольствие
+    de: Nahrungsmittel
+  occupation:
+    ja: 占領
+    en: Occupation
+    zh: 占领
+    ko: 점령
+    ru: Оккупация
+    de: Besetzung
+  issuance:
+    ja: 発行
+    en: Issuance
+    zh: 发行
+    ko: 발행
+    ru: Выпуск
+    de: Ausgabe
+  redemption:
+    ja: 償還
+    en: Redemption
+    zh: 偿还
+    ko: 상환
+    ru: Погашение
+    de: Tilgung
+  market:
+    ja: 市場
+    en: Market
+    zh: 市场
+    ko: 시장
+    ru: Рынок
+    de: Markt
+  cap:
+    ja: 上限
+    en: Cap
+    zh: 上限
+    ko: 상한
+    ru: Верхний предел
+    de: Obergrenze
+  floor:
+    ja: 下限
+    en: Floor
+    zh: 下限
+    ko: 하한
+    ru: Нижний предел
+    de: Untergrenze
+  ratio:
+    ja: 割合
+    en: Ratio
+    zh: 比例
+    ko: 비율
+    ru: Доля
+    de: Anteil
+  restriction:
+    ja: 制限
+    en: Restriction
+    zh: 限制
+    ko: 제한
+    ru: Ограничение
+    de: Beschränkung
+  priority:
+    ja: 優先度
+    en: Priority
+    zh: 优先级
+    ko: 우선순위
+    ru: Приоритет
+    de: Priorität
+  calendar:
+    ja: 暦
+    en: Calendar
+    zh: 历法
+    ko: 역법
+    ru: Календарь
+    de: Kalender
+  resident:
+    ja: 住民
+    en: Resident
+    zh: 居民
+    ko: 주민
+    ru: Житель
+    de: Einwohner
