@@ -362,3 +362,23 @@ def test_trade_tables_use_theme_variables_in_dark():
     block = css.split("貿易の表の配色", 1)[1].split("/* 島の画面 */", 1)[0]
     assert "background: var(--bg-base); color: var(--text-base);" in block
     assert "border-color: var(--line-base);" in block
+
+
+def test_trade_pages_dark_theme_covers_whole_page():
+    """貿易の画面は、暗いときは表だけでなく画面全体（パネル・グラフ・フォーム）が
+    共通変数の差し替えでそろう（台帳 P2。13 の枠を画面全体へ広げる見本）。
+    貿易の入口の枠に付く .trade-page の中だけが対象で、明るいときは何も変わらない。"""
+    from pathlib import Path
+
+    css = Path("server/static/css/site.css").read_text(encoding="utf-8")
+    block = css.split("貿易の画面の暗いときの全体の配色", 1)[1].split("/* 島の画面 */", 1)[0]
+    # 部品の変数を暗いときの値に差し替える（パネル・表・フォームが同じ変数でつながる）
+    assert 'html[data-theme="dark"] .trade-page {' in block
+    for var in ("--panel:", "--pale:", "--head:", "--border:", "--rule:", "--fg:"):
+        assert var in block
+    # グラフの軸・格子と、フォームの入力欄・ボタンも変数でそろう
+    assert "--chart-muted:" in block and "--chart-grid:" in block
+    assert 'html[data-theme="dark"] .trade-page input' in block
+    assert 'html[data-theme="dark"] .trade-page button' in block
+    layout = Path("server/templates/web/trade_layout.html").read_text(encoding="utf-8")
+    assert "report-layout trade-page" in layout

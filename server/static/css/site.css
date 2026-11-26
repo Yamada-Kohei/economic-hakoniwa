@@ -146,6 +146,63 @@ html[data-theme="dark"] table.bloc-info .warning,
 html[data-theme="dark"] table.bloc-table .warning,
 html[data-theme="dark"] table.other-blocs-table .warning { color: #e8a33d; }
 
+/* 貿易の画面の暗いときの全体の配色（台帳 P2。13 の枠を画面全体へ広げる見本）:
+   貿易の入口の枠（trade_layout の .trade-page）の中だけ、部品が使う変数
+   （--panel・--pale・--head・--border・--rule・--fg）を暗いときの値に差し替える。
+   パネル・表・グラフ・フォームは同じ変数でつながるので、部分ごとに色を足す
+   継ぎはぎにならない。差し替える色は、上の貿易の表のブロックで使った暗いときの
+   色（パネルの地 #1c2536・見出しの地 #232f47・罫線 #41527a）にそろえる。
+   明るいときは何も変わらない。ほかの画面への展開は、この見本を見て会議で決める。 */
+html[data-theme="dark"] .trade-page {
+  color-scheme: dark;
+  --panel: #1c2536;
+  --pale: #232f47;
+  --head: #232f47;
+  --border: #41527a;
+  --rule: #41527a;
+  --fg: #dfe6fb;
+}
+html[data-theme="dark"] .trade-page a { color: #8ab4ff; }
+html[data-theme="dark"] .trade-page a:visited { color: #c9a7ff; }
+html[data-theme="dark"] .trade-page h3 { color: var(--text-base); }
+html[data-theme="dark"] .trade-page .muted,
+html[data-theme="dark"] .trade-page .hint { color: #9aa9cc; }
+html[data-theme="dark"] .trade-page .warning { color: #e8a33d; }
+html[data-theme="dark"] .trade-page .error,
+html[data-theme="dark"] .trade-page .loss,
+html[data-theme="dark"] .trade-page .recent li.failed { color: #ff9e94; }
+html[data-theme="dark"] .trade-page .action-box > h2 { color: #8ab4ff; }
+/* 表の見出しの字: 上のブロックで扱う 5 つの表以外の表も、貿易の画面では同じに読めるようにする */
+html[data-theme="dark"] .trade-page table.info th,
+html[data-theme="dark"] .trade-page table.goods thead th,
+html[data-theme="dark"] .trade-page table.facilities thead th { color: var(--text-base); }
+/* グラフ: 軸の字と格子の線は figure.chart の変数（--chart-muted・--chart-grid）を差し替える。
+   吹き出し（.chart-tip）と円グラフの凡例・ターンのつまみの字も暗い地で読める色にする */
+html[data-theme="dark"] .trade-page figure.chart { --chart-muted: #9aa9cc; --chart-grid: #2c3a58; }
+html[data-theme="dark"] .trade-page .chart-tip { background: rgba(22, 28, 40, 0.96); color: var(--text-base); }
+html[data-theme="dark"] .trade-page .pie-turn { color: #9aa9cc; }
+html[data-theme="dark"] .trade-page .pie-legend li { border-bottom-color: var(--line-base); }
+/* フォーム: 入力欄・ボタンも地と字を変数でそろえる（チェックとラジオは印の色だけ差し替える） */
+html[data-theme="dark"] .trade-page input:not([type="checkbox"]):not([type="radio"]),
+html[data-theme="dark"] .trade-page select,
+html[data-theme="dark"] .trade-page textarea {
+  background: var(--bg-base); color: var(--text-base); border: 1px solid var(--line-base);
+}
+html[data-theme="dark"] .trade-page input[type="checkbox"],
+html[data-theme="dark"] .trade-page input[type="radio"] { accent-color: #8ab4ff; }
+html[data-theme="dark"] .trade-page button {
+  background: #232f47; color: var(--text-base); border: 1px solid var(--line-base);
+}
+html[data-theme="dark"] .trade-page button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+html[data-theme="dark"] .trade-page .chart-range button[aria-pressed="true"] {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+html[data-theme="dark"] .trade-page .chart-legend button,
+html[data-theme="dark"] .trade-page th > button.sort-head { background: none; border: 0; }
+/* 「いますべきこと」の先頭の行（.next-steps-list li.first）と印の字 */
+html[data-theme="dark"] .trade-page .next-steps-list li.first { background: var(--pale); border-color: var(--line-base); }
+html[data-theme="dark"] .trade-page .step-tag { color: #e8a33d; }
+
 /* 島の画面 */
 .island-header h1 { margin-bottom: 0; }
 .island-header p { margin-top: 4px; }
