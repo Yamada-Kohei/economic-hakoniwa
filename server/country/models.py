@@ -85,6 +85,28 @@ class Profile(models.Model):
         return f"{self.island} の紹介"
 
 
+class PortMural(models.Model):
+    """姉妹港の壁画（案36）: いちばん貿易額の大きい相手の島の輪郭を、自分の港に飾る。
+    輪郭と集計は「飾る」を押した時点の写し（SVG の中身を文字列で持つ）。"""
+
+    island = models.OneToOneField(
+        Island, verbose_name="国", on_delete=models.CASCADE, related_name="port_mural"
+    )
+    partner = models.ForeignKey(
+        Island, verbose_name="相手の国", on_delete=models.CASCADE, related_name="+"
+    )
+    total = models.FloatField("直近1年の貿易額", default=0)
+    tally_turn = models.IntegerField("集計したターン", default=0)
+    svg = models.TextField("相手の島の輪郭", blank=True, default="")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = "姉妹港の壁画"
+
+    def __str__(self) -> str:
+        return f"{self.island} の壁画（{self.partner}）"
+
+
 class Note(models.Model):
     """ほかの国のページに残す一言（来訪者の帳）。島を持つ人が出す。"""
 

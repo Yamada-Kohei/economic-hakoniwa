@@ -76,6 +76,7 @@ ISLAND_IMAGES = ["island_flag", "monument_image", "api_country_flag", "api_monum
 # 書き込む道（GET では開かない）
 ISLAND_WRITES = [
     "geoname_rename",
+    "mural_install",
     "api_country_edit",
     "api_country_note",
     "api_country_note_hide",

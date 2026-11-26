@@ -60,6 +60,25 @@
   <p class="hint">{% translate "目安を超えて変わった指標を、大きい順に最大3件表示します。数字だけでは原因は分かりません。リンク先で施設の状態・市場・家計を確かめてください。" %}</p>
 </section>
 
+{% if mural %}
+<section class="panel" id="port-mural">
+  <h2>{% translate "港の壁画" %}</h2>
+  {% if mural.mural %}
+  <div class="mural-box">
+    {{ mural.mural.svg|safe }}
+    <p class="mural-plaque">{% blocktranslate with name=mural.mural.partner_name total=mural.mural.total_text date=mural.mural.date_text %}姉妹港: {{ name }}（直近1年の貿易 {{ total }}・{{ date }} 集計）{% endblocktranslate %}<br>
+    <a href="{% url 'island' mural.mural.partner_id %}">{% blocktranslate with name=mural.mural.partner_name %}{{ name }}の地図を見る{% endblocktranslate %}</a>{% translate "・" %}<a href="{% url 'island_country' mural.mural.partner_id %}">{% blocktranslate with name=mural.mural.partner_name %}{{ name }}の国のページ{% endblocktranslate %}</a></p>
+  </div>
+  {% endif %}
+  {% if mine and mural.candidate %}
+  <form method="post" action="{% url 'mural_install' island.id %}">{% csrf_token %}
+    <p>{% if mural.mural %}{% blocktranslate with name=mural.candidate.partner_name %}今いちばん貿易しているのは {{ name }} です。{% endblocktranslate %}{% else %}{% blocktranslate with name=mural.candidate.partner_name %}いちばん貿易している {{ name }} の島の形を、港に飾れます。{% endblocktranslate %}{% endif %}
+    <button type="submit">{% if mural.mural %}{% translate "壁画を飾り直す" %}{% else %}{% translate "壁画を飾る" %}{% endif %}</button></p>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+
 <section class="panel">
   <h2>{% if log_turn is not None %}{% blocktranslate with turn=log_turn|turn_date %}{{ turn }}の出来事{% endblocktranslate %}{% else %}{% translate "出来事" %}{% endif %}</h2>
   {% include "web/log_entries.html" with entries=logs island=island %}

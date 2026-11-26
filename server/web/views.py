@@ -40,6 +40,7 @@ from server.web import (
 from server.web import card as card_views
 from server.web import facility_page as facility_views
 from server.web import geonames as geonames_views
+from server.web import mural as mural_views
 from server.web import (
     news as news_views,
 )
@@ -143,6 +144,8 @@ def _island_context(request, island_id: int, page: str) -> dict:
         # 1 行（国の要約の trade と同じ。W-247 (8)）
         context["todo"] = todo
         context["trade"] = overview.trade_brief(stats, currency)
+        # 姉妹港の壁画（案36）。飾っていない・候補も無い島では None（欄を出さない）
+        context["mural"] = mural_views.mural_data(island, mine)
     if page == "island" and mine:
         # 地名（案34）の付け替えの欄。地形から決まる一覧は持ち主の地図の画面だけに出す
         context["geonames"] = geonames_views.features(island)
@@ -502,6 +505,27 @@ def geoname_rename(request, island_id: int):
             gettext("地名を「{name}」に付け替えました").format(name=done["name"]),
         )
     return redirect("island", island.id)
+
+
+def mural_install(request, island_id: int):
+    """姉妹港の壁画（案36）を飾る・飾り直す。持ち主だけ・POST だけ。"""
+    island = get_object_or_404(Island, pk=island_id)
+    mine = (
+        request.user.is_authenticated
+        and island.owner_id is not None
+        and island.owner_id == request.user.id
+    )
+    if request.method != "POST" or not mine:
+        raise Http404
+    mural = mural_views.install_mural(island)
+    if mural is None:
+        messages.error(request, gettext("貿易している相手の国がまだありません"))
+    else:
+        messages.success(
+            request,
+            gettext("港に {name} の壁画を飾りました").format(name=mural.partner.name),
+        )
+    return redirect("home", island.id)
 
 
 def orders_page(request, island_id: int):

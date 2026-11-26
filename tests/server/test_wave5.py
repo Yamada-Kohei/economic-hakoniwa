@@ -12,6 +12,7 @@ from server.turns.models import TurnLog
 from server.web import card as card_views
 from server.web import country as country_views
 from server.web import geonames as geonames_views
+from server.web import mural as mural_views
 from server.web import paper as paper_views
 from server.world import models as m
 
@@ -214,3 +215,57 @@ def test_geonames_api_param_and_owner_view(owner, geo_island):
     assert geo_island.geo_names.get().name == "出っ張り"
     anon = Client().post(f"/islands/{island.id}/geonames/", {"key": "cape:20:20", "name": "だめ"})
     assert anon.status_code == 404
+
+
+# --- 案36 姉妹港の壁画 ---------------------------------------------------------------------
+
+
+def _stat(island, turn, name, value):
+    return m.StatRecord.objects.create(island=island, turn=turn, name=name, value=value)
+
+
+@pytest.fixture
+def trade_pair(owner, world):
+    client, island = owner
+    partner = world.islands.all()[1]
+    third = world.islands.all()[2]
+    partner.tiles.all().delete()
+    for x, y in [(3, 3), (4, 3), (3, 4)]:
+        _tile(partner, x, y, "plain")
+    _stat(island, 10, f"partner.{partner.id}.exports", 300.0)
+    _stat(island, 10, f"partner.{partner.id}.imports", 200.0)
+    _stat(island, 10, f"partner.{partner.id}.exports.grain", 99999.0)  # 品目別の行は数えない
+    _stat(island, 10, "partner.merchant.exports", 99999.0)  # 商人は島の形が無い
+    _stat(island, 10, f"partner.{third.id}.exports", 100.0)
+    return client, island, partner
+
+
+def test_mural_top_partner_uses_year_totals(trade_pair):
+    _, island, partner = trade_pair
+    found = mural_views.top_partner(island)
+    assert found is not None
+    top, total, turn = found
+    assert top.id == partner.id and total == 500.0 and turn == 10
+
+
+def test_mural_install_and_home_panel(trade_pair):
+    client, island, partner = trade_pair
+    data = mural_views.mural_data(island, mine=True)
+    assert data["mural"] is None and data["candidate"]["partner_id"] == partner.id
+    res = client.post(f"/islands/{island.id}/mural/")
+    assert res.status_code == 302
+    mural = island.port_mural
+    assert mural.partner_id == partner.id and mural.tally_turn == 10
+    assert mural.svg.startswith("<svg") and 'fill="#44546a"' in mural.svg
+    html = Client().get(f"/islands/{island.id}/home/").content.decode()
+    assert 'id="port-mural"' in html and partner.name in html
+    assert f"/islands/{partner.id}/" in html  # 相手の公開地図へのリンク
+    anon = Client().post(f"/islands/{island.id}/mural/")
+    assert anon.status_code == 404
+
+
+def test_mural_none_without_trade(owner):
+    _, island = owner
+    assert mural_views.top_partner(island) is None
+    assert mural_views.install_mural(island) is None
+    assert mural_views.mural_data(island, mine=True) is None
