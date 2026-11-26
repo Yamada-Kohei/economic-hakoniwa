@@ -255,7 +255,7 @@ function facilitySprite(f, defs, map, isCapital, sprites, theme) {
   }
   const name = defs.facilities[f.kind]?.sprite || f.kind;
   if (!isCapital) {
-    return coastalSprite(f, defs, map, name, sprites) || lookSprite(f, defs, theme, name, sprites)
+    return coastalSprite(f, defs, map, name, sprites, theme) || lookSprite(f, defs, theme, name, sprites)
       || sprites.get(`facility/${name}`);
   }
   const buildings = defs.facilities[f.kind]?.category === "admin" ? map.capital_buildings || [] : [];
@@ -293,17 +293,29 @@ function lookSprite(f, defs, theme, name, sprites) {
 // 海が手前（右下・左下）の絵は水面と岸壁が見えるので先に選ぶ
 const SEA_SIDES = [["", 1, 0], ["@sw", 0, 1], ["@ne", 0, -1], ["@nw", -1, 0]];
 
-/** 海沿いの施設（coastal）は、隣の海のある向きの絵（facility/port@sw など）。なければ null。 */
-function coastalSprite(f, defs, map, name, sprites) {
+/**
+ * 海沿いの施設（coastal）は、隣の海のある向きの絵（facility/port@sw など）。なければ null。
+ * 向きは SEA_SIDES の優先順で先に決め（基本絵のある最初の向き）、建て増しの規模の段は
+ * その向きの中でだけ探す（facility/port@sw@s3。海が右下なら facility/port@s3）。
+ * 優先した向きの段絵が無ければその向きの基本絵に落ち、別の向きの段絵には回らない
+ * （段絵の有無で向きが変わらないようにするため。グラフィック強化 案17・案A）。
+ */
+function coastalSprite(f, defs, map, name, sprites, theme) {
   if (!defs.facilities[f.kind]?.coastal) return null;
   const n = map.size;
+  const tier = 1 + (theme?.size_tiers || []).filter((t) => (f.size || 1) >= t).length;
   for (const [suffix, dx, dy] of SEA_SIDES) {
     const x = f.x + dx;
     const y = f.y + dy;
     if (x < 0 || y < 0 || x >= n || y >= n) continue;
     if (defs.terrain[map.terrain[y * n + x]]?.land) continue;
-    const sprite = sprites.get(`facility/${name}${suffix}`);
-    if (sprite) return sprite;
+    const base = sprites.get(`facility/${name}${suffix}`);
+    if (!base) continue;
+    if (tier > 1) {
+      const tiered = sprites.get(`facility/${name}${suffix}@s${tier}`);
+      if (tiered) return tiered;
+    }
+    return base;
   }
   return null;
 }

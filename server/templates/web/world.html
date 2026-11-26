@@ -18,7 +18,7 @@
            data-x="{{ forloop.counter0 }}" data-y="{{ forloop.parentloop.counter0 }}"
            title="{{ island.name }}{% if island.owner %}（{{ island.owner.username }}）{% endif %}">
           <canvas class="island-pixels" data-island="{{ island.id }}" width="32" height="32" aria-hidden="true"></canvas>
-          <span class="cell-name">{{ island.name|truncatechars:8 }}</span>
+          <span class="cell-name"><img class="cell-flag" src="{% url 'island_flag' island.id %}" alt="" width="24" height="16" loading="lazy">{{ island.name|truncatechars:8 }}</span>
         </a>
       {% else %}
         <span class="cell sea" data-x="{{ forloop.counter0 }}" data-y="{{ forloop.parentloop.counter0 }}" aria-hidden="true"></span>
