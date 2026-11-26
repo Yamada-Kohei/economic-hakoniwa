@@ -516,6 +516,8 @@ def _country_post(request, island: Island, viewer: Island | None, mine: bool) ->
         country_services.set_era(island, request.POST.get("kind", ""), request.POST.get("name"))
     elif action == "new_era":
         country_services.new_era(island, request.POST.get("name"))
+    elif action == "theme":
+        country_services.set_theme_color(island, request.POST.get("color", ""))
     elif action == "flag":
         upload = request.FILES.get("flag")
         if upload is None:

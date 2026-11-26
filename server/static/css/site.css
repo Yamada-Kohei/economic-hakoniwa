@@ -592,3 +592,6 @@ table.info.diet-table th { width: auto; }
 .mural-plaque { color: #5a6672; }
 .geonames-list { display: grid; gap: 6px; }
 .geonames-list form { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.country-accent { height: 6px; margin: 0 0 10px; }
+.theme-choice { display: inline-flex; gap: 5px; align-items: center; margin-right: 12px; }
+.theme-swatch { display: inline-block; width: 16px; height: 16px; border: 1px solid var(--border); }

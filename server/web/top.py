@@ -45,6 +45,7 @@ HEADLINES = (
     "regime_kept",
     "mobilization_started",
     "leader_renamed",
+    "capital_renamed",
     "capital_rebuilt",
     "bank_failed_",
     "bank_liquidated",

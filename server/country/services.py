@@ -15,6 +15,7 @@ from typing import Any
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
+from django.utils.translation import gettext, gettext_lazy
 
 from hakoniwa_core.dates import Calendar
 from server.country import png
@@ -66,6 +67,32 @@ def founded_turn(island: Island) -> int:
 def profile_of(island: Island) -> Profile:
     """国のページの設定（なければ作る）。"""
     return Profile.objects.get_or_create(island=island)[0]
+
+
+# --- テーマカラー（案32） -------------------------------------------------------------------
+# 国のページの縁・国旗の枠・国のカードに使う 1 色。色覚に配慮し、互いに見分けやすい
+# 8 色から選ぶ（空 = 選ばない）。Profile には鍵だけを持ち、色の値はここで決める。
+THEME_COLORS: dict[str, tuple[Any, str]] = {
+    "": (gettext_lazy("選ばない"), ""),
+    "red": (gettext_lazy("赤"), "#b23a2e"),
+    "orange": (gettext_lazy("橙"), "#c96a1e"),
+    "yellow": (gettext_lazy("黄"), "#a8871d"),
+    "green": (gettext_lazy("緑"), "#3e8e4f"),
+    "blue": (gettext_lazy("青"), "#2f6db5"),
+    "purple": (gettext_lazy("紫"), "#7d4a9e"),
+    "brown": (gettext_lazy("茶"), "#8a6238"),
+    "gray": (gettext_lazy("灰"), "#68707c"),
+}
+
+
+def set_theme_color(island: Island, key: Any) -> Profile:
+    """テーマカラーを選ぶ。鍵は THEME_COLORS のどれか（空 = 選ばない）。"""
+    if not isinstance(key, str) or key not in THEME_COLORS:
+        raise CountryError(gettext("テーマカラーは一覧の色から選んでください"))
+    profile = profile_of(island)
+    profile.theme_color = key
+    profile.save(update_fields=["theme_color", "updated_at"])
+    return profile
 
 
 # --- 国ごとの紀年 ---------------------------------------------------------------------------

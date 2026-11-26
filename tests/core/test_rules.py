@@ -458,6 +458,40 @@ def test_rename_place(game):
     assert "緑野" in facility_name(game.defs, game.config, island, farm)
 
 
+def test_rename_place_on_capital_district_renames_capital(game):
+    """首都のある区画の地名を変えると、首都の名前も変わり、改名が記録に残る（案32）。"""
+    island = make_island(game)
+    island.ext["places"] = [f"地{i}" for i in range(16)]
+    island.capital_x, island.capital_y = 6, 6  # 区画 0（8 マス四方）
+    island.names["capital"] = "地0"
+    run(
+        game,
+        island,
+        ["execute_orders"],
+        orders=[("rename_place", {"x": 6, "y": 6, "name": "新都"})],
+    )
+    assert island.orders[0].status == ORDER_DONE
+    assert island.names["capital"] == "新都"
+    renamed = [e for e in island.log if e.kind == "capital_renamed"]
+    assert len(renamed) == 1 and renamed[0].args == {"old": "地0", "new": "新都"}
+
+
+def test_rename_place_elsewhere_keeps_capital_name(game):
+    island = make_island(game)
+    island.ext["places"] = [f"地{i}" for i in range(16)]
+    island.capital_x, island.capital_y = 6, 6
+    island.names["capital"] = "地0"
+    run(
+        game,
+        island,
+        ["execute_orders"],
+        orders=[("rename_place", {"x": 20, "y": 20, "name": "遠野"})],
+    )
+    assert island.orders[0].status == ORDER_DONE
+    assert island.names["capital"] == "地0"
+    assert not [e for e in island.log if e.kind == "capital_renamed"]
+
+
 def test_disaster_halts_a_facility(game, game_dir):
     from hakoniwa_core.game import load_game as load
 

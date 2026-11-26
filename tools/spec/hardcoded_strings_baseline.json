@@ -13,7 +13,7 @@
    "hakoniwa_core": 384,
    "server/accounts": 94,
    "server/board": 191,
-   "server/country": 155,
+   "server/country": 157,
    "server/economy": 116,
    "server/feedback": 67,
    "server/hall": 33,
@@ -147,7 +147,8 @@
    "server/country/migrations/0001_initial.py": 28,
    "server/country/migrations/0002_monument_image.py": 9,
    "server/country/migrations/0003_diary.py": 6,
-   "server/country/models.py": 42,
+   "server/country/migrations/0004_profile_theme_color.py": 1,
+   "server/country/models.py": 43,
    "server/country/png.py": 17,
    "server/country/services.py": 34,
    "server/economy/apps.py": 1,
@@ -274,9 +275,9 @@
   }
  },
  "totals": {
-  "all": 3489,
+  "all": 3491,
   "js": 527,
-  "python": 2851,
+  "python": 2853,
   "template": 111
  },
  "version": 1

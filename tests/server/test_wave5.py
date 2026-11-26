@@ -7,8 +7,10 @@ import pytest
 from django.contrib.auth.models import User
 from django.test import Client
 
+from server.country import services as country_services
 from server.turns.models import TurnLog
 from server.web import card as card_views
+from server.web import country as country_views
 from server.web import paper as paper_views
 from server.world import models as m
 
@@ -99,3 +101,39 @@ def test_paper_page_renders(owner):
     assert "ターンの新聞" in html and 'id="paper-map"' in html
     html_old = client.get(f"/islands/{island.id}/paper/?turn=2").content.decode()
     assert "paper-lead" in html_old
+
+
+# --- 案32 テーマカラーと改名の年表 ---------------------------------------------------------
+
+
+def test_theme_color_choices_and_validation(owner):
+    _, island = owner
+    profile = country_services.set_theme_color(island, "blue")
+    assert profile.theme_color == "blue"
+    info = country_views.theme_info(profile)
+    assert info == {"key": "blue", "name": "青", "hex": "#2f6db5"}
+    with pytest.raises(country_services.CountryError):
+        country_services.set_theme_color(island, "#123456")  # 一覧に無い色は受けない
+    profile = country_services.set_theme_color(island, "")
+    assert country_views.theme_info(profile) is None
+
+
+def test_theme_color_shows_on_country_page_and_card(owner):
+    client, island = owner
+    res = client.post(f"/islands/{island.id}/country/", {"action": "theme", "color": "green"})
+    assert res.status_code == 302
+    html = Client().get(f"/islands/{island.id}/country/").content.decode()
+    assert "country-accent" in html and "#3e8e4f" in html
+    assert card_views.card_data(island)["accent"] == "#3e8e4f"
+    home = Client().get(f"/islands/{island.id}/home/").content.decode()
+    assert "#3e8e4f" in home  # 島の見出しの帯
+
+
+def test_capital_and_leader_renames_are_in_timeline(owner):
+    _, island = owner
+    _log(island, 4, "capital_renamed", old="旧都", new="新都")
+    _log(island, 5, "leader_renamed", name="山田太郎")
+    rows = country_views.timeline(island, None)
+    texts = [r["text"] for r in rows if r["turn"] in (4, 5)]
+    assert any("首都の名前を「旧都」から「新都」に変更しました" == t for t in texts)
+    assert any("国家元首の名前を 山田太郎 にしました" == t for t in texts)

@@ -26,6 +26,7 @@ def card_data(island: m.Island) -> dict[str, Any]:
     _, stats = display.latest_stats(island)
     currency = (island.names or {}).get("currency_symbol", "")
     rows = [r for r in country.timeline(island, profile) if r["milestone"]]
+    theme = country.theme_info(profile)
     lines = [
         {"label": gettext("首都"), "value": head["capital"] or "—"},
         {"label": gettext("元首"), "value": head["leader"] or "—"},
@@ -45,7 +46,7 @@ def card_data(island: m.Island) -> dict[str, Any]:
         "milestones_label": gettext("節目"),
         "date_text": services.date_text(island, profile, island.world.turn),
         "foot": gettext("経済版箱庭諸国"),
-        "accent": "",  # テーマカラー（案32）で国の色が入る。それまでは基盤の既定色
+        "accent": (theme or {}).get("hex", ""),
         "map_url": reverse("api_island_map", args=[island.id]),
         "defs_url": reverse("api_defs"),
         "labels": {"download": gettext("カードを PNG で保存")},

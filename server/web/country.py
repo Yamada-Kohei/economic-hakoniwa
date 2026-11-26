@@ -41,6 +41,15 @@ def flag_info(island: m.Island, mine: bool = False) -> dict[str, Any]:
     return info
 
 
+def theme_info(profile: Profile | None) -> dict[str, Any] | None:
+    """テーマカラー（案32）: 選んでいれば {key, name, hex}、いなければ None。"""
+    key = profile.theme_color if profile else ""
+    spec = services.THEME_COLORS.get(key)
+    if not spec or not spec[1]:
+        return None
+    return {"key": key, "name": str(spec[0]), "hex": spec[1]}
+
+
 def era_info(island: m.Island, profile: Profile | None, mine: bool) -> dict[str, Any]:
     turn = island.world.turn
     kind = profile.era_kind if profile else "world"
@@ -178,6 +187,7 @@ def country_data(island: m.Island, mine: bool, viewer: m.Island | None = None) -
             "inactive": island.inactive,
         },
         "era": era_info(island, profile, mine),
+        "theme": theme_info(profile),
         "anniversary": {"years": anniversary} if anniversary is not None else None,
         "awards": awards.holders(island.world, only=island.id).get(island.id, []),
         "titles": rankings.island_strengths(island, stats)["titles"],
@@ -192,6 +202,11 @@ def country_data(island: m.Island, mine: bool, viewer: m.Island | None = None) -
     if mine:
         data["intro_hidden_by_admin"] = intro_hidden
         data["intro_edit"] = profile.intro if profile else ""
+        data["theme_choices"] = [
+            {"key": k, "name": str(name), "hex": hex_}
+            for k, (name, hex_) in services.THEME_COLORS.items()
+        ]
+        data["theme_key"] = profile.theme_color if profile else ""
     return data
 
 

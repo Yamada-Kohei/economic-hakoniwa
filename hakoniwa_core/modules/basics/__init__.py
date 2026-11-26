@@ -32,7 +32,8 @@ def check_rename_place(island: IslandState, payload: dict[str, Any], defs: Defs)
 
 
 def rename_place(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
-    """マスを含む区画の地名を変える。その区画の施設の自動の名前も変わる。"""
+    """マスを含む区画の地名を変える。その区画の施設の自動の名前も変わる。
+    首都のある区画なら、首都の名前も同じ名前になり、改名が年表に残る（案32）。"""
     places = island.ext["places"]
     i = place_index(island, payload["x"], payload["y"], ctx.config) % len(places)
     old, new = places[i], payload["name"].strip()
@@ -42,6 +43,13 @@ def rename_place(island: IslandState, payload: dict[str, Any], ctx: StageContext
     island.log.append(
         LogEntry("place_renamed", {"x": payload["x"], "y": payload["y"], "old": old, "new": new})
     )
+    capital = island.capital
+    same = capital is not None and place_index(island, *capital, ctx.config) % len(places) == i
+    if same:
+        old_capital = island.names.get("capital", "")
+        if old_capital and old_capital != new:
+            island.names["capital"] = new
+            island.log.append(LogEntry("capital_renamed", {"old": old_capital, "new": new}))
 
 
 def check_rename_facility(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:

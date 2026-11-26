@@ -74,6 +74,8 @@ class Profile(models.Model):
     era_kind = models.CharField("紀年", max_length=16, choices=ERA_KINDS, default="world")
     # 元号の一覧 [{"name": 元号, "start_turn": 改元したターン}]（古い順）
     eras = models.JSONField("元号", default=list, blank=True)
+    # テーマカラー（案32）の鍵。色の一覧は services.THEME_COLORS（空 = 選ばない）
+    theme_color = models.CharField("テーマカラー", max_length=16, blank=True, default="")
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

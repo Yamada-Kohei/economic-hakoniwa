@@ -15,6 +15,17 @@ def currency_prefix(symbol: str) -> str:
     return display.currency_prefix(symbol)
 
 
+@register.filter
+def theme_hex(island) -> str:
+    """その国のテーマカラー（案32）の色。選んでいなければ空（帯を出さない）。"""
+    from server.country.models import Profile
+    from server.web import country
+
+    profile = Profile.objects.filter(island=island).only("theme_color").first()
+    info = country.theme_info(profile)
+    return info["hex"] if info else ""
+
+
 @register.inclusion_tag("web/island_nav.html", takes_context=True)
 def island_nav(context) -> dict:
     """島の画面の入口と、今の入口の中のタブ（UI-71。server/web/island_nav.py）。"""

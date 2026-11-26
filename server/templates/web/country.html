@@ -5,9 +5,10 @@
 {% with c=country %}
 <div class="country-page">
 {% if error %}<p class="warning" role="alert">{{ error }}</p>{% endif %}
+{% if c.theme %}<div class="country-accent" style="background: {{ c.theme.hex }}" role="presentation"></div>{% endif %}
 
 <section class="panel country-head" id="profile">
-  <img class="country-flag" src="{{ c.flag.url }}" alt="{% blocktranslate with name=island.name %}{{ name }}の国旗{% endblocktranslate %}"{% if c.flag.width %} width="{{ c.flag.width }}" height="{{ c.flag.height }}"{% endif %}>
+  <img class="country-flag" src="{{ c.flag.url }}" alt="{% blocktranslate with name=island.name %}{{ name }}の国旗{% endblocktranslate %}"{% if c.flag.width %} width="{{ c.flag.width }}" height="{{ c.flag.height }}"{% endif %}{% if c.theme %} style="border: 3px solid {{ c.theme.hex }}"{% endif %}>
   <div class="country-head-body">
     <h2>{{ c.head.name }}{% if c.head.inactive %} <small class="muted">{% translate "（休止中）" %}</small>{% endif %}</h2>
     {% if c.awards or c.titles or c.anniversary %}
@@ -126,6 +127,15 @@
   </form>
   {% if c.era.eras %}<p class="hint">{% for e in c.era.eras %}{{ e.name }}（{{ e.start }}から）{% if not forloop.last %} → {% endif %}{% endfor %}</p>{% endif %}
   <p class="hint">{% translate "紀年は表示だけで、ゲームの暦は変わりません。" %}</p>
+
+  <h3>{% translate "テーマカラー" %}</h3>
+  <form method="post" class="actions" id="edit-theme">{% csrf_token %}
+    <input type="hidden" name="action" value="theme">
+    {% for t in c.theme_choices %}<label class="theme-choice"><input type="radio" name="color" value="{{ t.key }}"{% if t.key == c.theme_key %} checked{% endif %}> <span class="theme-swatch" style="background: {{ t.hex }}" aria-hidden="true"></span>{{ t.name }}</label>
+    {% endfor %}
+    <button type="submit">{% translate "テーマカラーを変える" %}</button>
+  </form>
+  <p class="hint">{% translate "国のページの縁と国旗の枠、島の見出しの帯、国のカードに使う色です。表示だけで、ゲームの進み方は変わりません。" %}</p>
 
   <h3>{% translate "国旗" %}</h3>
   <form method="post" enctype="multipart/form-data" class="actions" id="edit-flag">{% csrf_token %}
