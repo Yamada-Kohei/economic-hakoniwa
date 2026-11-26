@@ -295,6 +295,12 @@ figure.chart select { max-width: 100%; }
 .pie-legend li { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; border-bottom: 1px solid #f0ede6; }
 .pie-legend .pie-value { white-space: nowrap; text-align: right; }
 .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+.route-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 8px 0; }
+.route-key { display: inline-block; width: 24px; margin-right: 5px; border-top: 3px solid #fff; vertical-align: middle; }
+.route-key.dashed { border-top-style: dashed; }
+.route-key.blocked { border-top-style: dotted; border-color: #ff5252; }
+.route-good { white-space: nowrap; }
+#world-trade li.blocked { color: #ff8080; }
 table td.num, table th.num { text-align: right; white-space: nowrap; }
 table td.numeric-with-note { white-space: normal; }
 .numeric-value { white-space: nowrap; }

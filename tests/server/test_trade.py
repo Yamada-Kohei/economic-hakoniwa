@@ -113,6 +113,83 @@ def test_world_page_renders(client, world):
     assert 'data-trade="/api/world/trade"' in html and 'id="world-trade"' in html
 
 
+def test_world_trade_pair_routes_read_amounts_goods_and_blocked(client, world):
+    """世界の航路の読み替え（グラフィック強化 案4）: 組ごとの額（基準の通貨に換算）と
+    主な品目、額の無い向き、禁輸・戦争の印。記録と荷は試験用に直接置く。"""
+    from hakoniwa_core.units import BASIS
+
+    own = _own_island(client)
+    second, third = m.Island.objects.exclude(pk=own.pk).order_by("id")
+    w = m.World.objects.get()
+    turn = w.turn
+
+    # 貿易を始めたことにし、互いのレートを等しく置く（換算の倍率が 1 になる）
+    for island, other in ((own, second), (second, own)):
+        ext = island.ext or {}
+        trade_ext = ext.setdefault("trade", {})
+        trade_ext["since"] = turn
+        trade_ext.setdefault("rates", {})[str(other.id)] = BASIS
+        island.ext = ext
+        island.save()
+
+    def stat(island, name, value):
+        m.StatRecord.objects.create(island=island, turn=turn, name=name, value=value)
+
+    # 自国 → 2つ目: 額 100000、主な品目は穀物。2つ目 → 自国: 額 40000、主な品目は鋼鉄
+    stat(own, f"partner.{second.id}.exports", 100000)
+    stat(own, f"partner.{second.id}.exports.grain", 70000)
+    stat(own, f"partner.{second.id}.exports.steel", 30000)
+    stat(own, f"partner.{second.id}.imports", 40000)
+    stat(own, f"partner.{second.id}.imports.steel", 40000)
+    stat(second, f"partner.{own.id}.exports", 40000)
+    stat(second, f"partner.{own.id}.exports.steel", 40000)
+    stat(second, f"partner.{own.id}.imports", 100000)
+    stat(second, f"partner.{own.id}.imports.grain", 70000)
+    stat(second, f"partner.{own.id}.imports.steel", 30000)
+
+    # 運ぶ途中の荷: 自国 → 3つ目（戦争の組）と、3つ目 → 2つ目（禁輸の組）
+    w.ext["trade"] = {
+        "shipments": [
+            _shipment(201, own.id, third.id, "coal", 5000, turn),
+            _shipment(202, third.id, second.id, "coal", 5000, turn),
+        ]
+    }
+    w.ext["diplomacy"] = {
+        "wars": [
+            {
+                "id": 1,
+                "attacker": own.id,
+                "defender": third.id,
+                "declared": turn - 2,
+                "start": turn - 1,
+                "state": "war",
+            }
+        ]
+    }
+    w.save()
+    third.policy = {"embargoes": {str(second.id): ["coal"]}}
+    third.save()
+
+    data = client.get("/api/world/trade").json()
+    assert data["pair_window"] == 12 and data["pair_base"]
+    pairs = {(p["a"], p["b"]): p for p in data["pair_routes"]}
+    assert set(pairs) == {(own.id, second.id), (own.id, third.id), (second.id, third.id)}
+
+    pair = pairs[(own.id, second.id)]
+    assert pair["blocked"] is None and pair["mine"] is True and pair["total"] == 140000
+    assert pair["ab"]["amount"] == 100000 and pair["ab"]["good"]["good"] == "grain"
+    assert pair["ba"]["amount"] == 40000 and pair["ba"]["good"]["good"] == "steel"
+
+    war = pairs[(own.id, third.id)]
+    assert war["blocked"] == "war"
+    assert war["ab"]["amount"] is None and war["ab"]["transit"] is True and war["ba"] is None
+
+    embargo = pairs[(second.id, third.id)]
+    assert embargo["blocked"] == "embargo" and embargo["mine"] is False
+    assert embargo["ab"] is None
+    assert embargo["ba"]["amount"] is None and embargo["ba"]["transit"] is True
+
+
 # --- 島の貿易 -----------------------------------------------------------------------------
 
 OWNER_KEYS = {

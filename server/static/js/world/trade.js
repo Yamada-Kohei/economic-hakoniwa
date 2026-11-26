@@ -1,6 +1,8 @@
 // 世界マップの貿易（フェーズ3-1）: 貿易圏ごとの色で島の区画を縁取り（2つ以上の圏に入っている島は
-// 内側に縁を重ねる）、港のある島に白い丸を付け、船で運ぶ途中の荷のある航路を線で結ぶ（太いほど船が
-// 多く、矢じりは荷の向かう先。自国の航路は黄色）。区画の上に SVG を重ね、押すのは下の区画のまま。
+// 内側に縁を重ねる）、港のある島に白い丸を付ける。区画の上に SVG を重ね、押すのは下の区画のまま。
+// 航路の線は島の組ごとの貿易の読み替え（グラフィック強化 案4・第3波）: 額が分かる向きは実線で
+// 太さ＝貿易額（直近 12 ターン、基準の通貨に換算）、色＝その向きの主な品目。額が分からない向き
+// （発着だけ確認できた）は等幅の破線、禁輸・戦争の組は赤い点線。線種の決めは pairLineKind。
 // 荷の中身は API が自国の荷の分だけ返すので、航路の一覧にだけ出す。
 // 他国どうしの航路は、国が増えると線で地図が白く埋まって島が見えなくなる（不具合報告 #17）ので、
 // 既定では出さず、地図の上のボタンで出す（出すかどうかはブラウザに覚える）。自国の航路はいつも出す。
@@ -11,9 +13,41 @@ import { escapeHtml } from "../island/api.js";
 
 const SVG = "http://www.w3.org/2000/svg";
 const RING = 0.07; // 縁の太さ（区画の 1 辺に対する割合）
-const MINE = "#ffca28"; // 自国の航路の色（site.css の自国の区画の縁の色）
 const ROUTE = "#ffffff";
 const ROUTES_KEY = "world.routes"; // 他国の航路を出すか（localStorage）
+
+// 航路の線種（凡例のスウォッチと共用の定義。区画 1 辺を 1 とする長さ）
+// 破線は、375px 幅・最短の航路（長さ 1）でも隙間が 1 つ以上見える間隔にする（掲示板 #5825・#5827）
+export const ROUTE_DASH = [0.34, 0.2];
+export const BLOCKED_DASH = [0.03, 0.13]; // 赤い点線（線端を丸めて点にする）
+export const BLOCKED_COLOR = "#ff5252"; // 禁輸・戦争（fleets.js の他国の色と同じ）
+const DASH_WIDTH = 0.07; // 破線・点線の太さ（額で変わらない）
+
+/** 主な品目の色: この地図に現れる品目どうしで重ならないよう、財の並び順に割り当てる。 */
+export function goodColors(pairs) {
+  const goods = new Map();
+  for (const pair of pairs || []) {
+    for (const dir of [pair.ab, pair.ba]) {
+      if (dir?.good && !goods.has(dir.good.good)) goods.set(dir.good.good, dir.good);
+    }
+  }
+  const sorted = [...goods.values()].sort((x, y) => (x.index ?? 0) - (y.index ?? 0));
+  const n = BLOC_COLORS.length;
+  return new Map(sorted.map((good, i) => [good.good, BLOC_COLORS[i % n]]));
+}
+
+/** 実線の太さ（いちばん大きい向きの額で割って、既存の航路の太さの範囲に収める）。 */
+export function routeWidth(amount, maxAmount) {
+  if (!(maxAmount > 0) || amount == null) return 0.04;
+  return Math.min(0.22, 0.04 + 0.18 * (amount / maxAmount));
+}
+
+/** 航路の線種: 禁輸・戦争の組は blocked、額が分かる向きは solid、残りは dashed。 */
+export function pairLineKind(dir, blocked) {
+  if (blocked) return "blocked";
+  if (!dir) return null;
+  return dir.amount != null ? "solid" : "dashed";
+}
 
 function svg(name, attrs) {
   const el = document.createElementNS(SVG, name);
@@ -69,10 +103,10 @@ export function drawTrade(grid, data, section) {
     }
   }
   const others = svg("g", { "data-routes": "others" });
-  for (const route of data.routes) drawRoute(route.mine ? layer : others, route, islands);
+  drawPairRoutes(data, islands, layer, others);
   layer.append(others);
   grid.append(layer);
-  mountRoutesToggle(others, data.routes.filter((r) => !r.mine).length);
+  mountRoutesToggle(others, (data.pair_routes || []).filter((p) => !p.mine).length);
   describeCells(grid, data);
   if (section) writeLegend(section, data, colors);
 }
@@ -105,22 +139,55 @@ function mountRoutesToggle(others, count) {
   });
 }
 
-/** 航路を1本描く（行きと帰りが重ならないように、向きの右側へ少しずらす）。 */
-function drawRoute(layer, route, islands) {
-  const a = islands.get(route.from);
-  const b = islands.get(route.to);
+/** 島の組ごとの航路を描く（自国の組は layer、他国の組は others に分ける）。 */
+function drawPairRoutes(data, islands, layer, others) {
+  const pairs = data.pair_routes || [];
+  const maxAmount = Math.max(
+    0,
+    ...pairs.flatMap((p) => [p.ab?.amount || 0, p.ba?.amount || 0]),
+  );
+  const colors = goodColors(pairs);
+  for (const pair of pairs) {
+    const target = pair.mine ? layer : others;
+    if (pairLineKind(null, pair.blocked) === "blocked") {
+      drawBlockedLine(target, pair, islands);
+      continue;
+    }
+    if (pair.ab) drawPairLine(target, pair.ab, islands.get(pair.a), islands.get(pair.b), pair.mine, maxAmount, colors);
+    if (pair.ba) drawPairLine(target, pair.ba, islands.get(pair.b), islands.get(pair.a), pair.mine, maxAmount, colors);
+  }
+}
+
+/** 禁輸・戦争の組: 区画の真ん中どうしを赤い点線で結ぶ（ずらしも矢じりも付けない）。 */
+function drawBlockedLine(layer, pair, islands) {
+  const a = islands.get(pair.a);
+  const b = islands.get(pair.b);
+  if (!a || !b) return;
+  layer.append(svg("line", {
+    x1: a.wx + 0.5, y1: a.wy + 0.5, x2: b.wx + 0.5, y2: b.wy + 0.5,
+    stroke: BLOCKED_COLOR, "stroke-width": DASH_WIDTH, "stroke-linecap": "round",
+    "stroke-dasharray": BLOCKED_DASH.join(" "), opacity: 0.9,
+  }));
+}
+
+/** 航路を向きごとに1本描く（行きと帰りが重ならないように、向きの右側へ少しずらす）。 */
+function drawPairLine(layer, dir, a, b, mine, maxAmount, colors) {
   if (!a || !b) return;
   const [x1, y1, x2, y2] = [a.wx + 0.5, a.wy + 0.5, b.wx + 0.5, b.wy + 0.5];
   const length = Math.hypot(x2 - x1, y2 - y1) || 1;
   const [nx, ny] = [-(y2 - y1) / length * 0.08, (x2 - x1) / length * 0.08];
-  const color = route.mine ? MINE : ROUTE;
-  const width = Math.min(0.22, 0.04 + 0.04 * Math.max(route.ships, 0.25));
-  const line = svg("line", {
+  const kind = pairLineKind(dir, null);
+  const color = kind === "solid" ? colors.get(dir.good?.good) || ROUTE : ROUTE;
+  const attrs = {
     x1: x1 + nx, y1: y1 + ny, x2: x2 + nx, y2: y2 + ny,
-    stroke: color, "stroke-width": width, "stroke-linecap": "round", opacity: route.mine ? 0.85 : 0.6,
-  });
-  layer.append(line);
-  // 荷の向かう先を指す矢じり（線の 6 割の所）
+    stroke: color,
+    "stroke-width": kind === "solid" ? routeWidth(dir.amount, maxAmount) : DASH_WIDTH,
+    "stroke-linecap": "round",
+    opacity: mine ? 0.9 : 0.6,
+  };
+  if (kind === "dashed") attrs["stroke-dasharray"] = ROUTE_DASH.join(" ");
+  layer.append(svg("line", attrs));
+  // 貿易・荷の向かう先を指す矢じり（線の 6 割の所）
   const [ux, uy] = [(x2 - x1) / length, (y2 - y1) / length];
   const [mx, my] = [x1 + nx + (x2 - x1) * 0.6, y1 + ny + (y2 - y1) * 0.6];
   const head = 0.16;
@@ -161,6 +228,32 @@ function writeLegend(section, data, colors) {
   slot("blocs").innerHTML = blocs.length
     ? `<ul class="plain-list">${blocs.join("")}</ul>`
     : `<p class="muted">貿易圏はまだありません。</p>`;
+  // 主な品目の色の対応（地図に出ている財だけ。地図と同じ割り当て・並びは財の並び順）
+  const goodsSlot = slot("goods");
+  if (goodsSlot) {
+    const colors = goodColors(data.pair_routes);
+    const seen = new Map();
+    for (const p of data.pair_routes || []) {
+      for (const d of [p.ab, p.ba]) {
+        if (d?.good && !seen.has(d.good.good)) seen.set(d.good.good, d.good);
+      }
+    }
+    goodsSlot.innerHTML = [...seen.values()]
+      .sort((x, y) => x.index - y.index)
+      .map((g) => `<span class="route-good"><span class="swatch" style="background:${colors.get(g.good)}"></span>${escapeHtml(g.name)}</span>`)
+      .join("");
+  }
+  // 島の組ごとの額（額の無い向きは額を出さない。掲示板 #5827）
+  const pairsSlot = slot("pairs");
+  if (pairsSlot) {
+    const pairs = (data.pair_routes || []).map((p) => {
+      const dirs = [];
+      if (p.ab) dirs.push(pairDirText(p.a_name, p.b_name, p.ab));
+      if (p.ba) dirs.push(pairDirText(p.b_name, p.a_name, p.ba));
+      return `<li${p.blocked ? ' class="blocked"' : ""}>${dirs.join("<br>")}</li>`;
+    });
+    pairsSlot.innerHTML = pairs.length ? `<ul class="plain-list">${pairs.join("")}</ul>` : "";
+  }
   const routes = data.routes.map((r) => {
     const cargo = (r.cargo || [])
       .map((c) => `${escapeHtml(c.name)} ${c.amount} ${escapeHtml(c.unit)}: ${escapeHtml(turnDate(c.arrive))}に着く`)
@@ -171,5 +264,13 @@ function writeLegend(section, data, colors) {
   slot("routes").innerHTML = routes.length
     ? `<ul class="plain-list">${routes.join("")}</ul>`
     : `<p class="muted">運ぶ途中の荷はありません。</p>`;
-  section.hidden = !(data.blocs.length || data.routes.length || data.islands.some((i) => i.port));
+  section.hidden = !(data.blocs.length || data.routes.length || (data.pair_routes || []).length || data.islands.some((i) => i.port));
+}
+
+/** 組の向きの 1 行（額が分かる向きだけ額と主な品目を出す）。 */
+function pairDirText(fromName, toName, dir) {
+  const head = `${escapeHtml(fromName)} → ${escapeHtml(toName)}`;
+  if (dir.amount_text == null) return head;
+  const good = dir.good ? ` (${escapeHtml(dir.good.name)})` : "";
+  return `${head}: ${escapeHtml(dir.amount_text)}${good}`;
 }

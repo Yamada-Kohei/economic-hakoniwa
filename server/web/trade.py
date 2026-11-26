@@ -343,7 +343,8 @@ def routes(
 
 
 def world_trade(world: m.World, own: set[int]) -> dict[str, Any]:
-    """世界マップの貿易: 貿易圏、島ごとの加盟と港、航路（荷の中身は own の島の分だけ）。"""
+    """世界マップの貿易: 貿易圏、島ごとの加盟と港、航路（荷の中身は own の島の分だけ）と、
+    島の組ごとの貿易の読み替え（pair_trade）。"""
     state = world_state(world)
     islands = directory(world)
     ports = port_islands(world)
@@ -351,7 +352,7 @@ def world_trade(world: m.World, own: set[int]) -> dict[str, Any]:
     for bloc in state["blocs"]:
         for island_id in bloc["members"]:
             member.setdefault(island_id, []).append(bloc["id"])
-    return {
+    out = {
         "turn": world.turn,
         "blocs": [bloc_view(b, islands) for b in state["blocs"]],
         "islands": [
@@ -367,6 +368,150 @@ def world_trade(world: m.World, own: set[int]) -> dict[str, Any]:
         ],
         "routes": routes(state["shipments"], islands, own),
     }
+    out.update(pair_trade(world, islands, own, state["shipments"]))
+    return out
+
+
+# 世界の航路の読み替え（グラフィック強化 案4・第3波）で集める窓。相手ごとの表
+# （partner_rows）と同じ直近 12 ターン。
+PAIR_WINDOW = 12
+
+
+def pair_trade(
+    world: m.World,
+    islands: dict[int, dict[str, Any]],
+    own: set[int],
+    shipments: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """島の組ごとの貿易（案4）: 相手ごとの記録 partner.* を組ごとに集め、基準の通貨に
+    直した額と主な品目、禁輸・戦争の組、運ぶ途中の荷の向きを返す。
+
+    向きの額は、出す島の輸出の記録を主とし、無いときは受け取る島の輸入の記録で補う。
+    記録はあるが基準の通貨に直せない向きは amount を None にする（画面では額の無い
+    線になる）。貿易も荷も無い組は出さない。禁輸・戦争は、貿易か荷のある組にだけ印を
+    付ける（航路でない組に線は引かない）。
+    """
+    from server.web import diplomacy, rankings  # rankings は trade を読むのでここで読む
+
+    defs = get_game().defs
+    own_island = world.islands.filter(pk__in=own).order_by("id").first() if own else None
+    base = rankings.default_base(world, own_island)
+    factors = rankings._factors(world, base)
+    base_label = _currency(islands, base) if base is not None else ""
+    order = display.goods_in_order(defs)
+    good_index = {good: i for i, good in enumerate(order)}
+    good_index.setdefault("freight", len(order))
+
+    # 向き（出す島 → 受け取る島）ごとに、出す島の記録（own）と受け取る島の記録
+    # （mirror）を、それぞれの島の通貨のまま集める。換算は向きの額を決めるときに行う
+    recorded: dict[tuple[int, int], dict[str, float]] = {}
+    dir_goods: dict[tuple[int, int], dict[str, dict[str, float]]] = {}
+    rows = m.StatRecord.objects.filter(
+        island__world=world, turn__gt=world.turn - PAIR_WINDOW, name__startswith="partner."
+    ).values_list("island_id", "name", "value")
+    for island_id, name, value in rows:
+        parts = name.split(".")
+        if len(parts) < 3 or not parts[1].isdigit():
+            continue
+        partner = int(parts[1])
+        if partner == island_id or partner not in islands:
+            continue
+        side = parts[2]
+        if side not in ("exports", "imports"):
+            continue
+        if len(parts) == 3:
+            if side == "exports":
+                rec = recorded.setdefault((island_id, partner), {})
+                rec["own"] = rec.get("own", 0.0) + value
+            else:
+                rec = recorded.setdefault((partner, island_id), {})
+                rec["mirror"] = rec.get("mirror", 0.0) + value
+        else:
+            good = ".".join(parts[3:])
+            if side == "exports":
+                goods = dir_goods.setdefault((island_id, partner), {"own": {}, "mirror": {}})
+                goods["own"][good] = goods["own"].get(good, 0.0) + value
+            else:
+                goods = dir_goods.setdefault((partner, island_id), {"own": {}, "mirror": {}})
+                goods["mirror"][good] = goods["mirror"].get(good, 0.0) + value
+
+    transit_pairs = {(s["from"], s["to"]) for s in shipments}
+
+    def direction(src: int, dst: int) -> dict[str, Any] | None:
+        rec = recorded.get((src, dst))
+        transit = (src, dst) in transit_pairs
+        if rec is None and not transit:
+            return None
+        amount = None
+        if rec is not None:
+            if "own" in rec and src in factors:
+                amount = rec["own"] * factors[src]
+            elif "mirror" in rec and dst in factors:
+                amount = rec["mirror"] * factors[dst]
+        good = None
+        goods = dir_goods.get((src, dst))
+        if goods:
+            pool: dict[str, float] = {}
+            if src in factors:
+                pool = {g: v * factors[src] for g, v in goods["own"].items()}
+            if not pool and dst in factors:
+                pool = {g: v * factors[dst] for g, v in goods["mirror"].items()}
+            if not pool:
+                pool = goods["own"] or goods["mirror"]
+            if pool:
+                top = max(pool.items(), key=lambda kv: kv[1])[0]
+                good = {
+                    "good": top,
+                    "name": _partner_good_name(defs, top),
+                    "index": good_index.get(top, len(order)),
+                }
+        return {
+            "amount": amount,
+            "amount_text": (
+                display.stat_text("trade.exports", amount, "money", base_label)
+                if amount is not None
+                else None
+            ),
+            "good": good,
+            "transit": transit,
+        }
+
+    # 禁輸（どちらか一方でも）と戦争（始まっているものと、宣言済みで始まる前）。
+    # 戦争があれば戦争を優先する
+    blocked: dict[tuple[int, int], str] = {}
+    for row in world.islands.values("id", "policy"):
+        for key in (row["policy"] or {}).get("embargoes") or {}:
+            if str(key).isdigit():
+                a, b = row["id"], int(key)
+                if a != b:
+                    blocked.setdefault((min(a, b), max(a, b)), "embargo")
+    for war in diplomacy.world_view(world)["wars"]:
+        if war["state"] in ("war", "declared"):
+            a, b = war["attacker"]["id"], war["defender"]["id"]
+            blocked[(min(a, b), max(a, b))] = "war"
+
+    pair_keys = {(min(a, b), max(a, b)) for a, b in recorded} | {
+        (min(a, b), max(a, b)) for a, b in transit_pairs
+    }
+    out = []
+    for a, b in sorted(pair_keys):
+        ab, ba = direction(a, b), direction(b, a)
+        total = sum(d["amount"] for d in (ab, ba) if d is not None and d["amount"] is not None)
+        out.append(
+            {
+                "a": a,
+                "b": b,
+                "a_name": _name(islands, a),
+                "b_name": _name(islands, b),
+                "ab": ab,
+                "ba": ba,
+                "blocked": blocked.get((a, b)),
+                "mine": a in own or b in own,
+                "total": total,
+            }
+        )
+    out.sort(key=lambda row: -row["total"])
+    return {"pair_routes": out, "pair_base": base_label, "pair_window": PAIR_WINDOW}
 
 
 # --- 島の貿易 --------------------------------------------------------------------------
@@ -518,6 +663,11 @@ PARTNER_LABELS = {"bloc": "圏の市場（相手は混ざる）", "merchant": "�
 ROUTE_LABELS = {"bloc": "圏の市場", "contract": "二国間契約", "merchant": "海外の商人"}
 
 
+def _partner_good_name(defs: Any, good: str) -> str:
+    """相手ごとの統計に出す財の表示名（運賃は財の定義に無いのでここで名前を付ける）。"""
+    return "運賃" if good == "freight" else defs.name("goods", good)
+
+
 def partner_rows(
     island: m.Island, islands: dict[int, dict[str, Any]], currency: str
 ) -> list[dict[str, Any]]:
@@ -564,7 +714,7 @@ def partner_rows(
     defs = get_game().defs
 
     def good_name(good: str) -> str:
-        return "運賃" if good == "freight" else defs.name("goods", good)
+        return _partner_good_name(defs, good)
 
     def route_entries(partner: str) -> list[dict[str, Any]]:
         entries = [

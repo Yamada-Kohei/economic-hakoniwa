@@ -43,10 +43,17 @@
   {% endif %}
   <section id="world-trade" class="panel" aria-labelledby="world-trade-title" hidden>
     <h2 id="world-trade-title">{% translate "貿易圏と航路" %}</h2>
-    <p class="hint">{% translate "島の区画の縁の色が加盟している貿易圏です（2つ以上の圏に入っている島は縁が重なります）。白い丸は港のある島、線は船で運ぶ途中の荷のある航路で、太いほど船が多く、矢じりが荷の向かう先です。自国の航路は黄色でいつも出し、他国の航路は地図の上の「他国の航路を出す」を押すと出ます。荷の中身は自国の荷だけ表示します。" %}</p>
+    <p class="hint">{% translate "島の区画の縁の色が加盟している貿易圏です（2つ以上の圏に入っている島は縁が重なります）。白い丸は港のある島、線は島どうしの貿易の航路です。実線は太いほど貿易額が大きく（直近12ターンの合計を、基準の通貨に直した額）、色はその向きの主な品目、矢じりが貿易の向かう先です。自国の航路はいつも出し、他国の航路は地図の上の「他国の航路を出す」を押すと出ます。運ぶ途中の荷の中身は自国の荷だけ表示します。" %}</p>
     <div data-slot="blocs"></div>
+    <div class="route-legend">
+      <span><i class="route-key solid" aria-hidden="true"></i>{% translate "実線: 貿易額（太さ）と主な品目（色）" %}</span>
+      <span><i class="route-key dashed" aria-hidden="true"></i>{% translate "発着点確認済み（航路別の貿易額不明）" %}</span>
+      <span><i class="route-key blocked" aria-hidden="true"></i>{% translate "禁輸・戦争の相手" %}</span>
+      <span data-slot="goods"></span>
+    </div>
     <details>
       <summary>{% translate "航路の一覧" %}</summary>
+      <div data-slot="pairs"></div>
       <div data-slot="routes"></div>
     </details>
   </section>
