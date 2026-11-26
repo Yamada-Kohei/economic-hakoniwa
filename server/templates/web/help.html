@@ -44,6 +44,7 @@
     <li><a href="#units">{% translate "資源の単位" %}</a></li>
     <li><a href="#statistics">{% translate "統計の読み方" %}</a></li>
     <li><a href="#facilities">{% translate "施設" %}</a></li>
+    <li><a href="#map-display">{% translate "地図の見え方" %}</a></li>
   </ul>
 </nav>
 
@@ -899,6 +900,23 @@
     {% for u in units %}<tr><th>{{ u.name }}</th><td>{{ u.unit }}</td></tr>{% endfor %}
   </table>
   </div>
+</section>
+
+<section class="panel" id="map-display">
+  <h2>{% translate "地図の見え方" %}</h2>
+  <p>{% translate "島の地図の画面では、色や印の表示を切り替えられます。切り替えはブラウザに覚えられ、次に開いたときも同じ表示になります。色や印は見た目だけのもので、地形・施設・計算は変わりません。" %}</p>
+  <dl class="rules">
+    <dt>{% translate "季節の色調" %}</dt>
+    <dd>{% translate "地形の色が、月と島の気候帯に合わせて季節で変わります（最初から出ています）。雪の季節は陸が白くなり、寒冷の島では海も凍った色になります。" %}</dd>
+    <dt>{% translate "暮らしの気配" %}</dt>
+    <dd>{% translate "住宅のマスに人影の点が出ます。点の数は、その住宅に住む人の満ち具合で増え（最大3つ）、段の高い住宅には洗濯物も出ます。" %}</dd>
+    <dt>{% translate "繁栄" %}</dt>
+    <dd>{% translate "幸福度の高い住宅地が暖かい色になります。幸福度が70以上で暖色に、85以上では花の印も付きます。" %}</dd>
+    <dt>{% translate "お金の出来事" %}</dt>
+    <dd>{% translate "直近6ターンのお金の大きな出来事を地図に出します。銀行の救済は人の列、国債の下支えは首都の上の暗い雲、通貨の固定が崩れたときは人の集まりで出ます。" %}</dd>
+    <dt>{% translate "戦闘の跡" %}</dt>
+    <dd>{% translate "直近3ターンの戦闘・ミサイルの着弾・占領・破壊の跡を、焦げた地面と星の印で出します。新しい跡ほど濃く出ます。" %}</dd>
+  </dl>
 </section>
 
 <section class="panel" id="facilities">
