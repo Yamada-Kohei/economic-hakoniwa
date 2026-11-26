@@ -49,6 +49,7 @@ AI で作った絵は、作った道具の名前と、依頼した人を書き�
 | パス | 作った人 | ライセンス | 出典 |
 |---|---|---|---|
 | server/static/themes/default/sprites | Claude（tools/sprites/silhouette.py で生成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/facility/barracks@s2.svg・barracks@s3.svg・barracks@s4.svg | むぎ（tools/sprites/silhouette.py で生成。依頼: セビーリャ） | MIT | このリポジトリ |
 | server/static/img/push/icon-192.png・icon-512.png | OpenAI Codex が既存の官邸の SVG を PNG に変換（新しい絵の制作なし）。依頼: Claude | MIT | このリポジトリの server/static/themes/default/sprites/capital/official_residence-palace.svg |
 | server/static/themes/default/sprites/facility/barracks.svg | OpenAI Codex（幾何の形で作成）を Claude が直した（窓・軍艦。tools/sprites/silhouette.py で生成）。依頼: セビーリャ | MIT | このリポジトリ |
 | server/static/themes/default/sprites/facility/naval_base.svg | OpenAI Codex（幾何の形で作成）を Claude が直した（窓・軍艦。tools/sprites/silhouette.py で生成）。依頼: セビーリャ | MIT | このリポジトリ |
