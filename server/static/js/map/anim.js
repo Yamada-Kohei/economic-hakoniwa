@@ -99,7 +99,7 @@ export function smokePuffs(f, t, detail) {
       rise,
       dx: 0.1 * rise + 0.03 * phase, // 風で少し右へ流れる
       dy: -(0.25 + 1.35 * rise), // てっぺんから昇る
-      r: 0.1 + 0.17 * rise, // 昇るほど広がる
+      r: 0.045 + 0.077 * rise, // 昇るほど広がる（粒は小さめに。直径でマス幅の0.9〜2.4割）
       alpha: 0.3 * Math.sin(Math.PI * rise), // 出始めと消え際は薄く
     });
   }
