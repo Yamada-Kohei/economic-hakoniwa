@@ -110,6 +110,10 @@ def _rand_round(value: float, rng: random.Random) -> int:
 
 # マスの ext: 自給の農業ができる村か（W-272。population.farming_by_housing が入のときだけ書く）
 FARMING = "farming"
+# マスの ext: 前回の refresh_farming で見た建った住宅地の段階（段階が変わったマスだけ決め直す）
+FARMING_LEVEL = "farming_level"
+# マスの ext: 一度だけの戻し（数え替えで倒れたマスを村に戻す）を済ませた印（二度やらないため）
+FARMING_RESTORED = "farming_restored"
 
 
 def _farming(defs: Defs, tile: Tile) -> bool:
@@ -138,22 +142,57 @@ def refresh_farming(defs: Defs, config: GameConfig, island: IslandState) -> None
     住宅地の建ったマスは建った段階（床を足す工事でしか変わらない）だけで決める（_housed_farming）。
     村か町かは、その時々の人数ではなく土地の使い方で決まる。住宅地のないマスは前の印を引き継ぎ、
     村から町へは人数が町の下限に届いたときだけ移り、町の印は人がいなくなるまで残す（固定の幅は
-    持たない）。切なら印を書かず、前に書いた印は消す。"""
+    持たない）。切なら印を書かず、前に書いた印は消す。
+
+    建った段階で決め直すのは、そのターンに段階が変わったマスだけにする（前回見た段階を
+    FARMING_LEVEL に残す）。入にした最初のターンに全マスを数え替えたとき（2026-11-25 の反映）、
+    人数は村の大きさなのに建った段階は町以上のマスが一斉に町に数え替えられ、自給の農家が
+    島ごと一度に消えた。段階の記録がまだ無いマス（＝その数え替えを受けたマス）は印をそのまま
+    使って段階だけを記録し、そのうち数え替えで倒れた形のマス（人数は村・建った段階は町以上・
+    印は False）は一度だけ村の印に戻す（FARMING_RESTORED を残して二度やらない。戻した人数は
+    ターンログに 1 行）。初めて見るマス（印そのものが無い）は、今までどおり建った段階で決める。"""
     if not config.get("population.farming_by_housing"):
         for tile in island.tiles:
             tile.ext.pop(FARMING, None)
+            tile.ext.pop(FARMING_LEVEL, None)
+            tile.ext.pop(FARMING_RESTORED, None)
         return
     homes = {
         (f.x, f.y): f for f in island.facilities if fac.is_housing(config, f) and fac.on_map(f)
     }
+    restored = 0
     for tile in island.tiles:
         home = homes.get((tile.x, tile.y))
         if home is not None:
-            tile.ext[FARMING] = _housed_farming(defs, home, tile)
+            level = home.ext.get("level") or defs.settlement_levels()[0]
+            known_level = tile.ext.get(FARMING_LEVEL)
+            if FARMING not in tile.ext:
+                tile.ext[FARMING] = _housed_farming(defs, home, tile)
+            elif known_level is None:
+                # 段階の記録が無い＝数え替えを受けたマス。印は数え替えない。倒れたマスだけ戻す
+                if (
+                    not tile.ext[FARMING]
+                    and not tile.ext.get(FARMING_RESTORED)
+                    and tile.population > 0
+                    and _farming_by_size(defs, tile.population)
+                    and not _built_farming(defs, home)
+                ):
+                    tile.ext[FARMING] = True
+                    tile.ext[FARMING_RESTORED] = True
+                    restored += tile.population
+            elif known_level != level:
+                tile.ext[FARMING] = _housed_farming(defs, home, tile)
+            tile.ext[FARMING_LEVEL] = level
         elif tile.population <= 0:
             tile.ext.pop(FARMING, None)
+            tile.ext.pop(FARMING_LEVEL, None)
         elif tile.ext.get(FARMING, True):
             tile.ext[FARMING] = _farming_by_size(defs, tile.population)
+            tile.ext.pop(FARMING_LEVEL, None)
+        else:
+            tile.ext.pop(FARMING_LEVEL, None)
+    if restored > 0:
+        island.log.append(LogEntry("farming_restored", {"count": restored}))
 
 
 def _housed_farming(defs: Defs, home: Facility, tile: Tile) -> bool:
