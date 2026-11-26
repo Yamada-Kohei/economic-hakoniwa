@@ -436,7 +436,11 @@ def home_orders(island: IslandState, defs: Defs, config: GameConfig, turn: int) 
         for good, item in sorted(goods_of(f).items()):
             held = stock.total(f.stock, good)
             low, high = auction.band(prices.get(good, 1), width)
-            if item.get("dir") == IMPORT:
+            if item.get("dir") == IMPORT or item.get("dir") is None:
+                # 向きの無い商社の残った荷も、輸入の荷と同じ形で売りに出す（処分。#5303）。
+                # 向きが無い間は荷を売れず、荷が残る間は向きを付け直せない行き詰まりの直しで、
+                # 専用の売り方は作らない。荷が無ければ下で continue になるので、向きの
+                # 付け直しの決まりは変わらない
                 # 輸出の荷に替えた分（FX-64）は港に置いて圏で売る
                 held -= min(held, item.get(REEXPORT, 0))
                 if held <= 0:
