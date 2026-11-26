@@ -281,6 +281,7 @@ _EXTRA_STATS = [
     ("population.overcrowded", "過密居住者数（住宅の上限を超えて住む人）", "人"),
     ("export.freight", "輸出・他国に貸した船の運賃", "money"),
     ("import.freight", "輸入・他国の船を借りた運賃", "money"),
+    ("import.cloth", "輸入・布地", "money"),
 ]
 _STATS = {key: (label, unit) for key, label, unit in [*display.SUMMARY_STATS, *_EXTRA_STATS]}
 # 名前の頭が財のもの（後ろに財の名前が続く）

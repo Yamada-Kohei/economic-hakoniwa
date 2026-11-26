@@ -243,7 +243,16 @@ def test_trade_by_good_pies_on_the_overview(world):
     """品目ごとの輸出と輸入の額（export.<財>・import.<財>。W-72）を、貿易の概要の推移に円グラフで
     出す。円グラフの切れの名前は品目の名前（頭の「輸出・」は見出しで足りるので画面が外す）。"""
     owner, island, _, _ = _world_with_offer(world)
-    _stats(island, 5, {"export.grain": 300.0, "export.freight": 20.0, "import.food": 120.0})
+    _stats(
+        island,
+        5,
+        {
+            "export.grain": 300.0,
+            "export.freight": 20.0,
+            "import.food": 120.0,
+            "import.cloth": 40.0,
+        },
+    )
     browser = _client(owner)
     page = browser.get(f"/islands/{island.id}/trade/").content.decode()
     assert 'data-pie="export.*"' in page and 'data-pie="import.*"' in page
@@ -253,6 +262,8 @@ def test_trade_by_good_pies_on_the_overview(world):
     assert data["labels"]["export.grain"] == "輸出・穀物"
     assert data["labels"]["import.food"] == "輸入・食品"
     assert data["labels"]["export.freight"] == "輸出・他国に貸した船の運賃"
+    # 財の定義に無い名前（cloth）も、表示名の定義があれば英字のまま出ない
+    assert data["labels"]["import.cloth"] == "輸入・布地"
     assert data["series"]["export.grain"][-1] == 300
 
 
