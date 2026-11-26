@@ -115,6 +115,14 @@ def _allowed_keys(theme: dict | None = None) -> set[str]:
         {f"terrain/{t}" for t in d.terrain}
         | {f"facility/{s}" for s in sprites}
         | {f"facility/{s}@{side}" for s in coastal for side in ("sw", "ne", "nw")}
+        # 海沿いの施設の規模段は向きと組み合わせる（facility/<名>@sw@s3。
+        # 海が右下の向きは sized の facility/<名>@s<段> がそのまま段絵になる）
+        | {
+            f"facility/{s}@{side}@s{t}"
+            for s in coastal
+            for side in ("sw", "ne", "nw")
+            for t in tiers
+        }
         | graded
         | looks
         | sized
