@@ -4,6 +4,7 @@
 
 import { attachControls } from "./controls.js";
 import { changeMarks, readChangesShown, writeChangesShown } from "./changes.js";
+import { lensMarks, readLensShown, writeLensShown } from "./history.js";
 import { readFlagShown, writeFlagShown } from "./flagtoggle.js";
 import { drawMinimap, minimapTile } from "./minimap.js";
 import { BARS, FILL, overlayLegend, readOverlayMode, writeOverlayMode } from "./overlays/bars.js";
@@ -60,6 +61,8 @@ const state = {
   sprites: new Map(), flag: null, undergroundLabel: words().hidden,
   ruler: readRulerShown(storage), // 縁の目盛りと座標（UI-85）。既定は出さない
   changes: readChangesShown(storage), changeMarks: null, // 前のターンから変わったマスの印（案3 の静止版）。既定は出さない
+  lens: readLensShown(storage), lensMarks: null, // 変化レンズ（案29）。既定は出さない
+  historyTurn: null, snapshotMap: null, historyNow: "", // 地図の変遷（案29）: 選んだ節目の写しと、その見比べ方
   flagShown: readFlagShown(storage), // 首都の旗（案23）を出すか。既定は出す
   merchantShown: readMerchantShown(storage), // 港の商船（案6）を出すか。既定は出す
   fleetShown: readFleetShown(storage), // 母港の艦隊（W-100）を出すか。既定は出す
@@ -76,6 +79,15 @@ function redraw() {
   requestAnimationFrame(() => {
     pending = false;
     try {
+      if (state.snapshotMap) {
+        // 昔の地図（案29）: 節目の写しを、同じ位置・倍率のまま描く。重ね表示・船・部隊は
+        // 今の地図の物なので出さない。小さな地図は今の姿のまま（位置の目印）
+        drawIsland(ctx, state.snapshotMap, defs, view, { sprites: state.sprites });
+        if (minimap) drawMinimap(minimap, map, defs, state.selected);
+        canvas.dataset.ready = "1";
+        document.getElementById("map-load-notice").hidden = true;
+        return;
+      }
       const shipsShown = { merchant: state.merchantShown, fleet: state.fleetShown };
       drawIsland(ctx, map, defs, view, {
         ...state,
@@ -252,6 +264,7 @@ const controls = attachControls(canvas, view, {
     redraw();
   },
   onTap(sx, sy) {
+    if (state.snapshotMap) return; // 昔の地図を見ている間はマスを選ばない（今のマスの情報と食い違うため）
     const tile = tileAtScreen(sx, sy);
     if (tile && panel.marking) {
       panel.toggleMark(tile);
@@ -323,6 +336,74 @@ if (changesToggle) {
     applyChanges();
   });
   if (state.changes) applyChanges();
+}
+
+// 地図の変遷（案29）: 節目の写しの一覧を地図の API から読み、選んだ写しを「昔の地図」
+// として同じ位置・倍率で描く。変化レンズを入れたときは、今の地図に写しとの差の印を
+// 重ねる（写しの地図そのものは描かない）。レンズを出すかどうかは覚える
+const historySelect = document.getElementById("map-history");
+const lensToggle = document.getElementById("map-lens");
+const lensLegend = document.getElementById("lens-legend");
+const historyTurns = document.getElementById("history-turns");
+const historyLabels = new Map();
+async function applyHistory() {
+  const turn = state.historyTurn;
+  if (lensToggle) lensToggle.disabled = turn === null;
+  if (historyTurns) {
+    historyTurns.hidden = turn === null;
+    if (turn !== null) historyTurns.textContent = `${historyLabels.get(turn) || ""} ⇔ ${state.historyNow}`;
+  }
+  if (lensLegend) lensLegend.hidden = !(turn !== null && state.lens);
+  state.lensMarks = null;
+  state.snapshotMap = null;
+  if (turn === null) {
+    redraw();
+    return;
+  }
+  if (state.lens) {
+    if (map.lensTurn !== turn) {
+      try {
+        const extra = await fetch(`${canvas.dataset.api}?lens=${turn}`).then((r) => r.json());
+        map.lens = extra.lens || [];
+      } catch {
+        map.lens = [];
+      }
+      map.lensTurn = turn;
+    }
+    state.lensMarks = lensMarks(map);
+  } else {
+    try {
+      state.snapshotMap = await fetch(`${canvas.dataset.api}?snapshot=${turn}`).then((r) => r.json());
+    } catch {
+      state.snapshotMap = null;
+    }
+    select(null);
+  }
+  redraw();
+}
+if (historySelect) {
+  getJson(`${canvas.dataset.api}?history=1`)
+    .then((extra) => {
+      const history = extra.history || { snapshots: [], now: "" };
+      state.historyNow = history.now || "";
+      for (const snap of history.snapshots || []) {
+        historyLabels.set(snap.turn, snap.label);
+        historySelect.add(new Option(snap.label, String(snap.turn)));
+      }
+    })
+    .catch(() => {});
+  historySelect.addEventListener("change", () => {
+    state.historyTurn = historySelect.value ? Number(historySelect.value) : null;
+    applyHistory();
+  });
+}
+if (lensToggle) {
+  lensToggle.checked = state.lens;
+  lensToggle.addEventListener("change", () => {
+    state.lens = lensToggle.checked;
+    writeLensShown(storage, state.lens);
+    applyHistory();
+  });
 }
 
 // 首都の旗（案23）の表示の切り替え（案44 の旗の分）。出すかどうかは覚え、

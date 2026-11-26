@@ -21,6 +21,7 @@
 <link rel="modulepreload" href="{% static 'js/map/sprites.js' %}">
 <link rel="modulepreload" href="{% static 'js/map/ruler.js' %}">
 <link rel="modulepreload" href="{% static 'js/map/changes.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/history.js' %}">
 <link rel="modulepreload" href="{% static 'js/map/flagtoggle.js' %}">
 <link rel="modulepreload" href="{% static 'js/island/orders.js' %}">
 <link rel="modulepreload" href="{% static 'js/calendar.js' %}">
@@ -76,6 +77,13 @@
       {# 前のターンから変わったマスの印（案3 の静止版）。出すかどうかはブラウザに覚える #}
       <label><input type="checkbox" id="map-changes"> {% translate "変わったマス" %}</label>
       <span id="changes-legend" class="hint" hidden>{% translate "前のターンの更新で変わったマスです。" %}<span class="change-swatch built">＋</span> {% translate "建った" %}　<span class="change-swatch removed">×</span> {% translate "無くなった" %}　<span class="change-swatch stage">◆</span> {% translate "姿が変わった（段階・地形）" %}</span>
+      {# 地図の変遷（案29）: 節目のターンの地図の写しと見比べる。写しの一覧は地図の API から読む #}
+      <label>{% translate "地図の変遷" %}
+        <select id="map-history"><option value="">{% translate "今の地図" %}</option></select>
+      </label>
+      <label><input type="checkbox" id="map-lens" disabled> {% translate "変化レンズ" %}</label>
+      <span id="lens-legend" class="hint" hidden>{% translate "選んだ節目と今の姿を比べた差です。" %}<span class="lens-swatch new">▲</span> {% translate "新しくできた" %}　<span class="lens-swatch down">▼</span> {% translate "無くなった・衰えた" %}　<span class="lens-swatch changed">◇</span> {% translate "姿が変わった" %}</span>
+      <span id="history-turns" class="hint" hidden></span>
       {% endif %}
     </div>
     <p id="map-help" class="hint">{% translate "地図はドラッグで移動、Ctrl＋ホイールか＋－ボタンで拡大縮小できます。スマートフォンでは2本指で拡大縮小できます。通常のホイールはページをスクロールします。" %}</p>

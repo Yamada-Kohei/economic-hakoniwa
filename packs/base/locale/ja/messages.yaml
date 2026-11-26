@@ -524,6 +524,15 @@ anniversary_founding: "建国{years}年の記念日を迎えました"
 milestone_population: "人口が{count:,}人に達しました"
 milestone_gdp: "GDP（1ターン）が{amount:,}に達しました"
 
+# 地図の変遷（節目の写しの名前。hakoniwa_core/map_history.py、server/web/history.py）
+map_snapshot_start: "記録開始"
+map_snapshot_anniversary: "建国記念日"
+map_snapshot_population: "人口の節目"
+map_snapshot_gdp: "GDPの節目"
+map_snapshot_option: "ターン {turn}（{kinds}）"
+map_snapshot_kind_join: "・"
+map_history_now: "現在（ターン {turn}）"
+
 # お金と国債
 bonds_issued: "{term}を {amount:,} 発行しました（利回り {rate:.2f}%）"
 bonds_redeemed: "{term}を {amount:,} 償還しました"

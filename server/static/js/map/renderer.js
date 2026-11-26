@@ -3,6 +3,7 @@
 
 import { barPixels, barsBackToFront, drawsBars, solidColor } from "./overlays/bars.js";
 import { CHANGE_COLORS } from "./changes.js";
+import { LENS_COLORS } from "./history.js";
 import { lift, tileToWorld } from "./projection.js";
 import { drawSprite } from "./sprites.js";
 
@@ -10,6 +11,7 @@ import { drawSprite } from "./sprites.js";
  * 島を描く。
  * options: selected（選んだマス {x, y}）、marked（印を付けるマスの Set "x,y"）、
  *          changeMarks（前のターンから変わったマスの Map "x,y" → 種類。changes.js）、
+ *          lensMarks（節目の写しと比べた差の Map "x,y" → 種類。history.js）、
  *          overlay（重ねて表示する情報。overlays/ のモジュール）、
  *          overlayMode（"bars" で量のある重ね表示を棒にする。ほかは塗り分け。UI-79）、
  *          sprites（sprites.js の loadSprites が返す絵。ないものは色の箱で描く）、
@@ -87,6 +89,8 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       if (unitsAt.has(i)) drawUnits(ctx, unitsAt.get(i), px, top, theme, sprites);
       const changeKind = options.changeMarks?.get(`${x},${y}`);
       if (changeKind) drawChangeMark(ctx, changeKind, px, top, theme);
+      const lensKind = options.lensMarks?.get(`${x},${y}`);
+      if (lensKind) drawLensMark(ctx, lensKind, px, top, theme);
       if (options.marked?.has(`${x},${y}`)) outlineTop(ctx, px, top, theme, "#ff5722");
       if (options.selected && options.selected.x === x && options.selected.y === y) {
         outlineTop(ctx, px, top, theme, "#ffeb3b");
@@ -465,6 +469,48 @@ function drawChangeMark(ctx, kind, px, top, theme) {
     ctx.closePath();
     ctx.fill();
   }
+  ctx.restore();
+}
+
+/**
+ * 変化レンズの印（案29）: 節目の写しと比べた差。種類の色の枠と、上の頂点に色丸＋白い三角。
+ * 新しくできた物は上向き（▲）、無くなった・衰えた物は下向き（▼）、姿が変わっただけの
+ * 物は輪郭だけ（丸も三角も付けない。hal #5716）。色は history.js の LENS_COLORS（凡例と同じ）。
+ * 変わったマスの印（drawChangeMark）と置く場所・形をそろえ、重ねても読み分けられるようにする。
+ */
+function drawLensMark(ctx, kind, px, top, theme) {
+  const color = LENS_COLORS[kind];
+  if (!color) return;
+  const hw = theme.tile_width / 2;
+  const hh = theme.tile_height / 2;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.5;
+  diamondPath(ctx, px, top, hw, hh);
+  ctx.stroke();
+  if (kind === "changed") return; // 姿が変わっただけの物は輪郭だけ
+  const r = Math.max(5, hh * 0.42);
+  ctx.beginPath();
+  ctx.arc(px, top, r, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  const g = r * 0.55;
+  ctx.save();
+  ctx.fillStyle = "#fff";
+  ctx.beginPath();
+  if (kind === "new") {
+    ctx.moveTo(px, top - g);
+    ctx.lineTo(px + g, top + g * 0.8);
+    ctx.lineTo(px - g, top + g * 0.8);
+  } else {
+    ctx.moveTo(px, top + g);
+    ctx.lineTo(px + g, top - g * 0.8);
+    ctx.lineTo(px - g, top - g * 0.8);
+  }
+  ctx.closePath();
+  ctx.fill();
   ctx.restore();
 }
 

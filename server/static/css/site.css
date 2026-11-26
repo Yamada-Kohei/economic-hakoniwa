@@ -257,6 +257,11 @@ pre.prompt { white-space: pre-wrap; overflow-wrap: anywhere; }
 .change-swatch.built { color: #2e7d32; }
 .change-swatch.removed { color: #c62828; }
 .change-swatch.stage { color: #ef6c00; }
+/* 変化レンズの凡例（案29）: 色は history.js の LENS_COLORS と同じ */
+.lens-swatch { font-weight: bold; }
+.lens-swatch.new { color: #2e7d32; }
+.lens-swatch.down { color: #6a1b9a; }
+.lens-swatch.changed { color: #00838f; }
 /* 港の船の凡例（案6・W-100）: 商船は四角、艦隊は尖った形で、色と形の両方で見分ける */
 .ship-swatch { display: inline-block; width: 16px; height: 10px; vertical-align: middle; }
 .ship-swatch.merchant { background: #9c4a2f; }

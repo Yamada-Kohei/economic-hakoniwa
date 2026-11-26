@@ -42,6 +42,7 @@ from server.web import changes as changes_views
 from server.web import country as country_views
 from server.web import diplomacy as diplomacy_views
 from server.web import facility_page as facility_views
+from server.web import history as history_views
 from server.web import military as military_views
 from server.web import news as news_views
 from server.web import politics as politics_views
@@ -350,10 +351,18 @@ def island_map(request, island_id: int):
     ?freight=1 のときだけ、陸のマスごとの拠点までの運賃の率（freight、1万分の1。海は null）も返す
     （計算が重いので、重ね表示で選んだときだけ読む）。
     ?changes=1 のときだけ、持ち主に、前のターンから変わったマス（changed）も返す。
+    ?history=1 のときだけ、持ち主に、節目の地図の写しの一覧（history）も返す。
+    ?snapshot=<ターン> のときは、その節目の写しを地図と同じ形で返す（持ち主だけ）。
+    ?lens=<ターン> のときだけ、持ち主に、その写しと今の差（lens）も返す。
     """
     island = get_object_or_404(m.Island, pk=island_id)
     columns = ["terrain", "population", "zone", "infra", "pollution", "ext"]
     mine = _mine(request, island)
+    if mine and request.GET.get("snapshot"):
+        # 昔の地図（案29）: 節目の写しを、今の地図の代わりに同じ形で返す
+        snap = history_views.find_snapshot(island, request.GET["snapshot"])
+        if snap is not None:
+            return _json(history_views.snapshot_map(island, snap))
     viewer = letter_services.own_island(request.user)
     facility_rows = list(island.facilities.filter(x__gte=0).order_by("number"))
     unseen = [
@@ -403,6 +412,16 @@ def island_map(request, island_id: int):
         # 前のターンから変わったマスの印（案3 の静止版）。前のターンの写しと比べるので、
         # 切り替えたときだけ読む。持ち主の地図だけに出す（他国の施設の変化は見せない）
         data["changed"] = changes_views.changed_cells(island)
+    if request.GET.get("history") and mine:
+        # 地図の変遷（案29）: 節目の写しの一覧。写しの中身は ?snapshot= で別に読む
+        data["history"] = {
+            "snapshots": history_views.snapshot_list(island),
+            "now": display.message("map_history_now", turn=island.world.turn),
+        }
+    if request.GET.get("lens") and mine:
+        # 変化レンズ（案29）: 選んだ節目の写しと今の姿の差。写しが無ければ空
+        snap = history_views.find_snapshot(island, request.GET["lens"])
+        data["lens"] = history_views.lens_marks(island, snap) if snap is not None else []
     # 部隊の印は、見ている国に見えるものだけ（自分の部隊と、見える範囲に入った相手の部隊。
     # 陣地と占領は誰にでも見える）
     data["units"] = military_views.island_units(island, letter_services.own_island(request.user))
