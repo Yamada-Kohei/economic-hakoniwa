@@ -1,0 +1,60 @@
+{
+ "name": "deadlock-reentry-1126",
+ "commit": "8ea6cf6ceed714b5806fb37f7076a56d05cd607b",
+ "pool": "any",
+ "files": [
+  "deadlock_run.py",
+  "deadlock_trace.py"
+ ],
+ "patches": [],
+ "runs": [
+  {
+   "name": "reentry-s1",
+   "args": [
+    "reentry",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--out",
+    "dlr-s1.jsonl.gz"
+   ],
+   "summary": [
+    "dlr-s1.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "reentry-s2",
+   "args": [
+    "reentry",
+    "--seed",
+    "2",
+    "--turns",
+    "500",
+    "--out",
+    "dlr-s2.jsonl.gz"
+   ],
+   "summary": [
+    "dlr-s2.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "reentry-s9",
+   "args": [
+    "reentry",
+    "--seed",
+    "9",
+    "--turns",
+    "500",
+    "--out",
+    "dlr-s9.jsonl.gz"
+   ],
+   "summary": [
+    "dlr-s9.jsonl.gz"
+   ],
+   "large": []
+  }
+ ]
+}
