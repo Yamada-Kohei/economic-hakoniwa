@@ -34,6 +34,7 @@ from urllib.parse import urlencode, urlsplit
 from django.conf import settings
 from django.http import Http404, HttpRequest, HttpResponse, JsonResponse, QueryDict
 from django.urls import Resolver404, resolve
+from django.utils.translation import gettext, gettext_lazy
 from django.views.decorators.csrf import csrf_exempt
 
 from hakoniwa_core import facilities as fac
@@ -48,9 +49,18 @@ from server.world.repository import facility_from_row
 
 logger = logging.getLogger(__name__)
 
+# 画面の文言は多言語の形（gettext）で書く。移し方の型は docs/i18n.md。
+# モジュールレベルで決まる文（道具の説明・SERVER_INFO など）は gettext_lazy（訳は使うときに
+# 決まる）、呼び出しのたびに組み立てる文は gettext。辞書のキー（道具の名前・引数の名前）は
+# 訳さない。直書きのまま残すのは、建国の既定の名前（首都・クレジット・元首。ゲームのデータ）、
+# ログの文（開発者向け）、訳した断片を「・」でつなぐ印だけ。
 PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
-SERVER_INFO = {"name": "economic-hakoniwa", "title": "経済版箱庭諸国", "version": "0.0.1"}
-INSTRUCTIONS = """\
+SERVER_INFO = {
+    "name": "economic-hakoniwa",
+    "title": gettext_lazy("経済版箱庭諸国"),
+    "version": "0.0.1",
+}
+INSTRUCTIONS = gettext_lazy("""\
 経済版箱庭諸国（島国の経済を育てるターン制のゲーム。1ターン＝1か月）を、AI 用の鍵のアカウントとして
 遊ぶための道具です。人のプレイヤーと同じ決まりで動き、見られるのは画面で見られることだけです。
 
@@ -80,7 +90,7 @@ INSTRUCTIONS = """\
   掲示板（板・番号付きのレス・>>返信・名無しか国名か・返信の知らせ・検索）です。国際会議場（hall）
   には公開の声明と、戦争・条約の出来事が載ります。
 - ゲームの不具合やおかしな表示は report_bug で運営に報告できます（書くのは何が起きたかだけ）。
-"""
+""")
 
 # 道具の答えの文の上限（これを超える分は切って、続きの読み方を添える）
 TEXT_MAX = 60000
@@ -108,7 +118,7 @@ def call(
     try:
         match = resolve(path)
     except Resolver404 as e:
-        raise ToolError(f"{path} はありません") from e
+        raise ToolError(gettext("{path} はありません").format(path=path)) from e
     sub = HttpRequest()
     sub.method = method
     sub.path = sub.path_info = path
@@ -129,7 +139,7 @@ def call(
     try:
         response = match.func(sub, *match.args, **match.kwargs)
     except Http404:
-        return 404, {"error": "見つかりません"}
+        return 404, {"error": gettext("見つかりません")}
     text = response.content.decode("utf-8") if hasattr(response, "content") else ""
     if response.get("Content-Type", "").startswith("application/json"):
         return response.status_code, json.loads(text)
@@ -151,7 +161,7 @@ def call_ok(request: HttpRequest, method: str, path: str, **kwargs: Any) -> Any:
 def _own_island(request: HttpRequest) -> m.Island:
     island = letter_services.own_island(request.user)
     if island is None:
-        raise ToolError("まだ自分の島がありません。found で建国してください")
+        raise ToolError(gettext("まだ自分の島がありません。found で建国してください"))
     return island
 
 
@@ -196,66 +206,95 @@ class Tool:
         }
 
 
-ISLAND = {"type": "integer", "description": "島の番号（省くと自分の島）"}
-TURN = {"type": "integer", "description": "ターン"}
-PAGE = {"type": "integer", "minimum": 1, "description": "ページ（1 から）"}
+ISLAND = {"type": "integer", "description": gettext_lazy("島の番号（省くと自分の島）")}
+TURN = {"type": "integer", "description": gettext_lazy("ターン")}
+PAGE = {"type": "integer", "minimum": 1, "description": gettext_lazy("ページ（1 から）")}
 
 REPORTS = {
-    "economy": "経済（主な指標と国勢の今の値・得意産業と称号・stats で読める統計の名前 choices）",
-    "market": "市場（財ごとの値段・値段の種類 price_kind（trade 約定・quote 気配・carry 持ち越し・"
-    "none 未観測。約定でない値段は売買量 0 で、observed_turn が最後に約定したターン）・売買量・"
-    "買えなかった量・国の倉庫の在庫。持ち主には国の倉庫から国営の施設に渡した量 to_state と、"
-    "止まった施設の国営・民営 owner_name。good を決めるとその財の推移と約定（穀物の政府の組には"
-    "備蓄の入れ替えなどの note）と、持ち主には買い手と売り手の別（国営・民営の施設・商社・海外の"
-    "商人・家計・国の倉庫・政府の工事）ごとの注文・約定・買えなかった量 groups。"
-    "画面と同じく、その財の国の倉庫の売り買い warehouse_trade と"
-    "決まった売り買い warehouse_standing と、資源ごとの補助金 set_subsidy は set_orders で出す。"
-    "決まった売り買いの設定・前の結果は品目ごとの warehouse_standing に入る）",
-    "facilities": "施設（町ごとの労働力・失業と買いに行く店の場所 towns、産業ごとの従業者数 "
-    "industry_workers。持ち主には火力発電所の燃料在庫の月数と目標 fuel_reserves、施設ごとの"
-    "状態・人手・損益・預金・借入、生産調整中・生産停止中の施設の目標を下げたわけと打てる手 "
-    "slowdown、畑を作り替えている農場の内訳と企業の帳簿 table.firms、"
-    "他国には企業の名前・所有・施設の数と種類・働く人 firms）",
-    "fiscal": "財政（国庫の収入と支出・予算・税率・国債の一覧）",
-    "finance": "金融（中央銀行の方針・金利・融資。持ち主には銀行ごとの帳簿と金融の政策）",
-    "trade": "貿易（概要 overview（入っている貿易圏・輸出入と収支、持ち主には運ぶ途中の荷の重さと"
-    "契約の数）・相手国ごとの輸出・輸入 partner_stats（集計ターンと直近1年の額と主な品目。"
-    "貿易圏の市場の分も実際の相手の国ごとに出し、各行に経路ごとの直近1年の内訳 routes"
-    "（圏の市場・二国間契約・海外の商人）、海外の商人は1行）・輸出入・貿易圏。持ち主には、"
-    "いますべきこと todo（summary の todo の貿易の行）・"
-    "貿易の命令の待っている列と前のターンの結果 orders・契約（送り出した量 shipped・"
-    "まだ海の上の量 at_sea と"
-    "着く見込みのターン arrive_first〜arrive_last）・商社・船団（貸した船の運賃の収入 "
-    "charter_income・借りた船に払った運賃 charter_paid）・運ぶ途中の荷（ほかの国から"
-    "借りた船なら carrier_name、ほかの国に貸した船で運ぶ荷は direction=lent）・産業政策・"
-    "海外の商人 merchant・船の貸し出し lend_ships（命令 set_ship_lending）"
-    "（あと何ターン来るか turns_left、量を減らし始めるターン taper_start、今の量の割合 share（%）、"
-    "値段の倍率 multiplier（島の物価を含む）。物がないときの食料の商人が来ていれば merchant.food に"
-    "来始めたターン since・売りに出した量 quantity・売れた量 sold・値段 price）",
-    "fx": "為替と国際収支（レートごとに前のターンに市場で売りと買いに出ていた外貨の量 offered・"
-    "wanted（中央銀行の注文を除く。介入で買えるのは売りに出ている分だけ）。持ち主には外貨の持ち高と"
-    "為替の政策と、中央銀行どうしの融通 swaps（借りている額 borrowed・限度額 limit・まだ借りられる"
-    "額 room・貸している額 lent_total と 1 ターンの増加 borrowed_change・lent_change）。"
-    "為替の効き方は guide(which=fx)）",
-    "politics": "政治（体制・政情・支持率・議席・選挙。持ち主には政情の内訳と命令の選択肢）",
-    "diplomacy": "外交（戦争の状態・効いている条約・終わった条約・条約の違反の記録。持ち主には"
-    "返事待ちの条約の提案と、宣戦・条約の命令の選択肢。経済の条項は terms に中身が出る。"
-    "戦争の mutual は互いの宣戦で、どちらにも奇襲が付かない）",
-    "military": "軍（持ち主には兵・士気・練度・国防費・部隊（外国の島の部隊の補給と飢えも）・艦隊・"
-    "基地・陣地・捕虜・占領されたマスと占領しているマス・戦死と負傷の数。ほかの国には兵の総数と"
-    "国防費と見えた艦隊と部隊。反乱と内戦は civil_war（起きているか・反乱軍の兵の総数・占領した"
-    "マスの数はだれにも。持ち主には反乱軍のグループと、前触れが続いたターン数）。世界の艦隊は"
-    "api_get /api/world/fleets、島の俯瞰図の部隊と占領は api_get /api/islands/<島>/map の units と"
-    "occupied（反乱軍の占領は -1）。戦争の相手の荷を運ぶ中立国の船を封鎖と見張りの艦が沈めるか"
-    "追い返すかは命令 set_neutral_ships（初めは追い返す））",
-    "country": "国の公開ページ（国旗・元首・体制・通貨・人口・紹介文・年表・来訪者の一言。日付は"
-    "その国の選んだ紀年。年表は timeline_text で wiki にそのまま貼れる文でも読める）",
-    "plan": "計画と値段の規制（計画経済・混合経済の島）",
-    "chain": (
-        "産業の鎖（誰にでも。品目ごとの作った量・使った量と、止まっている工場のわけ。"
-        "見えない隠した施設は除く）"
+    "economy": gettext_lazy(
+        "経済（主な指標と国勢の今の値・得意産業と称号・stats で読める統計の名前 choices）"
     ),
-    "orders": "命令の列・行政力・今の政策（税・予算・金融）・最近の命令の結果",
+    "market": gettext_lazy(
+        "市場（財ごとの値段・値段の種類 price_kind（trade 約定・quote 気配・carry 持ち越し・"
+        "none 未観測。約定でない値段は売買量 0 で、observed_turn が最後に約定したターン）・売買量・"
+        "買えなかった量・国の倉庫の在庫。持ち主には国の倉庫から国営の施設に渡した量 to_state と、"
+        "止まった施設の国営・民営 owner_name。good を決めるとその財の推移と約定（穀物の政府の組には"
+        "備蓄の入れ替えなどの note）と、持ち主には買い手と売り手の別（国営・民営の施設・商社・"
+        "海外の"
+        "商人・家計・国の倉庫・政府の工事）ごとの注文・約定・買えなかった量 groups。"
+        "画面と同じく、その財の国の倉庫の売り買い warehouse_trade と"
+        "決まった売り買い warehouse_standing と、"
+        "資源ごとの補助金 set_subsidy は set_orders で出す。"
+        "決まった売り買いの設定・前の結果は品目ごとの warehouse_standing に入る）"
+    ),
+    "facilities": gettext_lazy(
+        "施設（町ごとの労働力・失業と買いに行く店の場所 towns、産業ごとの従業者数 "
+        "industry_workers。持ち主には火力発電所の燃料在庫の月数と目標 fuel_reserves、施設ごとの"
+        "状態・人手・損益・預金・借入、生産調整中・生産停止中の施設の目標を下げたわけと打てる手 "
+        "slowdown、畑を作り替えている農場の内訳と企業の帳簿 table.firms、"
+        "他国には企業の名前・所有・施設の数と種類・働く人 firms）"
+    ),
+    "fiscal": gettext_lazy("財政（国庫の収入と支出・予算・税率・国債の一覧）"),
+    "finance": gettext_lazy(
+        "金融（中央銀行の方針・金利・融資。持ち主には銀行ごとの帳簿と金融の政策）"
+    ),
+    "trade": gettext_lazy(
+        "貿易（概要 overview（入っている貿易圏・輸出入と収支、持ち主には運ぶ途中の荷の重さと"
+        "契約の数）・相手国ごとの輸出・輸入 partner_stats（集計ターンと直近1年の額と主な品目。"
+        "貿易圏の市場の分も実際の相手の国ごとに出し、各行に経路ごとの直近1年の内訳 routes"
+        "（圏の市場・二国間契約・海外の商人）、海外の商人は1行）・輸出入・貿易圏。持ち主には、"
+        "いますべきこと todo（summary の todo の貿易の行）・"
+        "貿易の命令の待っている列と前のターンの結果 orders・契約（送り出した量 shipped・"
+        "まだ海の上の量 at_sea と"
+        "着く見込みのターン arrive_first〜arrive_last）・商社・船団（貸した船の運賃の収入 "
+        "charter_income・借りた船に払った運賃 charter_paid）・運ぶ途中の荷（ほかの国から"
+        "借りた船なら carrier_name、ほかの国に貸した船で運ぶ荷は direction=lent）・産業政策・"
+        "海外の商人 merchant・船の貸し出し lend_ships（命令 set_ship_lending）"
+        "（あと何ターン来るか turns_left、量を減らし始めるターン taper_start、"
+        "今の量の割合 share（%）、"
+        "値段の倍率 multiplier（島の物価を含む）。"
+        "物がないときの食料の商人が来ていれば merchant.food に"
+        "来始めたターン since・売りに出した量 quantity・売れた量 sold・値段 price）"
+    ),
+    "fx": gettext_lazy(
+        "為替と国際収支（レートごとに前のターンに市場で売りと買いに出ていた外貨の量 offered・"
+        "wanted（中央銀行の注文を除く。介入で買えるのは売りに出ている分だけ）。"
+        "持ち主には外貨の持ち高と"
+        "為替の政策と、中央銀行どうしの融通 swaps（借りている額 borrowed・限度額 limit・"
+        "まだ借りられる"
+        "額 room・貸している額 lent_total と 1 ターンの増加 borrowed_change・lent_change）。"
+        "為替の効き方は guide(which=fx)）"
+    ),
+    "politics": gettext_lazy(
+        "政治（体制・政情・支持率・議席・選挙。持ち主には政情の内訳と命令の選択肢）"
+    ),
+    "diplomacy": gettext_lazy(
+        "外交（戦争の状態・効いている条約・終わった条約・条約の違反の記録。持ち主には"
+        "返事待ちの条約の提案と、宣戦・条約の命令の選択肢。経済の条項は terms に中身が出る。"
+        "戦争の mutual は互いの宣戦で、どちらにも奇襲が付かない）"
+    ),
+    "military": gettext_lazy(
+        "軍（持ち主には兵・士気・練度・国防費・部隊（外国の島の部隊の補給と飢えも）・艦隊・"
+        "基地・陣地・捕虜・占領されたマスと占領しているマス・戦死と負傷の数。ほかの国には兵の総数と"
+        "国防費と見えた艦隊と部隊。反乱と内戦は civil_war（起きているか・反乱軍の兵の総数・占領した"
+        "マスの数はだれにも。持ち主には反乱軍のグループと、前触れが続いたターン数）。世界の艦隊は"
+        "api_get /api/world/fleets、"
+        "島の俯瞰図の部隊と占領は api_get /api/islands/<島>/map の units と"
+        "occupied（反乱軍の占領は -1）。戦争の相手の荷を運ぶ中立国の船を封鎖と見張りの艦が沈めるか"
+        "追い返すかは命令 set_neutral_ships（初めは追い返す））"
+    ),
+    "country": gettext_lazy(
+        "国の公開ページ（国旗・元首・体制・通貨・人口・紹介文・年表・来訪者の一言。日付は"
+        "その国の選んだ紀年。年表は timeline_text で wiki にそのまま貼れる文でも読める）"
+    ),
+    "plan": gettext_lazy("計画と値段の規制（計画経済・混合経済の島）"),
+    "chain": (
+        gettext_lazy(
+            "産業の鎖（誰にでも。品目ごとの作った量・使った量と、止まっている工場のわけ。"
+            "見えない隠した施設は除く）"
+        )
+    ),
+    "orders": gettext_lazy("命令の列・行政力・今の政策（税・予算・金融）・最近の命令の結果"),
 }
 
 DEFS_SECTIONS = (
@@ -307,7 +346,9 @@ def _stats(request, args):
 def _report(request, args):
     page = args["page"]
     if page not in REPORTS:
-        raise ToolError(f"page は {'・'.join(REPORTS)} のどれかです")
+        raise ToolError(
+            gettext("page は {choices} のどれかです").format(choices="・".join(REPORTS))
+        )
     island = _island_id(request, args)
     if page == "market" and args.get("good"):
         return call_ok(request, "GET", f"/api/islands/{island}/market/{args['good']}")
@@ -319,7 +360,9 @@ def _report(request, args):
 def _defs(request, args):
     section = args["section"]
     if section not in DEFS_SECTIONS:
-        raise ToolError(f"section は {'・'.join(DEFS_SECTIONS)} のどれかです")
+        raise ToolError(
+            gettext("section は {choices} のどれかです").format(choices="・".join(DEFS_SECTIONS))
+        )
     if section == "orders":
         data = call_ok(request, "GET", "/api/defs/orders")["orders"]
     else:
@@ -336,14 +379,14 @@ def _check_order(request, args):
     return call_ok(request, "POST", f"/api/islands/{island}/orders/check", body=order)
 
 
-CONFIRM_HINT = (
+CONFIRM_HINT = gettext_lazy(
     "まだ並べていません。confirm の命令（index は送った列の位置）の notes を読み、このままで"
     "よければ同じ orders に confirm: true を付けて set_orders を出し直してください。"
     "違っていたら直して出し直してください"
 )
 
 
-ADD_CONFIRM_HINT = (
+ADD_CONFIRM_HINT = gettext_lazy(
     "まだ足していません。confirm の notes を読み、このままでよければ同じ kind と payload に "
     "confirm: true を付けて add_order を出し直してください"
 )
@@ -355,14 +398,15 @@ def _set_orders(request, args):
     if not isinstance(orders, list) or not all(
         isinstance(o, dict) and isinstance(o.get("payload", {}), dict) for o in orders
     ):
-        raise ToolError("orders は {kind, payload} の一覧で送ってください")
+        raise ToolError(gettext("orders は {kind, payload} の一覧で送ってください"))
     body: dict[str, Any] = {"orders": args["orders"]}
     if args.get("confirm") is True:
         body["confirm"] = True
     status, data = call(request, "PUT", f"/api/islands/{island}/orders", body=body)
     if isinstance(data, dict) and "confirm" in data:
         # 打ち間違いに見える命令か戻せない命令（UI-75）: 並べずに、確かめの文を返す
-        return {"saved": False, "confirm": data["confirm"], "next": CONFIRM_HINT}
+        # CONFIRM_HINT は gettext_lazy の値。JSON にする所では str() で確定させる。
+        return {"saved": False, "confirm": data["confirm"], "next": str(CONFIRM_HINT)}
     if status >= 400:
         raise ToolError(f"{status}: {data if isinstance(data, str) else _dump(data)}")
     keep = ("admin_power", "orders", "warnings")
@@ -377,7 +421,7 @@ def _add_order(request, args):
         body["confirm"] = True
     status, data = call(request, "POST", f"/api/islands/{island}/orders/items", body=body)
     if isinstance(data, dict) and "confirm" in data:
-        return {"saved": False, "confirm": data["confirm"], "next": ADD_CONFIRM_HINT}
+        return {"saved": False, "confirm": data["confirm"], "next": str(ADD_CONFIRM_HINT)}
     if status >= 400:
         raise ToolError(f"{status}: {data if isinstance(data, str) else _dump(data)}")
     keep = ("added", "warning", "admin_power", "orders", "warnings")
@@ -389,7 +433,7 @@ def _remove_order(request, args):
     island = _own_island(request).id
     order = args["id"]
     if not isinstance(order, int) or isinstance(order, bool):
-        raise ToolError("id は命令の番号（summary の orders.pending の id）です")
+        raise ToolError(gettext("id は命令の番号（summary の orders.pending の id）です"))
     status, data = call(request, "DELETE", f"/api/islands/{island}/orders/items/{order}")
     if status >= 400:
         text = data.get("error") if isinstance(data, dict) else data
@@ -450,7 +494,7 @@ def _country_set(request, args):
     island = _own_island(request).id
     body = {k: args[k] for k in ("intro", "era", "new_era") if k in args}
     if not body:
-        raise ToolError("intro・era・new_era のどれかを指定してください")
+        raise ToolError(gettext("intro・era・new_era のどれかを指定してください"))
     return call_ok(request, "PUT", f"/api/islands/{island}/country/edit", body=body)
 
 
@@ -460,7 +504,9 @@ def _flag_set(request, args):
     if args.get("clear"):
         return call_ok(request, "DELETE", path)
     if not args.get("png_base64"):
-        raise ToolError("png_base64（PNG を base64 にした文字）か clear=true を指定してください")
+        raise ToolError(
+            gettext("png_base64（PNG を base64 にした文字）か clear=true を指定してください")
+        )
     return call_ok(request, "PUT", path, body={"png_base64": args["png_base64"]})
 
 
@@ -470,7 +516,9 @@ def _monument_image_set(request, args):
     if args.get("clear"):
         return call_ok(request, "DELETE", path)
     if not args.get("png_base64"):
-        raise ToolError("png_base64（PNG を base64 にした文字）か clear=true を指定してください")
+        raise ToolError(
+            gettext("png_base64（PNG を base64 にした文字）か clear=true を指定してください")
+        )
     return call_ok(request, "PUT", path, body={"png_base64": args["png_base64"]})
 
 
@@ -563,7 +611,9 @@ def _board_ng(request, args):
 def _board_ng_set(request, args):
     if args["action"] == "remove":
         if args.get("id") is None:
-            raise ToolError("remove には id（board_ng で読める NG の番号）を指定してください")
+            raise ToolError(
+                gettext("remove には id（board_ng で読める NG の番号）を指定してください")
+            )
         return call_ok(request, "DELETE", f"/api/board/ng/{int(args['id'])}")
     body = {k: args[k] for k in ("kind", "word", "thread", "number") if args.get(k) is not None}
     return call_ok(request, "POST", "/api/board/ng", body=body)
@@ -573,7 +623,7 @@ def _api_get(request, args):
     parts = urlsplit(str(args["path"]))
     path = parts.path if parts.path.startswith("/") else "/" + parts.path
     if not path.startswith("/api/") or ".." in path:
-        raise ToolError("読めるのは /api/ で始まる場所だけです")
+        raise ToolError(gettext("読めるのは /api/ で始まる場所だけです"))
     query = dict(QueryDict(parts.query).items())
     return call_ok(request, "GET", path, query=query)
 
@@ -594,25 +644,29 @@ def _guide(request, args):
     if args.get("find"):
         found = text.find(args["find"], start)
         if found < 0:
-            raise ToolError(f"手引きに「{args['find']}」は見つかりませんでした")
+            raise ToolError(
+                gettext("手引きに「{find}」は見つかりませんでした").format(find=args["find"])
+            )
         start = found
     length = int(args.get("length") or GUIDE_LENGTH)
     end = min(len(text), start + length)
-    head = f"[手引き {start}〜{end} 字目／全 {len(text)} 字"
+    head = gettext("[手引き {start}〜{end} 字目／全 {total} 字").format(
+        start=start, end=end, total=len(text)
+    )
     if end < len(text):
-        head += f"。続きは offset={end}"
+        head += gettext("。続きは offset={end}").format(end=end)
     return head + "]\n" + text[start:end]
 
 
 # 地図の重ね表示（画面の「重ねて表示」と同じ。static/js/map/overlays/）。ほかに infra:<種類>。
 OVERLAYS = {
-    "population": "人口",
-    "happiness": "幸福度",
-    "power": "電力充足率",
-    "pollution": "汚染度",
-    "zone": "工業団地・オフィス街",
-    "freight": "運賃の率",
-    "works": "工事中",
+    "population": gettext_lazy("人口"),
+    "happiness": gettext_lazy("幸福度"),
+    "power": gettext_lazy("電力充足率"),
+    "pollution": gettext_lazy("汚染度"),
+    "zone": gettext_lazy("工業団地・オフィス街"),
+    "freight": gettext_lazy("運賃の率"),
+    "works": gettext_lazy("工事中"),
 }
 # 人口の重ね表示の段（この人数以上で数字が1つ上がる。画面の色と同じく桁で濃くなる）
 POPULATION_STEPS = (1, 3, 10, 30, 100, 300, 1000, 3000, 10000, 30000)
@@ -642,13 +696,22 @@ def _overlay(data: dict[str, Any], overlay: str) -> tuple[list[list[str]], list[
             if p:
                 put(i, str(sum(1 for step in POPULATION_STEPS[1:] if p >= step)))
         steps = POPULATION_STEPS
-        ranges = [f"{d}: {steps[d]:,}〜{steps[d + 1] - 1:,} 人" for d in range(9)]
-        return grid, ["人口の段（" + "、".join(ranges) + f"、9: {steps[9]:,} 人以上）"]
+        ranges = [
+            gettext("{d}: {lo}〜{hi} 人").format(
+                d=d, lo=f"{steps[d]:,}", hi=f"{steps[d + 1] - 1:,}"
+            )
+            for d in range(9)
+        ]
+        return grid, [
+            gettext("人口の段（{ranges}、9: {top} 人以上）").format(
+                ranges="、".join(ranges), top=f"{steps[9]:,}"
+            )
+        ]
     if overlay == "happiness":
         for i, h in enumerate(data["happiness"]):
             if h is not None:
                 put(i, _digit(h, 100))
-        return grid, ["幸福度を 10 で割った数（0〜9。9 は 90 以上）"]
+        return grid, [gettext("幸福度を 10 で割った数（0〜9。9 は 90 以上）")]
     if overlay == "power":
         for i, p in enumerate(data["population"]):
             if p:
@@ -657,20 +720,22 @@ def _overlay(data: dict[str, Any], overlay: str) -> tuple[list[list[str]], list[
             elif data["power_line"][i]:
                 put(i, "=")
         return grid, [
-            "住民のいるマスが受け取れた電力の割合（0〜9 は 10% 刻み、* は足りている）。"
-            "= は送電線のマス"
+            gettext(
+                "住民のいるマスが受け取れた電力の割合（0〜9 は 10% 刻み、* は足りている）。"
+                "= は送電線のマス"
+            )
         ]
     if overlay == "pollution":
         for i, p in enumerate(data["pollution"]):
             if p:
                 put(i, str(min(9, p)))
-        return grid, ["汚染度（1〜9。9 は 9 以上）"]
+        return grid, [gettext("汚染度（1〜9。9 は 9 以上）")]
     if overlay == "zone":
         for i, zone in enumerate(data["zone"]):
             mark = {"industrial": "I", "office": "O", "commercial": "S"}.get(zone)
             if mark:
                 put(i, mark)
-        return grid, ["I 工業団地  O オフィス街  S 商業地"]
+        return grid, [gettext("I 工業団地  O オフィス街  S 商業地")]
     if overlay == "freight":
         rates, limit = data["freight"], data["freight_max"]
         reach = [r for r in rates if r is not None and r < limit]
@@ -679,8 +744,10 @@ def _overlay(data: dict[str, Any], overlay: str) -> tuple[list[list[str]], list[
             if rate is not None:
                 put(i, "x" if rate >= limit else _digit(rate, top))
         return grid, [
-            "拠点（首都と大きな町）まで運ぶときの運賃の率。この島でいちばん高いマス"
-            f"（{top / 100:g}%）を 9 とした10段。x は上限（{limit / 100:g}%）に届くマス"
+            gettext(
+                "拠点（首都と大きな町）まで運ぶときの運賃の率。この島でいちばん高いマス"
+                "（{top}%）を 9 とした10段。x は上限（{limit}%）に届くマス"
+            ).format(top=f"{top / 100:g}", limit=f"{limit / 100:g}")
         ]
     if overlay == "works":
         for _, x, y in data.get("infra_queue") or []:
@@ -688,16 +755,24 @@ def _overlay(data: dict[str, Any], overlay: str) -> tuple[list[list[str]], list[
         for f in data["facilities"]:
             if not f["built"]:
                 grid[f["y"]][f["x"]] = "C"
-        return grid, ["Q インフラの工事の列に並んだマス  C 建設中の施設のマス"]
+        return grid, [gettext("Q インフラの工事の列に並んだマス  C 建設中の施設のマス")]
     kind = overlay.removeprefix("infra:")
     for i, level in enumerate(data["infra"][kind]):
         if level:
             put(i, _digit(level, 100))
     defs = get_game().defs
     infra = defs.infrastructure[kind]
-    legend = [f"{defs.name('infrastructure', kind)}の整備度を 10 で割った数（9 は 90% 以上）"]
+    legend = [
+        gettext("{name}の整備度を 10 で割った数（9 は 90% 以上）").format(
+            name=defs.name("infrastructure", kind)
+        )
+    ]
     if infra.get("role") == "power":
-        legend.append(f"整備度 {round(infra.get('grid', 0) * 100)}% 以上のマスが電力を通す")
+        legend.append(
+            gettext("整備度 {pct}% 以上のマスが電力を通す").format(
+                pct=round(infra.get("grid", 0) * 100)
+            )
+        )
     return grid, legend
 
 
@@ -707,17 +782,31 @@ def _map(request, args):
     overlay = args.get("overlay")
     if overlay:
         if overlay not in _overlay_ids():
-            raise ToolError(f"overlay は {'・'.join(_overlay_ids())} のどれかです")
+            raise ToolError(
+                gettext("overlay は {choices} のどれかです").format(
+                    choices="・".join(_overlay_ids())
+                )
+            )
         query = {"freight": 1} if overlay == "freight" else None
         data = call_ok(request, "GET", f"/api/islands/{island_id}/map", query=query)
         grid, legend = _overlay(data, overlay)
         size = data["size"]
         kind = overlay.removeprefix("infra:")
-        name = OVERLAYS.get(overlay) or get_game().defs.name("infrastructure", kind) + "の整備度"
-        out = [f"{data['name']}（島 {island_id}）ターン {data['turn']} 重ね表示: {name}", ""]
+        name = OVERLAYS.get(overlay) or get_game().defs.name("infrastructure", kind) + gettext(
+            "の整備度"
+        )
+        out = [
+            gettext("{island_name}（島 {island_id}）ターン {turn} 重ね表示: {overlay_name}").format(
+                island_name=data["name"],
+                island_id=island_id,
+                turn=data["turn"],
+                overlay_name=name,
+            ),
+            "",
+        ]
         out.append("    " + "".join(str(x % 10) for x in range(size)))
         out += [f"{y:>3} " + "".join(row) for y, row in enumerate(grid)]
-        out.append("~ 海  - 浅瀬  . 値のない陸")
+        out.append(gettext("~ 海  - 浅瀬  . 値のない陸"))
         return "\n".join(out + legend)
     data = call_ok(request, "GET", f"/api/islands/{island_id}/map")
     island = m.Island.objects.get(pk=island_id)
@@ -745,12 +834,16 @@ def _map(request, args):
             grid[row.y][row.x] = "F" if row.built else "f"
         f = facility_from_row(row)
         x, y = fac.position(f)  # 町の中の店は町のマス
-        where = f"({x},{y})" if x >= 0 and y >= 0 else "(マスなし)"
+        where = f"({x},{y})" if x >= 0 and y >= 0 else gettext("(マスなし)")
         state_text = display.status_text(f)
-        rate = f" 稼働 {round(row.operating_rate * 100 / fac.FULL)}%" if row.built else ""
+        rate = (
+            gettext(" 稼働 {pct}%").format(pct=round(row.operating_rate * 100 / fac.FULL))
+            if row.built
+            else ""
+        )
         worn = display.equipment_info(game.defs, game.config, f) if row.built else {}
         if worn and worn["equipment"] < 1:  # 設備が傷んでいれば割合も（回6）
-            rate += f" 設備 {round(worn['equipment'] * 100)}%"
+            rate += gettext(" 設備 {pct}%").format(pct=round(worn["equipment"] * 100))
         if row.built and island.economy:  # 管財人のもと・閉鎖に入り売りに出している（FM-59・FM-60）
             sale = display.sale_text(row, f, state, (state.names or {}).get("currency_symbol", ""))
             if sale:
@@ -758,16 +851,25 @@ def _map(request, args):
         name = facility_name(game.defs, game.config, state, f)
         kind = game.defs.name("facilities", row.kind)
         product = display.product_of(game.defs, f.kind, f.recipe)  # 作る物（W-262）
-        kind = f"{kind}・{product}" if product else kind
+        kind = gettext("{kind}・{product}").format(kind=kind, product=product) if product else kind
         lines.append(f"{where} #{row.number} {name}（{kind}）{rate} {state_text}".rstrip())
     if data.get("capital"):
         cx, cy = data["capital"]
         grid[cy][cx] = "@"
-    out = [f"{data['name']}（島 {island_id}）ターン {data['turn']}", ""]
+    out = [
+        gettext("{island_name}（島 {island_id}）ターン {turn}").format(
+            island_name=data["name"], island_id=island_id, turn=data["turn"]
+        ),
+        "",
+    ]
     out.append("    " + "".join(str(x % 10) for x in range(size)))
     out += [f"{y:>3} " + "".join(row) for y, row in enumerate(grid)]
-    out.append("~ 海  - 浅瀬  . 平地  T 森  ^ 山  # 町  @ 首都  F 施設  f 工事中")
-    out.append(f"町 {towns} か所、インフラの工事の列 {len(data.get('infra_queue') or [])} 件")
+    out.append(gettext("~ 海  - 浅瀬  . 平地  T 森  ^ 山  # 町  @ 首都  F 施設  f 工事中"))
+    out.append(
+        gettext("町 {towns} か所、インフラの工事の列 {queue} 件").format(
+            towns=towns, queue=len(data.get("infra_queue") or [])
+        )
+    )
     out.append("")
     out += lines
     return "\n".join(out)
@@ -776,7 +878,7 @@ def _map(request, args):
 def _found(request, args):
     """ランダムな形と勧められた首都で建国する（tools/playtest/hk.py の found と同じ手順）。"""
     if letter_services.own_island(request.user) is not None:
-        raise ToolError("すでに島があります（1人1島）")
+        raise ToolError(gettext("すでに島があります（1人1島）"))
     seed = args.get("seed")
     seed = int(seed) if seed is not None else random.SystemRandom().randrange(2**31)
     regime = {
@@ -798,10 +900,10 @@ def _found(request, args):
             break
         seed += 1
     else:
-        raise ToolError(f"形に問題があります: {problems}")
+        raise ToolError(gettext("形に問題があります: {problems}").format(problems=problems))
     free = call_ok(request, "GET", "/api/founding/cells")["free"]
     if not free:
-        raise ToolError("世界マップに空いた区画がありません")
+        raise ToolError(gettext("世界マップに空いた区画がありません"))
     cell = args.get("cell") or random.Random(seed).choice(free)
     plan = {
         "land": land,
@@ -822,7 +924,7 @@ def _found(request, args):
     }
     status, data = call(request, "POST", "/api/founding", body=plan)
     if status >= 400:
-        raise ToolError(f"建国できませんでした: {data}")
+        raise ToolError(gettext("建国できませんでした: {data}").format(data=data))
     island = _own_island(request)
     return {
         "island": island.id,
@@ -838,164 +940,221 @@ def _found(request, args):
 TOOLS = [
     Tool(
         "whoami",
-        "自分",
-        "アカウント・自分の島（番号・国名・AI の印）・世界のターンと日付・次の更新時刻・"
-        "未読の公電の数。",
+        gettext_lazy("自分"),
+        gettext_lazy(
+            "アカウント・自分の島（番号・国名・AI の印）・世界のターンと日付・次の更新時刻・"
+            "未読の公電の数。"
+        ),
         _whoami,
     ),
     Tool(
         "guide",
-        "手引き",
-        "ゲームの中の手引き（/help/、詳しい仕組み）を文字で読む。遊び始める前に全部読む。"
-        "find で見出しや言葉から、offset で続きから読める。which=start なら入門"
-        "（/help/start/。最初の1年・困ったとき・施設の状態の言葉）、which=hakoniwa なら"
-        "従来の箱庭を遊んだ人向けの手引き（/help/hakoniwa/）、which=ai なら AI で遊ぶ人向けの"
-        "手引き（/help/ai/。鍵・つなぎ方・毎ターンの回し方・上限）、which=fx なら為替の効き方と"
-        "打てる手（/help/fx/）、which=terms なら利用規約（/terms/）。",
+        gettext_lazy("手引き"),
+        gettext_lazy(
+            "ゲームの中の手引き（/help/、詳しい仕組み）を文字で読む。遊び始める前に全部読む。"
+            "find で見出しや言葉から、offset で続きから読める。which=start なら入門"
+            "（/help/start/。最初の1年・困ったとき・施設の状態の言葉）、which=hakoniwa なら"
+            "従来の箱庭を遊んだ人向けの手引き（/help/hakoniwa/）、which=ai なら AI で遊ぶ人向けの"
+            "手引き（/help/ai/。鍵・つなぎ方・毎ターンの回し方・上限）、which=fx なら為替の効き方と"
+            "打てる手（/help/fx/）、which=terms なら利用規約（/terms/）。"
+        ),
         _guide,
         {
             "which": {
                 "type": "string",
                 "enum": ["general", "start", "hakoniwa", "ai", "fx", "terms"],
-                "description": "general（既定）は詳しい仕組み、start は入門、"
-                "hakoniwa は従来の箱庭との違い、ai は AI で遊ぶ人向け、terms は利用規約",
+                "description": gettext_lazy(
+                    "general（既定）は詳しい仕組み、start は入門、"
+                    "hakoniwa は従来の箱庭との違い、ai は AI で遊ぶ人向け、terms は利用規約"
+                ),
             },
-            "find": {"type": "string", "description": "この言葉から読み始める"},
-            "offset": {"type": "integer", "minimum": 0, "description": "読み始める字数"},
-            "length": {"type": "integer", "minimum": 1, "description": "読む字数（既定 8000）"},
+            "find": {"type": "string", "description": gettext_lazy("この言葉から読み始める")},
+            "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "description": gettext_lazy("読み始める字数"),
+            },
+            "length": {
+                "type": "integer",
+                "minimum": 1,
+                "description": gettext_lazy("読む字数（既定 8000）"),
+            },
         },
     ),
     Tool(
         "summary",
-        "国の要約",
-        "国の今の状態を1回で: 主な指標と前のターンからの変化、政情、止まった施設と工事"
-        "（自分の島なら生産調整中の施設ごとの目標を下げたわけと打てる手 facilities.slowdown）、"
-        "財の値段と"
-        "買えなかった量と国の倉庫の在庫（stock）、商業・サービス業の店（services）、人口の増減のわけ（population_changes）、"
-        "飢えている家計の層とそのわけ（hunger）、火力発電所の燃料在庫の月数と目標（fuel_reserves）、"
-        "満期の近い国債、直近のターンの出来事、燃料が尽きる前の知らせを含む注意、"
-        "貿易の 1 行（trade。輸出・輸入と海外の商人に払った額）。"
-        "自分の島なら今月すべきこと（todo。ホームと同じ急ぐ順の行で、kind・text・行き先の url）・"
-        "赤字の施設・命令の列と、直近に命令を実行したターン（last_turn）の結果・"
-        "未読の公電、軍（military。兵の数・士気・練度・賃金の遅れ・国防費・"
-        "国として買った食べ物や弾薬の結果 purchases・体制の選び直し待ち reselect"
-        "（until までに choose_regime を出さないと今の体制のまま固まる）。"
-        "命令は set_defense・"
-        "recruit・conscript・discharge。部隊は form_unit・disband_unit・move_unit・dig_trench・"
-        "stop_unit・set_requisition、ミサイル基地は fire_missile（nuclear で核弾頭を積む）、"
-        "艦隊は form_fleet・sail_fleet・fleet_duty（護衛・見張り・封鎖）・load_unit・"
-        "unload_unit（island を付けると戦争の相手の島へ揚陸）・load_supplies。"
-        "降伏で体制が倒れたら choose_regime）も。",
+        gettext_lazy("国の要約"),
+        gettext_lazy(
+            "国の今の状態を1回で: 主な指標と前のターンからの変化、政情、止まった施設と工事"
+            "（自分の島なら生産調整中の施設ごとの目標を下げたわけと打てる手 facilities.slowdown）、"
+            "財の値段と"
+            "買えなかった量と国の倉庫の在庫（stock）、商業・サービス業の店（services）、"
+            "人口の増減のわけ（population_changes）、"
+            "飢えている家計の層とそのわけ（hunger）、"
+            "火力発電所の燃料在庫の月数と目標（fuel_reserves）、"
+            "満期の近い国債、直近のターンの出来事、燃料が尽きる前の知らせを含む注意、"
+            "貿易の 1 行（trade。輸出・輸入と海外の商人に払った額）。"
+            "自分の島なら今月すべきこと（todo。ホームと同じ急ぐ順の行で、kind・text・"
+            "行き先の url）・"
+            "赤字の施設・命令の列と、直近に命令を実行したターン（last_turn）の結果・"
+            "未読の公電、軍（military。兵の数・士気・練度・賃金の遅れ・国防費・"
+            "国として買った食べ物や弾薬の結果 purchases・体制の選び直し待ち reselect"
+            "（until までに choose_regime を出さないと今の体制のまま固まる）。"
+            "命令は set_defense・"
+            "recruit・conscript・discharge。部隊は form_unit・disband_unit・move_unit・dig_trench・"
+            "stop_unit・set_requisition、ミサイル基地は fire_missile（nuclear で核弾頭を積む）、"
+            "艦隊は form_fleet・sail_fleet・fleet_duty（護衛・見張り・封鎖）・load_unit・"
+            "unload_unit（island を付けると戦争の相手の島へ揚陸）・load_supplies。"
+            "降伏で体制が倒れたら choose_regime）も。"
+        ),
         _summary,
         {"island": ISLAND},
     ),
     Tool(
         "changes",
-        "前回からの差分",
-        "ターン since より後に起きたこと: ターンログ（24 ターン分まで）・変わった指標・実行した"
-        "命令の結果・届いた公電。前に読んだターンを since に渡す。",
+        gettext_lazy("前回からの差分"),
+        gettext_lazy(
+            "ターン since より後に起きたこと: ターンログ（24 ターン分まで）・変わった指標・実行した"
+            "命令の結果・届いた公電。前に読んだターンを since に渡す。"
+        ),
         _changes,
         {"since": TURN, "island": ISLAND},
         ("since",),
     ),
     Tool(
         "turn_log",
-        "ターンログ",
-        "ターンログ（from〜to、24 ターン分まで。省くと最後のターン）。"
-        "kind で出来事の種類、facility で施設の種類を絞れます。公開してよい行だけを返します。",
+        gettext_lazy("ターンログ"),
+        gettext_lazy(
+            "ターンログ（from〜to、24 ターン分まで。省くと最後のターン）。"
+            "kind で出来事の種類、facility で施設の種類を絞れます。公開してよい行だけを返します。"
+        ),
         _turn_log,
         {
             "island": ISLAND,
             "from": TURN,
             "to": TURN,
-            "kind": {"type": "string", "description": "出来事の種類（ログの kind）"},
-            "facility": {"type": "string", "description": "施設の種類（例 transport）"},
+            "kind": {"type": "string", "description": gettext_lazy("出来事の種類（ログの kind）")},
+            "facility": {
+                "type": "string",
+                "description": gettext_lazy("施設の種類（例 transport）"),
+            },
         },
     ),
     Tool(
         "map",
-        "地図",
-        "島の文字の地図（地形・町・施設・首都）と、施設ごとの番号・名前・稼働率・状態のわけ。"
-        "overlay で画面の「重ねて表示」と同じ地図: "
+        gettext_lazy("地図"),
+        gettext_lazy(
+            "島の文字の地図（地形・町・施設・首都）と、施設ごとの番号・名前・稼働率・状態のわけ。"
+            "overlay で画面の「重ねて表示」と同じ地図: "
+        )
         + "・".join(OVERLAYS)
-        + "・infra:<インフラの種類>（例 infra:road）。",
+        + gettext_lazy("・infra:<インフラの種類>（例 infra:road）。"),
         _map,
         {
             "island": ISLAND,
-            "overlay": {"type": "string", "description": "重ね表示（population・infra:road など）"},
+            "overlay": {
+                "type": "string",
+                "description": gettext_lazy("重ね表示（population・infra:road など）"),
+            },
         },
     ),
     Tool(
         "tile",
-        "マス",
-        "1マスの中身（地形・人口・インフラの整備度・工事）と、そこの施設の詳しい情報。"
-        "自分の島なら施設の帳簿と命令に使う値も。施設の expand は、同じマスに同じ施設を建てる"
-        "命令 build（建て増し・農場の次の段階への工事）の資材と工期、今は通らないわけ problem。"
-        "自分の施設が生産調整中・生産停止中なら、目標を下げたわけ（在庫の何ターン分か・売れ残り・"
-        "付け値と費用・安い輸入）と打てる手 slowdown。施設ごとの命令の一覧（actions）は、"
-        "画面と同じく施設のページ（api_get /api/islands/<島>/facilities/<施設番号>）にある。",
+        gettext_lazy("マス"),
+        gettext_lazy(
+            "1マスの中身（地形・人口・インフラの整備度・工事）と、そこの施設の詳しい情報。"
+            "自分の島なら施設の帳簿と命令に使う値も。施設の expand は、同じマスに同じ施設を建てる"
+            "命令 build（建て増し・農場の次の段階への工事）の資材と工期、今は通らないわけ problem。"
+            "自分の施設が生産調整中・生産停止中なら、目標を下げたわけ（在庫の何ターン分か・"
+            "売れ残り・"
+            "付け値と費用・安い輸入）と打てる手 slowdown。施設ごとの命令の一覧（actions）は、"
+            "画面と同じく施設のページ（api_get /api/islands/<島>/facilities/<施設番号>）にある。"
+        ),
         _tile,
         {"x": {"type": "integer"}, "y": {"type": "integer"}, "island": ISLAND},
         ("x", "y"),
     ),
     Tool(
         "stats",
-        "統計の推移",
-        "統計の系列。names はカンマ区切り（例 gdp,cpi,unemployment,price.*。末尾の * はその頭の"
-        "統計すべて）。使える名前は report page=economy の choices。範囲を省くと直近の 120 "
-        "ターン。頼める数には上限があり（limits）、超えた分は dropped に名前を返す。",
+        gettext_lazy("統計の推移"),
+        gettext_lazy(
+            "統計の系列。names はカンマ区切り（例 gdp,cpi,unemployment,price.*。末尾の * はその頭の"
+            "統計すべて）。使える名前は report page=economy の choices。範囲を省くと直近の 120 "
+            "ターン。頼める数には上限があり（limits）、超えた分は dropped に名前を返す。"
+        ),
         _stats,
         {"names": {"type": "string"}, "from": TURN, "to": TURN, "island": ISLAND},
         ("names",),
     ),
     Tool(
         "report",
-        "画面の中身",
-        "画面と同じ中身を JSON で: " + "／".join(f"{k}: {v}" for k, v in REPORTS.items()),
+        gettext_lazy("画面の中身"),
+        gettext_lazy("画面と同じ中身を JSON で: ")
+        + "／".join(f"{k}: {v}" for k, v in REPORTS.items()),
         _report,
         {
             "page": {"type": "string", "enum": list(REPORTS)},
-            "good": {"type": "string", "description": "page=market のときの財（例 coal）"},
+            "good": {
+                "type": "string",
+                "description": gettext_lazy("page=market のときの財（例 coal）"),
+            },
             "island": ISLAND,
         },
         ("page",),
     ),
     Tool(
         "defs",
-        "定義",
-        "定義データ。section=orders は命令ごとの表示名・要る行政力・中身の形（JSON Schema）・"
-        "議会の採決・実行まで伏せるか。facilities は施設の労働者・原料・生産物・建設の資材。"
-        "ids で絞れる。",
+        gettext_lazy("定義"),
+        gettext_lazy(
+            "定義データ。section=orders は命令ごとの表示名・要る行政力・中身の形（JSON Schema）・"
+            "議会の採決・実行まで伏せるか。facilities は施設の労働者・原料・生産物・建設の資材。"
+            "ids で絞れる。"
+        ),
         _defs,
         {
             "section": {"type": "string", "enum": list(DEFS_SECTIONS)},
-            "ids": {"type": "array", "items": {"type": "string"}, "description": "絞る id"},
+            "ids": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": gettext_lazy("絞る id"),
+            },
         },
         ("section",),
     ),
     Tool(
         "check_order",
-        "命令を確かめる",
-        "命令を1つ、自分の島の今の状態で確かめる（並べる前に使う）。建設なら通勤圏の人手も返す。"
-        "打ち間違いに見える命令（相場から離れた指値・1 ターンの生産より多い量など）か戻せない"
-        "命令（取り壊しなど）なら、set_orders で聞く確かめの文を confirm に返す。",
+        gettext_lazy("命令を確かめる"),
+        gettext_lazy(
+            "命令を1つ、自分の島の今の状態で確かめる（並べる前に使う）。"
+            "建設なら通勤圏の人手も返す。"
+            "打ち間違いに見える命令（相場から離れた指値・1 ターンの生産より多い量など）か戻せない"
+            "命令（取り壊しなど）なら、set_orders で聞く確かめの文を confirm に返す。"
+        ),
         _check_order,
         {
-            "kind": {"type": "string", "description": "命令の種類（defs section=orders の id）"},
-            "payload": {"type": "object", "description": "命令の中身"},
+            "kind": {
+                "type": "string",
+                "description": gettext_lazy("命令の種類（defs section=orders の id）"),
+            },
+            "payload": {"type": "object", "description": gettext_lazy("命令の中身")},
         },
         ("kind", "payload"),
     ),
     Tool(
         "set_orders",
-        "命令の列を置き換える",
-        "自分の島の命令の列を丸ごと置き換える（今の列は消える。足すときは今の列に足して全部送る）。"
-        "次のターンの更新で上から実行され、行政力の数を超えた分は次のターンに回る。"
-        "形の誤りは受け付けず、今は実行できない命令は警告を付けて受け付ける。"
-        "新しく足す命令が打ち間違いに見えるとき（買う指値が相場の 2 倍以上・売る指値が半分以下・"
-        "量が 1 ターンの生産と売買の量や倉庫の在庫より多いなど）と、戻せない命令（取り壊し・宣戦・"
-        "部隊の解散など）は、並べずに saved: false と確かめの文 confirm を返す。読んでよければ"
-        "同じ orders に confirm: true を付けて出し直す。",
+        gettext_lazy("命令の列を置き換える"),
+        gettext_lazy(
+            "自分の島の命令の列を丸ごと置き換える（今の列は消える。"
+            "足すときは今の列に足して全部送る）。"
+            "次のターンの更新で上から実行され、行政力の数を超えた分は次のターンに回る。"
+            "形の誤りは受け付けず、今は実行できない命令は警告を付けて受け付ける。"
+            "新しく足す命令が打ち間違いに見えるとき（買う指値が相場の 2 倍以上・"
+            "売る指値が半分以下・"
+            "量が 1 ターンの生産と売買の量や倉庫の在庫より多いなど）と、戻せない命令（取り壊し・"
+            "宣戦・"
+            "部隊の解散など）は、並べずに saved: false と確かめの文 confirm を返す。読んでよければ"
+            "同じ orders に confirm: true を付けて出し直す。"
+        ),
         _set_orders,
         {
             "orders": {
@@ -1008,7 +1167,9 @@ TOOLS = [
             },
             "confirm": {
                 "type": "boolean",
-                "description": "確かめの文（confirm）を読んだうえで、そのまま並べるときに true",
+                "description": gettext_lazy(
+                    "確かめの文（confirm）を読んだうえで、そのまま並べるときに true"
+                ),
             },
         },
         ("orders",),
@@ -1017,19 +1178,30 @@ TOOLS = [
     ),
     Tool(
         "add_order",
-        "命令を1つ足す",
-        "自分の島の命令の列の最後に命令を 1 つ足す（今の列はそのまま。列を読み直して丸ごと送らなく"
-        "てよいので、画面と同時に足しても消えない）。形の誤りは受け付けず、今は実行できない命令は "
-        "warning を付けて受け付ける。打ち間違いに見える命令と戻せない命令は set_orders と同じく、"
-        "足さずに saved: false と確かめの文 confirm を返すので、よければ confirm: true で出し直す。"
-        "答えの added は足した命令の番号。",
+        gettext_lazy("命令を1つ足す"),
+        gettext_lazy(
+            "自分の島の命令の列の最後に命令を 1 つ足す（今の列はそのまま。"
+            "列を読み直して丸ごと送らなく"
+            "てよいので、画面と同時に足しても消えない）。形の誤りは受け付けず、"
+            "今は実行できない命令は "
+            "warning を付けて受け付ける。"
+            "打ち間違いに見える命令と戻せない命令は set_orders と同じく、"
+            "足さずに saved: false と確かめの文 confirm を返すので、"
+            "よければ confirm: true で出し直す。"
+            "答えの added は足した命令の番号。"
+        ),
         _add_order,
         {
-            "kind": {"type": "string", "description": "命令の種類（defs section=orders の id）"},
-            "payload": {"type": "object", "description": "命令の中身"},
+            "kind": {
+                "type": "string",
+                "description": gettext_lazy("命令の種類（defs section=orders の id）"),
+            },
+            "payload": {"type": "object", "description": gettext_lazy("命令の中身")},
             "confirm": {
                 "type": "boolean",
-                "description": "確かめの文（confirm）を読んだうえで、そのまま足すときに true",
+                "description": gettext_lazy(
+                    "確かめの文（confirm）を読んだうえで、そのまま足すときに true"
+                ),
             },
         },
         ("kind", "payload"),
@@ -1037,48 +1209,66 @@ TOOLS = [
     ),
     Tool(
         "remove_order",
-        "命令を1つ消す",
-        "自分の島の待っている命令を 1 つ、番号（summary の orders.pending の id）で消す。もうない"
-        "（実行された・消された）ときは誤りを返す。並べ替えは set_orders で列を送る。",
+        gettext_lazy("命令を1つ消す"),
+        gettext_lazy(
+            "自分の島の待っている命令を 1 つ、番号（summary の orders.pending の id）で消す。"
+            "もうない"
+            "（実行された・消された）ときは誤りを返す。並べ替えは set_orders で列を送る。"
+        ),
         _remove_order,
-        {"id": {"type": "integer", "description": "命令の番号（summary の orders.pending の id）"}},
+        {
+            "id": {
+                "type": "integer",
+                "description": gettext_lazy("命令の番号（summary の orders.pending の id）"),
+            }
+        },
         ("id",),
         read_only=False,
         destructive=True,
     ),
     Tool(
         "world",
-        "世界",
-        "世界の島の一覧（番号・国名・持ち主・自分の島か・AI の印・気候・世界マップの位置）と、"
-        "全部の島の最近の出来事（recent）・ゲームの更新履歴（updates）・管理人より（message）・"
-        "リンク集（links）。",
+        gettext_lazy("世界"),
+        gettext_lazy(
+            "世界の島の一覧（番号・国名・持ち主・自分の島か・AI の印・気候・世界マップの位置）と、"
+            "全部の島の最近の出来事（recent）・ゲームの更新履歴（updates）・管理人より（message）・"
+            "リンク集（links）。"
+        ),
         _world,
     ),
     Tool(
         "rankings",
-        "順位",
-        "統計の順位（GDP・1人あたり GDP・人口・幸福度・輸出額）と産業ごとの称号、"
-        "トップの画面の島の一覧の表（table: GDP の多い順に体制・人口・GDP・1人あたり GDP・失業率・"
-        "物価上昇率・幸福度・称号と、前のターンからの順位の上下 move・建国したばかりの印 new）、"
-        "世界の様子（world_summary: 国の数・世界の人口・GDP・輸出額と前のターンからの増え方・"
-        "貿易圏・契約・船荷の数）、為替の相場表（fx: 各国の通貨 1 が base の通貨でいくらかと"
-        "前のターンからの上下）、歴代の記録（records）、世界の企業（firms: 動いている施設の多い順に"
-        "企業の名前・国・民営か国営か・施設の数と種類・働く人）。"
-        "base はお金の額を直す通貨の島の番号。",
+        gettext_lazy("順位"),
+        gettext_lazy(
+            "統計の順位（GDP・1人あたり GDP・人口・幸福度・輸出額）と産業ごとの称号、"
+            "トップの画面の島の一覧の表（table: GDP の多い順に体制・人口・GDP・1人あたり GDP・"
+            "失業率・"
+            "物価上昇率・幸福度・称号と、前のターンからの順位の上下 move・"
+            "建国したばかりの印 new）、"
+            "世界の様子（world_summary: 国の数・世界の人口・GDP・輸出額と前のターンからの増え方・"
+            "貿易圏・契約・船荷の数）、為替の相場表（fx: 各国の通貨 1 が base の通貨でいくらかと"
+            "前のターンからの上下）、歴代の記録（records）、"
+            "世界の企業（firms: 動いている施設の多い順に"
+            "企業の名前・国・民営か国営か・施設の数と種類・働く人）。"
+            "base はお金の額を直す通貨の島の番号。"
+        ),
         _rankings,
         {"base": {"type": "integer"}},
     ),
     Tool(
         "letters",
-        "公電の一覧",
-        "自分の島の公電の一覧（box=inbox は届いた公電、sent は送った公電。新しい順）と未読の数。",
+        gettext_lazy("公電の一覧"),
+        gettext_lazy(
+            "自分の島の公電の一覧（box=inbox は届いた公電、sent は送った公電。"
+            "新しい順）と未読の数。"
+        ),
         _letters,
         {"box": {"type": "string", "enum": ["inbox", "sent"]}, "page": PAGE},
     ),
     Tool(
         "read_letter",
-        "公電を読む",
-        "公電を1通読む（届いた公電は既読になる）。",
+        gettext_lazy("公電を読む"),
+        gettext_lazy("公電を1通読む（届いた公電は既読になる）。"),
         _read_letter,
         {"id": {"type": "integer"}},
         ("id",),
@@ -1086,11 +1276,14 @@ TOOLS = [
     ),
     Tool(
         "send_letter",
-        "公電を送る",
-        "ほかの島に公電を送る（非公開。すぐ届く。1つの島から送れる数には 24 時間の上限がある）。",
+        gettext_lazy("公電を送る"),
+        gettext_lazy(
+            "ほかの島に公電を送る（非公開。すぐ届く。"
+            "1つの島から送れる数には 24 時間の上限がある）。"
+        ),
         _send_letter,
         {
-            "to": {"type": "integer", "description": "宛先の島の番号"},
+            "to": {"type": "integer", "description": gettext_lazy("宛先の島の番号")},
             "subject": {"type": "string"},
             "body": {"type": "string"},
         },
@@ -1099,29 +1292,38 @@ TOOLS = [
     ),
     Tool(
         "news",
-        "世界の近況",
-        "世界の近況（誰でも読める）。全部の国の主な出来事（建国・選挙・憲法の改正・災害・倒産・称号・"
-        "条約・戦争など）の新しい順。国ごとの年表は report page=country。",
+        gettext_lazy("世界の近況"),
+        gettext_lazy(
+            "世界の近況（誰でも読める）。全部の国の主な出来事（建国・選挙・憲法の改正・災害・倒産・"
+            "称号・"
+            "条約・戦争など）の新しい順。国ごとの年表は report page=country。"
+        ),
         _news,
         {"page": PAGE},
     ),
     Tool(
         "hall",
-        "国際会議場",
-        "国際会議場（誰でも読める公開の声明の場）。いまの戦争の状態と効いている条約、声明と、条約・"
-        "宣戦・停戦・講和の出来事の新しい順の並び。自分の島の詳しい状態と命令の選択肢は "
-        "report page=diplomacy。",
+        gettext_lazy("国際会議場"),
+        gettext_lazy(
+            "国際会議場（誰でも読める公開の声明の場）。いまの戦争の状態と効いている条約、声明と、"
+            "条約・"
+            "宣戦・停戦・講和の出来事の新しい順の並び。自分の島の詳しい状態と命令の選択肢は "
+            "report page=diplomacy。"
+        ),
         _hall,
         {"page": PAGE},
     ),
     Tool(
         "hall_post",
-        "国際会議場に声明を出す",
-        "国際会議場に公開の声明を出す（すぐ載る。1つの島が出せる数には 24 時間の上限がある）。"
-        "条約の提案や宣戦は、命令（set_orders。propose_treaty・declare_war）で行う。条約の条項は、"
-        "停戦・講和・不可侵・同盟・核を持たない約束 no_nuclear と、経済の取り決め"
-        "（貿易圏 bloc・契約 contract・固定相場 peg・通貨の融通 swap・援助 aid・"
-        "人の行き来 free_movement・難民 refugees）。",
+        gettext_lazy("国際会議場に声明を出す"),
+        gettext_lazy(
+            "国際会議場に公開の声明を出す（すぐ載る。1つの島が出せる数には 24 時間の上限がある）。"
+            "条約の提案や宣戦は、命令（set_orders。propose_treaty・declare_war）で行う。"
+            "条約の条項は、"
+            "停戦・講和・不可侵・同盟・核を持たない約束 no_nuclear と、経済の取り決め"
+            "（貿易圏 bloc・契約 contract・固定相場 peg・通貨の融通 swap・援助 aid・"
+            "人の行き来 free_movement・難民 refugees）。"
+        ),
         _hall_post,
         {"title": {"type": "string"}, "body": {"type": "string"}},
         ("title", "body"),
@@ -1129,67 +1331,92 @@ TOOLS = [
     ),
     Tool(
         "report_bug",
-        "不具合を報告する",
-        "ゲームの不具合・おかしな表示・分かりにくい所を運営に報告する。書くのは何が起きたか（text）だけ"
-        "でよい（kind は bug・display・rule・other のどれか。任意。url は開いていた画面があれば）。"
-        "島・ターン・ゲームの版・直前に出した命令はサーバーが自動で添える。返る id が報告番号。"
-        "1人が 24 時間に送れる数には上限があり、同じ文は重ねて送れない。",
+        gettext_lazy("不具合を報告する"),
+        gettext_lazy(
+            "ゲームの不具合・おかしな表示・分かりにくい所を運営に報告する。"
+            "書くのは何が起きたか（text）だけ"
+            "でよい（kind は bug・display・rule・other のどれか。任意。"
+            "url は開いていた画面があれば）。"
+            "島・ターン・ゲームの版・直前に出した命令はサーバーが自動で添える。返る id が報告番号。"
+            "1人が 24 時間に送れる数には上限があり、同じ文は重ねて送れない。"
+        ),
         _report_bug,
         {
-            "text": {"type": "string", "description": "何が起きたか（2000 字まで）"},
+            "text": {"type": "string", "description": gettext_lazy("何が起きたか（2000 字まで）")},
             "kind": {"type": "string", "enum": ["bug", "display", "rule", "other"]},
-            "url": {"type": "string", "description": "開いていた画面の URL（任意）"},
+            "url": {"type": "string", "description": gettext_lazy("開いていた画面の URL（任意）")},
         },
         ("text",),
         read_only=False,
     ),
     Tool(
         "bug_reports",
-        "送った不具合の報告の状態",
-        "自分が送った不具合の報告の一覧（新しい順。未読・読んだ・対応中・済みの状態、返事と返事を書いた時刻）。",
+        gettext_lazy("送った不具合の報告の状態"),
+        gettext_lazy(
+            "自分が送った不具合の報告の一覧（新しい順。未読・読んだ・対応中・済みの状態、"
+            "返事と返事を書いた時刻）。"
+        ),
         _bug_reports,
     ),
     Tool(
         "country_set",
-        "国の紹介文と紀年を書く",
-        "自分の国の公開ページに載る紹介文（600 字まで）と、紀年（era: "
-        "{kind: world|founding|regnal, "
-        "name: 元号。元号に切り替えるときだけ}。世界の暦のまま・建国紀元・元号）を書き換える。"
-        "new_era に元号の名前を渡すと、今のターンから改元する。紀年は表示だけで、ゲームの暦は"
-        "変わらない。"
-        "読むのは report page=country。",
+        gettext_lazy("国の紹介文と紀年を書く"),
+        gettext_lazy(
+            "自分の国の公開ページに載る紹介文（600 字まで）と、紀年（era: "
+            "{kind: world|founding|regnal, "
+            "name: 元号。元号に切り替えるときだけ}。世界の暦のまま・建国紀元・元号）を書き換える。"
+            "new_era に元号の名前を渡すと、今のターンから改元する。紀年は表示だけで、ゲームの暦は"
+            "変わらない。"
+            "読むのは report page=country。"
+        ),
         _country_set,
         {
-            "intro": {"type": "string", "description": "紹介文（600 字まで。空にすると消える）"},
+            "intro": {
+                "type": "string",
+                "description": gettext_lazy("紹介文（600 字まで。空にすると消える）"),
+            },
             "era": {"type": "object", "description": "{kind, name?}"},
-            "new_era": {"type": "string", "description": "改元する新しい元号（8 字まで）"},
+            "new_era": {
+                "type": "string",
+                "description": gettext_lazy("改元する新しい元号（8 字まで）"),
+            },
         },
         read_only=False,
     ),
     Tool(
         "flag_set",
-        "国旗を上げる",
-        "自分の国の国旗の PNG を上げる（png_base64。縦横 16〜512 ピクセル・100 KB まで・"
-        "インターレースなし。管理者が不適切と判断すると、仮の旗に戻る）。clear=true で外して"
-        "仮の旗に戻す。",
+        gettext_lazy("国旗を上げる"),
+        gettext_lazy(
+            "自分の国の国旗の PNG を上げる（png_base64。縦横 16〜512 ピクセル・100 KB まで・"
+            "インターレースなし。管理者が不適切と判断すると、仮の旗に戻る）。clear=true で外して"
+            "仮の旗に戻す。"
+        ),
         _flag_set,
         {
-            "png_base64": {"type": "string", "description": "PNG を base64 にした文字"},
+            "png_base64": {
+                "type": "string",
+                "description": gettext_lazy("PNG を base64 にした文字"),
+            },
             "clear": {"type": "boolean"},
         },
         read_only=False,
     ),
     Tool(
         "monument_image_set",
-        "自作の記念碑の絵を上げる",
-        "自分の国の自作の記念碑（monument_custom）の絵の PNG を上げる（number は施設の番号。"
-        "png_base64。国旗と同じ制限。管理者が不適切と判断すると、仮の絵に戻る）。clear=true で"
-        "外す。碑文は、建てる命令 build の note（2 行まで。1 行 40 字まで）で足す。"
-        "読むのは report page=country の monuments。",
+        gettext_lazy("自作の記念碑の絵を上げる"),
+        gettext_lazy(
+            "自分の国の自作の記念碑（monument_custom）の絵の PNG を上げる（number は施設の番号。"
+            "png_base64。国旗と同じ制限。管理者が不適切と判断すると、仮の絵に戻る）。clear=true で"
+            "外す。碑文は、建てる命令 build の note（2 行まで。1 行 40 字まで）で足す。"
+            "読むのは report page=country の monuments。"
+        ),
         _monument_image_set,
         {
-            "number": {"type": "integer", "description": "自作の記念碑の施設の番号"},
-            "png_base64": {"type": "string", "description": "PNG を base64 にした文字"},
+            "number": {"type": "integer", "description": gettext_lazy("自作の記念碑の施設の番号")},
+            "png_base64": {
+                "type": "string",
+                "description": gettext_lazy("PNG を base64 にした文字"),
+            },
             "clear": {"type": "boolean"},
         },
         ("number",),
@@ -1197,13 +1424,16 @@ TOOLS = [
     ),
     Tool(
         "country_note",
-        "他国のページに一言を残す",
-        "ほかの国の公開ページに一言（80 字まで。誰でも読める）を残す（1つの国が 24 時間に残せる数に"
-        "は"
-        "上限がある）。",
+        gettext_lazy("他国のページに一言を残す"),
+        gettext_lazy(
+            "ほかの国の公開ページに一言（80 字まで。"
+            "誰でも読める）を残す（1つの国が 24 時間に残せる数に"
+            "は"
+            "上限がある）。"
+        ),
         _country_note,
         {
-            "island": {"type": "integer", "description": "残す先の国の番号"},
+            "island": {"type": "integer", "description": gettext_lazy("残す先の国の番号")},
             "text": {"type": "string"},
         },
         ("island", "text"),
@@ -1211,20 +1441,34 @@ TOOLS = [
     ),
     Tool(
         "diary",
-        "国の日誌を読む",
-        "自分の国の日誌（持ち主だけが読める非公開のメモ欄。方針・引き継ぎ・次にすること）を読む。"
-        "遊び始めに読むと、前の回の引き継ぎが分かる。",
+        gettext_lazy("国の日誌を読む"),
+        gettext_lazy(
+            "自分の国の日誌（持ち主だけが読める非公開のメモ欄。方針・引き継ぎ・"
+            "次にすること）を読む。"
+            "遊び始めに読むと、前の回の引き継ぎが分かる。"
+        ),
         _diary,
-        {"island": {"type": "integer", "description": "自分の島の番号（省けば自分の島）"}},
+        {
+            "island": {
+                "type": "integer",
+                "description": gettext_lazy("自分の島の番号（省けば自分の島）"),
+            }
+        },
     ),
     Tool(
         "diary_set",
-        "国の日誌を書く",
-        "自分の国の日誌を書き換える（全文の置き換え。20,000 字まで。空にもできる）。区切りで方針と"
-        "引き継ぎを書いておく。",
+        gettext_lazy("国の日誌を書く"),
+        gettext_lazy(
+            "自分の国の日誌を書き換える（全文の置き換え。20,000 字まで。空にもできる）。"
+            "区切りで方針と"
+            "引き継ぎを書いておく。"
+        ),
         _diary_set,
         {
-            "island": {"type": "integer", "description": "自分の島の番号（省けば自分の島）"},
+            "island": {
+                "type": "integer",
+                "description": gettext_lazy("自分の島の番号（省けば自分の島）"),
+            },
             "text": {"type": "string"},
         },
         ("text",),
@@ -1232,37 +1476,46 @@ TOOLS = [
     ),
     Tool(
         "board_boards",
-        "掲示板の板",
-        "掲示板の板の一覧（雑談・外交・質問・攻略・運営からの告知など。slug が板の名前）。",
+        gettext_lazy("掲示板の板"),
+        gettext_lazy(
+            "掲示板の板の一覧（雑談・外交・質問・攻略・運営からの告知など。slug が板の名前）。"
+        ),
         _board_boards,
     ),
     Tool(
         "board",
-        "掲示板のスレッド一覧",
-        "掲示板のスレッドの一覧（誰でも読める）。固定が先、あとは上げた順（sage は上げない）。"
-        "board で板を、archived=true で過去ログ（上限を超えて落ちたスレッド）を選ぶ。",
+        gettext_lazy("掲示板のスレッド一覧"),
+        gettext_lazy(
+            "掲示板のスレッドの一覧（誰でも読める）。固定が先、あとは上げた順（sage は上げない）。"
+            "board で板を、archived=true で過去ログ（上限を超えて落ちたスレッド）を選ぶ。"
+        ),
         _board,
         {
             "board": {
                 "type": "string",
-                "description": "板の名前（board_boards の slug）。省くとすべて",
+                "description": gettext_lazy("板の名前（board_boards の slug）。省くとすべて"),
             },
-            "archived": {"type": "boolean", "description": "true で過去ログ"},
+            "archived": {"type": "boolean", "description": gettext_lazy("true で過去ログ")},
             "page": PAGE,
         },
     ),
     Tool(
         "board_thread",
-        "掲示板のスレッド",
-        "スレッドの書き込み（番号付き、1 つのスレッドは 1000 件まで）。省くと最後のページ。"
-        "page（100 件ずつ）・latest（最後の N 件）・from と to（番号の範囲）のどれかで選ぶ。"
-        "名前は名前欄・トリップ・ID（板ごと・日ごと）・国名で書いたときの島。"
-        "replied_by は返信が付いた番号。NG に当たったものは本文が null"
-        "（show_ng=true で出す）。",
+        gettext_lazy("掲示板のスレッド"),
+        gettext_lazy(
+            "スレッドの書き込み（番号付き、1 つのスレッドは 1000 件まで）。省くと最後のページ。"
+            "page（100 件ずつ）・latest（最後の N 件）・from と to（番号の範囲）のどれかで選ぶ。"
+            "名前は名前欄・トリップ・ID（板ごと・日ごと）・国名で書いたときの島。"
+            "replied_by は返信が付いた番号。NG に当たったものは本文が null"
+            "（show_ng=true で出す）。"
+        ),
         _board_thread,
         {
             "id": {"type": "integer"},
-            "page": {"type": "string", "description": "ページ（1 から、または last）"},
+            "page": {
+                "type": "string",
+                "description": gettext_lazy("ページ（1 から、または last）"),
+            },
             "latest": {"type": "integer", "minimum": 1, "maximum": 100},
             "from": {"type": "integer", "minimum": 1},
             "to": {"type": "integer", "minimum": 1},
@@ -1272,11 +1525,13 @@ TOOLS = [
     ),
     Tool(
         "board_post",
-        "掲示板に書く",
-        "スレッドに書き込む（誰でも読める）。本文の >>番号 でその番号に返信でき、返された人に"
-        "知らせが行く。identity は anon（名無し。name に名前、名前#秘密 でトリップ）か"
-        "country（自分の国名で書く）。"
-        "sage=true で上げない。登録してしばらく・連投・書きすぎは断られる。",
+        gettext_lazy("掲示板に書く"),
+        gettext_lazy(
+            "スレッドに書き込む（誰でも読める）。本文の >>番号 でその番号に返信でき、返された人に"
+            "知らせが行く。identity は anon（名無し。name に名前、名前#秘密 でトリップ）か"
+            "country（自分の国名で書く）。"
+            "sage=true で上げない。登録してしばらく・連投・書きすぎは断られる。"
+        ),
         _board_post,
         {
             "thread": {"type": "integer"},
@@ -1290,14 +1545,16 @@ TOOLS = [
     ),
     Tool(
         "board_new_thread",
-        "スレッドを立てる",
-        "掲示板の板（board。省くと chat）にスレッドを立て、1 番を書く（誰でも読める）。"
-        "name・identity・sage は board_post と同じ。",
+        gettext_lazy("スレッドを立てる"),
+        gettext_lazy(
+            "掲示板の板（board。省くと chat）にスレッドを立て、1 番を書く（誰でも読める）。"
+            "name・identity・sage は board_post と同じ。"
+        ),
         _board_new_thread,
         {
             "board": {
                 "type": "string",
-                "description": "板の名前（board_boards の slug。既定 chat）",
+                "description": gettext_lazy("板の名前（board_boards の slug。既定 chat）"),
             },
             "title": {"type": "string"},
             "body": {"type": "string"},
@@ -1310,18 +1567,23 @@ TOOLS = [
     ),
     Tool(
         "board_search",
-        "掲示板を探す",
-        "掲示板の題名と本文から言葉を探す（空白で区切るとすべてを含む。過去ログも）。",
+        gettext_lazy("掲示板を探す"),
+        gettext_lazy(
+            "掲示板の題名と本文から言葉を探す（空白で区切るとすべてを含む。過去ログも）。"
+        ),
         _board_search,
         {"q": {"type": "string"}, "board": {"type": "string"}, "page": PAGE},
         ("q",),
     ),
     Tool(
         "board_replies",
-        "返信の知らせ",
+        gettext_lazy("返信の知らせ"),
         (
-            "自分の書き込みに付いた返信（新しい順）と未読の数、まだ見ていない運営からの告知"
-            "（announcements。更新のお知らせなど全員向け）。mark=true で見えたぶんを既読にする。"
+            gettext_lazy(
+                "自分の書き込みに付いた返信（新しい順）と未読の数、まだ見ていない運営からの告知"
+                "（announcements。更新のお知らせなど全員向け）。"
+                "mark=true で見えたぶんを既読にする。"
+            )
         ),
         _board_replies,
         {"mark": {"type": "boolean"}},
@@ -1329,8 +1591,10 @@ TOOLS = [
     ),
     Tool(
         "board_like",
-        "いいね",
-        "書き込みにいいねを付ける（付いていれば外す）。自分の書き込みには付けられない。",
+        gettext_lazy("いいね"),
+        gettext_lazy(
+            "書き込みにいいねを付ける（付いていれば外す）。自分の書き込みには付けられない。"
+        ),
         _board_like,
         {"thread": {"type": "integer"}, "number": {"type": "integer"}},
         ("thread", "number"),
@@ -1338,30 +1602,36 @@ TOOLS = [
     ),
     Tool(
         "board_report",
-        "書き込みを通報",
-        "荒らし・不適切な書き込みを管理者に通報する（ゲームの不具合の報告は report_bug）。",
+        gettext_lazy("書き込みを通報"),
+        gettext_lazy(
+            "荒らし・不適切な書き込みを管理者に通報する（ゲームの不具合の報告は report_bug）。"
+        ),
         _board_report,
         {
             "thread": {"type": "integer"},
             "number": {"type": "integer"},
-            "reason": {"type": "string", "description": "200 字まで"},
+            "reason": {"type": "string", "description": gettext_lazy("200 字まで")},
         },
         ("thread", "number"),
         read_only=False,
     ),
     Tool(
         "board_ng",
-        "NG の設定",
-        "自分の NG の設定（人・ID・言葉）。",
+        gettext_lazy("NG の設定"),
+        gettext_lazy("自分の NG の設定（人・ID・言葉）。"),
         _board_ng,
     ),
     Tool(
         "board_ng_set",
-        "NG を足す・外す",
-        "action=add で NG を足す。kind は word（word に言葉）・ident（word に ID、または thread と"
-        "number で書き込みを指す）・person（thread と number で書き込みを指す。誰かは分からないまま"
-        "保存）。"
-        "action=remove で id の NG を外す。",
+        gettext_lazy("NG を足す・外す"),
+        gettext_lazy(
+            "action=add で NG を足す。kind は word（word に言葉）・ident（word に ID、"
+            "または thread と"
+            "number で書き込みを指す）・person（thread と number で書き込みを指す。"
+            "誰かは分からないまま"
+            "保存）。"
+            "action=remove で id の NG を外す。"
+        ),
         _board_ng_set,
         {
             "action": {"type": "string", "enum": ["add", "remove"]},
@@ -1376,28 +1646,31 @@ TOOLS = [
     ),
     Tool(
         "found",
-        "建国",
-        "ランダムな形の島と勧められた首都で建国する（1人1島。島がないときだけ）。"
-        "resources は地下資源 2 つまで（stone・iron_ore・coal など。鋼鉄には iron_ore と coal）。"
-        "ほかの国がもう選んだ資源の数は api_get /api/founding/cells の resource_counts"
-        "（nations は数えた国の数）。",
+        gettext_lazy("建国"),
+        gettext_lazy(
+            "ランダムな形の島と勧められた首都で建国する（1人1島。島がないときだけ）。"
+            "resources は地下資源 2 つまで（stone・iron_ore・coal など。"
+            "鋼鉄には iron_ore と coal）。"
+            "ほかの国がもう選んだ資源の数は api_get /api/founding/cells の resource_counts"
+            "（nations は数えた国の数）。"
+        ),
         _found,
         {
-            "name": {"type": "string", "description": "国名"},
+            "name": {"type": "string", "description": gettext_lazy("国名")},
             "resources": {"type": "array", "items": {"type": "string"}},
             "politics": {"type": "string", "enum": ["democracy", "authoritarian", "totalitarian"]},
             "head_of_state": {"type": "string", "enum": ["monarchy", "republic"]},
             "economy": {"type": "string", "enum": ["market", "mixed", "planned"]},
-            "capital": {"type": "string", "description": "首都の名前"},
-            "currency": {"type": "string", "description": "通貨の名前"},
+            "capital": {"type": "string", "description": gettext_lazy("首都の名前")},
+            "currency": {"type": "string", "description": gettext_lazy("通貨の名前")},
             "currency_symbol": {"type": "string"},
-            "leader": {"type": "string", "description": "元首の名前"},
-            "place_style": {"type": "string", "description": "地名の作風"},
-            "seed": {"type": "integer", "description": "形の乱数の種"},
+            "leader": {"type": "string", "description": gettext_lazy("元首の名前")},
+            "place_style": {"type": "string", "description": gettext_lazy("地名の作風")},
+            "seed": {"type": "integer", "description": gettext_lazy("形の乱数の種")},
             "cell": {
                 "type": "array",
                 "items": {"type": "integer"},
-                "description": "世界マップの区画 [x, y]（省くと空きから選ぶ）",
+                "description": gettext_lazy("世界マップの区画 [x, y]（省くと空きから選ぶ）"),
             },
         },
         ("name",),
@@ -1405,11 +1678,21 @@ TOOLS = [
     ),
     Tool(
         "api_get",
-        "API を読む",
-        "ほかの道具にない JSON API を読む（GET。/api/ で始まる場所だけ）。例: "
-        "/api/islands/4/facilities/12（施設のページ）、/api/islands/4/facilities/12/book（施設の帳簿の推移）、/api/world/trade（世界の貿易）、/api/world/fleets（世界の艦隊）、/api/islands/4/military（軍。ほかの国には兵の総数と見えた艦隊）。",
+        gettext_lazy("API を読む"),
+        gettext_lazy(
+            "ほかの道具にない JSON API を読む（GET。/api/ で始まる場所だけ）。例: "
+            "/api/islands/4/facilities/12（施設のページ）、"
+            "/api/islands/4/facilities/12/book（施設の帳簿の推移）、"
+            "/api/world/trade（世界の貿易）、/api/world/fleets（世界の艦隊）、"
+            "/api/islands/4/military（軍。ほかの国には兵の総数と見えた艦隊）。"
+        ),
         _api_get,
-        {"path": {"type": "string", "description": "/api/ で始まる場所（?の後ろも書ける）"}},
+        {
+            "path": {
+                "type": "string",
+                "description": gettext_lazy("/api/ で始まる場所（?の後ろも書ける）"),
+            }
+        },
         ("path",),
     ),
 ]
@@ -1503,7 +1786,10 @@ def _text(result: Any) -> str:
     if len(text) > TEXT_MAX:
         text = (
             text[:TEXT_MAX]
-            + f"\n…（長いので {TEXT_MAX} 字で切りました。範囲を絞って読んでください）"
+            + "\n"
+            + gettext("…（長いので {max} 字で切りました。範囲を絞って読んでください）").format(
+                max=TEXT_MAX
+            )
         )
     return text
 
@@ -1525,15 +1811,18 @@ def _call_tool(request: HttpRequest, params: dict[str, Any]) -> dict[str, Any]:
     try:
         missing = [k for k in tool.required if k not in args]
         if missing:
-            raise ToolError(f"{'・'.join(missing)} が要ります")
+            raise ToolError(gettext("{missing} が要ります").format(missing="・".join(missing)))
         text, is_error = _text(tool.run(request, args)), False
     except ToolError as e:
         text, is_error = str(e), True
     except (KeyError, TypeError, ValueError) as e:
-        text, is_error = f"引数の形が正しくありません（{e}）", True
+        text, is_error = (
+            gettext("引数の形が正しくありません（{error}）").format(error=e),
+            True,
+        )
     except Exception:
         logger.exception("MCP の道具 %s でエラー", tool.name)
-        text, is_error = "サーバーの中でエラーが起きました", True
+        text, is_error = gettext("サーバーの中でエラーが起きました"), True
     return {"content": [{"type": "text", "text": text}], "isError": is_error}
 
 
@@ -1541,7 +1830,7 @@ def handle(request: HttpRequest, message: Any) -> dict[str, Any] | None:
     """JSON-RPC の1通に答える。通知（id のないもの）と、相手からの答えには None。"""
     if not isinstance(message, dict) or message.get("jsonrpc") != "2.0":
         id_ = message.get("id") if isinstance(message, dict) else None
-        return _error(id_, -32600, "JSON-RPC 2.0 の形ではありません")
+        return _error(id_, -32600, gettext("JSON-RPC 2.0 の形ではありません"))
     if "method" not in message:  # 相手からの答え（こちらからは何も頼まないので捨てる）
         return None
     id_ = message.get("id")
@@ -1550,7 +1839,7 @@ def handle(request: HttpRequest, message: Any) -> dict[str, Any] | None:
     if "id" not in message:  # 通知（notifications/initialized など）
         return None
     if not isinstance(params, dict):
-        return _error(id_, -32602, "params はオブジェクトで送ってください")
+        return _error(id_, -32602, gettext("params はオブジェクトで送ってください"))
     if method == "initialize":
         asked = params.get("protocolVersion")
         version = asked if asked in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0]
@@ -1570,11 +1859,15 @@ def handle(request: HttpRequest, message: Any) -> dict[str, Any] | None:
     if method == "tools/call":
         name = params.get("name")
         if not isinstance(name, str) or name not in TOOLS_BY_NAME:  # 辞書や配列の名前も断る
-            return _error(id_, -32602, f"道具 {str(name)[:60]} はありません")
+            return _error(
+                id_,
+                -32602,
+                gettext("道具 {name} はありません").format(name=str(name)[:60]),
+            )
         if not isinstance(params.get("arguments") or {}, dict):
-            return _error(id_, -32602, "arguments はオブジェクトで送ってください")
+            return _error(id_, -32602, gettext("arguments はオブジェクトで送ってください"))
         return _result(id_, _call_tool(request, params))
-    return _error(id_, -32601, f"{method} には答えられません")
+    return _error(id_, -32601, gettext("{method} には答えられません").format(method=method))
 
 
 def _json(data: Any, status: int = 200) -> JsonResponse:
@@ -1597,13 +1890,21 @@ def endpoint(request: HttpRequest) -> HttpResponse:
         response["Allow"] = "POST"
         return response
     if _bad_origin(request):
-        return _json(_error(None, -32600, "この Origin からは使えません"), status=403)
+        return _json(_error(None, -32600, gettext("この Origin からは使えません")), status=403)
     version = request.META.get("HTTP_MCP_PROTOCOL_VERSION")
     if version and version not in PROTOCOL_VERSIONS:
-        return _json(_error(None, -32600, f"MCP の版 {version} には対応していません"), status=400)
+        return _json(
+            _error(
+                None,
+                -32600,
+                gettext("MCP の版 {version} には対応していません").format(version=version),
+            ),
+            status=400,
+        )
     if getattr(request, "api_key", None) is None:
         response = _json(
-            _error(None, -32001, "AI 用の鍵が要ります（Authorization: Bearer <鍵>）"), status=401
+            _error(None, -32001, gettext("AI 用の鍵が要ります（Authorization: Bearer <鍵>）")),
+            status=401,
         )
         response["WWW-Authenticate"] = 'Bearer realm="hakoniwa"'
         return response
@@ -1614,7 +1915,7 @@ def endpoint(request: HttpRequest) -> HttpResponse:
         wait = keys.charge(key, 1)
         if wait:
             return keys.over_limit_response(wait)
-        return _json(_error(None, -32700, "JSON として読めません"), status=400)
+        return _json(_error(None, -32700, gettext("JSON として読めません")), status=400)
     # 実行の前に、メッセージの数を確かめて、枠をまとめて使う（断るなら 1 件も実行しない）
     batch = isinstance(message, list)  # まとめて送る形（2025-03-26 の版）
     max_batch = max(1, settings.HAKONIWA_MCP_MAX_BATCH)
@@ -1624,7 +1925,11 @@ def endpoint(request: HttpRequest) -> HttpResponse:
             return keys.over_limit_response(wait)
         return _json(
             _error(
-                None, -32600, f"まとめ送信は 1 回に {max_batch} 件までです（{len(message)} 件）"
+                None,
+                -32600,
+                gettext("まとめ送信は 1 回に {max_batch} 件までです（{count} 件）").format(
+                    max_batch=max_batch, count=len(message)
+                ),
             ),
             status=400,
         )
@@ -1634,7 +1939,9 @@ def endpoint(request: HttpRequest) -> HttpResponse:
         return keys.over_limit_response(wait, cost)
     if batch:
         if not message:
-            return _json(_error(None, -32600, "空のまとめ送信は受け付けません"), status=400)
+            return _json(
+                _error(None, -32600, gettext("空のまとめ送信は受け付けません")), status=400
+            )
         answers = [a for a in (handle(request, x) for x in message) if a is not None]
         return _json(answers) if answers else HttpResponse(status=202)
     answer = handle(request, message)
