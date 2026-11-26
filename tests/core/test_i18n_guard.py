@@ -105,6 +105,22 @@ def test_count_js_strings_templates_and_regex():
     assert guard.count_js_text(source) == 2
 
 
+def test_count_js_ignores_gettext_arguments():
+    source = textwrap.dedent(
+        """\
+        const a = gettext("%(name)sから公電: %(subject)s");
+        const b = ngettext("公電が %(count)s 通届きました", "公電が %(count)s 通届きました", 2);
+        const c = interpolate(gettext("未読の公電 %(count)s"), { count: 1 }, true);
+        const d = gettext(`残り ${n} ターン`);
+        const plain = "直書き";
+        const nested = wrap(gettext("訳す文"), "数える文");
+        """
+    )
+    # gettext 系の直接の引数（文字列・テンプレート）は数えない。
+    # 残るのは plain と、gettext の外側にある「数える文」の2件。
+    assert guard.count_js_text(source) == 2
+
+
 def test_count_template_plain_text_only():
     source = textwrap.dedent(
         """\

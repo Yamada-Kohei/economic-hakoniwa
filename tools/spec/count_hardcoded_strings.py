@@ -13,6 +13,8 @@
   書かれた文言なので数えない。
 - JS（server/static/js/ の .js）: 簡易スキャナで文字列リテラルと
   テンプレートリテラルを読み、日本語を含むものを数える。コメントは除く。
+  gettext / ngettext などの直接の引数は、翻訳の形で書かれた文言なので
+  数えない（Python と同じ）。
 - テンプレート（server/ の templates/ の .html）: {% translate %} と
   {% blocktranslate %}（分離済み）と {# #} コメントを取り除いたあとの
   地の文のうち、日本語を含む断片を数える。
@@ -124,18 +126,28 @@ def _python_files(root: Path) -> list[Path]:
 # -------------------------------------------------------------------- JS
 
 
+# Django の JavaScriptCatalog が用意する gettext 系の関数。その直接の引数は
+# 翻訳の形で書かれた文言なので数えない（Python 側の _GETTEXT_FUNCS と同じ扱い）。
+_GETTEXT_FUNCS_JS = {"gettext", "ngettext", "gettext_noop", "pgettext", "npgettext"}
+
+
 def count_js_text(text: str) -> int:
     """JavaScript のソース1件分の直書き文言の件数。
 
     文字列・テンプレートリテラル・正規表現・コメントを区別する簡易スキャナ。
     `/` が正規表現か割り算かは、直前が値（識別子・数・文字列・閉じ括弧）か
     どうかで決める決め打ち。正規表現の中の引用符は文字クラスまで見て読み飛ばす。
+    gettext 系の呼び出しの直接の引数（その呼び出しの括弧の直下にある文字列と
+    テンプレートリテラル）は数えない。
     """
     count = 0
     i, n = 0, len(text)
     # テンプレートリテラルの ${ } のための積み木。
-    # ("tpl", 静的断片の蓄積) と ("expr", 波括弧の深さ) を積む。
+    # ("tpl", 静的断片の蓄積, 数えない印) と ("expr", 波括弧の深さ) を積む。
     stack: list = []
+    # 括弧の積み木。True は gettext 系の呼び出しの括弧（直下の文言は数えない）。
+    paren_stack: list[bool] = []
+    last_ident: str | None = None  # 直前の識別子（gettext 呼び出しの判定用）
     last_operand = False  # 直前が値なら / は割り算、それ以外なら正規表現
     while i < n:
         c = text[i]
@@ -145,7 +157,7 @@ def count_js_text(text: str) -> int:
                 i += 2
                 continue
             if c == "`":
-                if _is_japanese("".join(stack[-1][1])):
+                if _is_japanese("".join(stack[-1][1])) and not stack[-1][2]:
                     count += 1
                 stack.pop()
                 last_operand = True
@@ -205,13 +217,29 @@ def count_js_text(text: str) -> int:
                     break
                 buf.append(d)
                 j += 1
-            if _is_japanese("".join(buf)):
+            if _is_japanese("".join(buf)) and not (paren_stack and paren_stack[-1]):
                 count += 1
             i = j + 1
             last_operand = True
+            last_ident = None
             continue
         if c == "`":
-            stack.append(("tpl", []))
+            # gettext 系の括弧の直下にあるテンプレートは数えない印を付ける。
+            stack.append(("tpl", [], bool(paren_stack and paren_stack[-1])))
+            last_ident = None
+            i += 1
+            continue
+        if c == "(":
+            paren_stack.append(last_ident in _GETTEXT_FUNCS_JS)
+            last_ident = None
+            last_operand = False
+            i += 1
+            continue
+        if c == ")":
+            if paren_stack:
+                paren_stack.pop()
+            last_ident = None
+            last_operand = True
             i += 1
             continue
         if stack and stack[-1][0] == "expr":
@@ -230,10 +258,14 @@ def count_js_text(text: str) -> int:
                 i += 1
                 continue
         if c.isalnum() or c in "_$":
-            while i < n and (text[i].isalnum() or text[i] in "_$"):
-                i += 1
+            j = i
+            while j < n and (text[j].isalnum() or text[j] in "_$"):
+                j += 1
+            last_ident = text[i:j]
+            i = j
             last_operand = True
             continue
+        last_ident = None
         last_operand = c in ")]}"
         i += 1
     return count
