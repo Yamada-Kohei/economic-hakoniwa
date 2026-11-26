@@ -14,7 +14,8 @@ import { drawSprite } from "./sprites.js";
  *          overlayMode（"bars" で量のある重ね表示を棒にする。ほかは塗り分け。UI-79）、
  *          sprites（sprites.js の loadSprites が返す絵。ないものは色の箱で描く）、
  *          flag（その国の旗の画像 { img, w, h }。sprites.js の loadFlag が返す。
- *                あれば首都のマスに小さく立てる）
+ *                あれば首都のマスに小さく立てる）、
+ *          ships（停泊中の船の置き場所。ships.js の placeShips が返す "x,y" → 船の並び）
  */
 export function drawIsland(ctx, map, defs, view, options = {}) {
   const theme = defs.theme;
@@ -62,6 +63,8 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       // 区域の指定（工業団地・オフィス街・商業地）: まだ何も建っていないマスに柵と看板（docs/map-art.md）
       if (!f && ZONE_LOTS.has(map.zone?.[i])) drawOverlay(ctx, sprites.get(`overlay/zone_${map.zone[i]}`), px, top, theme);
       if (map.power_line?.[i] && !facilityAt.has(i)) drawPowerLine(ctx, map, x, y, px, top, theme, facilityAt);
+      const shipsHere = options.ships?.get(`${x},${y}`);
+      if (shipsHere) drawShips(ctx, shipsHere, px, top, theme, sprites);
       // 陣地（塹壕）: 奥の2辺を施設・住宅より先に、手前の2辺をあとに描く（docs/map-art.md）
       const trench = map.trench?.[i];
       if (trench) drawOverlay(ctx, sprites.get("overlay/trench_back"), px, top, theme);
@@ -214,6 +217,27 @@ function drawUnits(ctx, units, px, top, theme, sprites) {
       ctx.restore();
     }
   });
+}
+
+/**
+ * 停泊中の船（案6 の商船・W-100 の艦隊）: 海マスの真ん中に船の絵（ship/）を浮かべる。
+ * 絵がない種類は色の楕円（商船は錆び色、艦隊は灰色）で描く。
+ */
+function drawShips(ctx, ships, px, top, theme, sprites) {
+  const cy = top + theme.tile_height / 2;
+  for (const s of ships) {
+    const sprite = sprites.get(s.name);
+    if (sprite) {
+      drawSprite(ctx, sprite, px + s.dx, cy + s.dy);
+    } else {
+      ctx.save();
+      ctx.fillStyle = s.fleet ? "#7e8a94" : "#9c4a2f";
+      ctx.beginPath();
+      ctx.ellipse(px + s.dx, cy + s.dy, theme.tile_width / 5, theme.tile_height / 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
 }
 
 function drawBlock(ctx, px, py, h, colors, theme, sprite) {

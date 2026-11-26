@@ -69,6 +69,8 @@ export function spritePriorityKeys(theme, map, defs) {
   if ((map.trench || []).some(Boolean)) { add("overlay/trench_back"); add("overlay/trench_front"); }
   if ((map.occupied || []).some(Boolean)) add("overlay/occupied");
   for (const u of map.units || []) add(`unit/${u.army}`);
+  if (map.port_ships?.count > 0) add("ship/merchant"); // 港の商船（案6）
+  for (const f of map.harbor_fleets || []) add(`ship/${f.army}`); // 母港の艦隊（W-100）
   if (map.mine) add("unit/rebels"); // 反乱軍の位置はあとから軍の要約で届く
   for (const f of map.facilities || []) {
     if (!f.built) {

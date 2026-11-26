@@ -257,6 +257,10 @@ pre.prompt { white-space: pre-wrap; overflow-wrap: anywhere; }
 .change-swatch.built { color: #2e7d32; }
 .change-swatch.removed { color: #c62828; }
 .change-swatch.stage { color: #ef6c00; }
+/* 港の船の凡例（案6・W-100）: 商船は四角、艦隊は尖った形で、色と形の両方で見分ける */
+.ship-swatch { display: inline-block; width: 16px; height: 10px; vertical-align: middle; }
+.ship-swatch.merchant { background: #9c4a2f; }
+.ship-swatch.fleet { background: #7e8a94; clip-path: polygon(0 50%, 30% 0, 100% 50%, 30% 100%); }
 
 /* 統計の画面 */
 .stat-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 12px 0; }

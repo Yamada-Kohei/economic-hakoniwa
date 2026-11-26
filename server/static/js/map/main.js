@@ -11,6 +11,7 @@ import { overlayList } from "./overlays/index.js";
 import { lift, tileToWorld, worldToTile } from "./projection.js";
 import { drawIsland } from "./renderer.js";
 import { drawRuler, readRulerShown, writeRulerShown } from "./ruler.js";
+import { placeShips, readFleetShown, readMerchantShown, shipCounts, writeFleetShown, writeMerchantShown } from "./ships.js";
 import { loadFlag, loadSprites, spritePriorityKeys } from "./sprites.js";
 import { OrderQueue } from "../island/orders.js";
 import { TilePanel } from "../island/panel.js";
@@ -60,6 +61,8 @@ const state = {
   ruler: readRulerShown(storage), // 縁の目盛りと座標（UI-85）。既定は出さない
   changes: readChangesShown(storage), changeMarks: null, // 前のターンから変わったマスの印（案3 の静止版）。既定は出さない
   flagShown: readFlagShown(storage), // 首都の旗（案23）を出すか。既定は出す
+  merchantShown: readMerchantShown(storage), // 港の商船（案6）を出すか。既定は出す
+  fleetShown: readFleetShown(storage), // 母港の艦隊（W-100）を出すか。既定は出す
 };
 let pending = false;
 
@@ -73,7 +76,13 @@ function redraw() {
   requestAnimationFrame(() => {
     pending = false;
     try {
-      drawIsland(ctx, map, defs, view, { ...state, flag: state.flagShown ? state.flag : null });
+      const shipsShown = { merchant: state.merchantShown, fleet: state.fleetShown };
+      drawIsland(ctx, map, defs, view, {
+        ...state,
+        flag: state.flagShown ? state.flag : null,
+        ships: placeShips(map, defs, shipsShown),
+      });
+      refreshShipsLegend(shipCounts(map, defs, shipsShown));
       if (state.ruler) drawRuler(ctx, map, view, theme);
       if (minimap) drawMinimap(minimap, map, defs, state.selected);
       placePopover();
@@ -327,6 +336,61 @@ if (flagToggle) {
     redraw();
   });
 }
+
+// 港の商船（案6）と母港の艦隊（W-100）の表示の切り替え。出すかどうかは別々に覚え、
+// 次に開いたときも使う（首都の旗と同じ流儀）。凡例は、材料のある側だけを出す。
+// 商船の隻数は「停泊中の商船（推計）N隻／地図にM隻」の形で、データの隻数と
+// 地図に描けた隻数を分けて出す（掲示板 #6148）。描き直しのたびに割り当てを
+// 計算し直すので、凡例の隻数も描き直しのたびに更新する（refreshShipsLegend）
+const shipsMerchantToggle = document.getElementById("map-ships-merchant");
+const shipsFleetToggle = document.getElementById("map-ships-fleet");
+const shipsLegend = document.getElementById("ships-legend");
+const shipsMerchantPart = document.getElementById("ships-merchant-part");
+const shipsMerchantTotal = document.getElementById("ships-merchant-total");
+const shipsMerchantPlaced = document.getElementById("ships-merchant-placed");
+const shipsFleetPart = document.getElementById("ships-fleet-part");
+const shipsOmitNote = document.getElementById("ships-omit-note");
+let lastShipCounts = null;
+function refreshShipsLegend(counts) {
+  lastShipCounts = counts;
+  if (!shipsLegend) return;
+  const merchantVisible = state.merchantShown && counts.merchantKnown;
+  const fleetVisible = state.fleetShown && counts.fleetTotal > 0;
+  if (shipsMerchantPart) shipsMerchantPart.hidden = !merchantVisible;
+  if (shipsFleetPart) shipsFleetPart.hidden = !fleetVisible;
+  if (shipsMerchantTotal) shipsMerchantTotal.textContent = String(counts.merchantTotal);
+  if (shipsMerchantPlaced) shipsMerchantPlaced.textContent = String(counts.merchantPlaced);
+  if (shipsOmitNote) {
+    shipsOmitNote.hidden = !(
+      counts.merchantPlaced < counts.merchantTotal || counts.fleetPlaced < counts.fleetTotal
+    );
+  }
+  shipsLegend.hidden = !(merchantVisible || fleetVisible);
+}
+function applyShipsLegend() {
+  // 地図を読み終わるまでは隻数が分からないので、その間は隠したままにする
+  if (lastShipCounts) refreshShipsLegend(lastShipCounts);
+  else if (shipsLegend) shipsLegend.hidden = true;
+}
+if (shipsMerchantToggle) {
+  shipsMerchantToggle.checked = state.merchantShown;
+  shipsMerchantToggle.addEventListener("change", () => {
+    state.merchantShown = shipsMerchantToggle.checked;
+    writeMerchantShown(storage, state.merchantShown);
+    applyShipsLegend();
+    redraw();
+  });
+}
+if (shipsFleetToggle) {
+  shipsFleetToggle.checked = state.fleetShown;
+  shipsFleetToggle.addEventListener("change", () => {
+    state.fleetShown = shipsFleetToggle.checked;
+    writeFleetShown(storage, state.fleetShown);
+    applyShipsLegend();
+    redraw();
+  });
+}
+applyShipsLegend();
 
 // 棒と塗り分けの切り替え（UI-79）。選んだ表し方は覚え、次に開いたときも使う
 if (barsToggle) {

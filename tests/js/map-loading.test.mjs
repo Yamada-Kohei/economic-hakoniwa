@@ -50,6 +50,10 @@ function environment({ failedUrl, failedDraw = false } = {}) {
     drawMinimap() {}, drawRuler() {}, readRulerShown: () => false, writeRulerShown() {},
     changeMarks: () => new Map(), readChangesShown: () => false, writeChangesShown() {},
     readFlagShown: () => true, writeFlagShown() {},
+    placeShips: () => new Map(),
+    shipCounts: () => ({ merchantKnown: false, merchantTotal: 0, merchantPlaced: 0, fleetTotal: 0, fleetPlaced: 0 }),
+    readMerchantShown: () => true, writeMerchantShown() {},
+    readFleetShown: () => true, writeFleetShown() {},
     loadSprites: async () => new Map(),
     spritePriorityKeys: () => new Set(),
   };

@@ -425,6 +425,26 @@ def island_units(island: m.Island, viewer: m.Island | None) -> list[dict[str, An
     return sorted(mine + seen, key=lambda r: (r["owner"], r["id"]))
 
 
+def harbor_fleets(island: m.Island, viewer: m.Island | None) -> list[dict[str, Any]]:
+    """島の俯瞰図に出す、母港に繋留中の艦隊（W-100）。持ち主には自分の艦隊（艦種と隻数）、
+    ほかの国には見えている（今いる）艦隊の艦種だけ（隻数は出さない。陸の部隊の island_units と
+    同じ線引き）。ログインしていない人には出さない。"""
+    if viewer is None:
+        return []
+    if viewer.id == island.id:
+        return [
+            {"army": f["army"], "ships": f["ships"], "mine": True}
+            for f in fleets(island)
+            if f["docked"]
+        ]
+    home = (island.wx, island.wy)
+    return [
+        {"army": f["army"], "ships": None, "mine": False}
+        for f in seen_fleets(island.world, viewer.id, owner=island.id)
+        if f["current"] and (f["x"], f["y"]) == home
+    ]
+
+
 def world_fleets(world: m.World, viewer: int | None) -> dict[str, Any]:
     """世界マップに出す艦隊: 見ている国の艦隊と、見えたほかの国の艦隊（MI-26）。"""
     mine: list[dict[str, Any]] = []

@@ -211,6 +211,12 @@ sprites:
   fleet/corvette: {file: sprites/fleet/corvette.svg, anchor: [10, 9]}
   fleet/submarine: {file: sprites/fleet/submarine.svg, anchor: [11, 7]}
   fleet/transport: {file: sprites/fleet/transport.svg, anchor: [12, 10]}
+  # 島の俯瞰図の船（案6・W-100。斜め上から見た絵で、世界マップの fleet/ とは別。基準点は絵の真ん中）
+  ship/merchant: {file: sprites/ship/merchant.svg, anchor: [26, 17]}
+  ship/transport: {file: sprites/ship/transport.svg, anchor: [24, 16]}
+  ship/frigate: {file: sprites/ship/frigate.svg, anchor: [24, 15]}
+  ship/corvette: {file: sprites/ship/corvette.svg, anchor: [21, 14]}
+  ship/submarine: {file: sprites/ship/submarine.svg, anchor: [22, 14]}
   # 建て増しの規模の絵（FM-47。size_tiers）
   facility/aluminium_smelter@s2: sprites/facility/aluminium_smelter@s2.svg
   facility/aluminium_smelter@s3: sprites/facility/aluminium_smelter@s3.svg

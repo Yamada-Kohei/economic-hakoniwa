@@ -22,12 +22,13 @@ from django.views.decorators.http import require_GET, require_http_methods
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import nature, stops
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import freight
+from hakoniwa_core.economy import freight, is_stopped
 from hakoniwa_core.founding import land_terrains
 from hakoniwa_core.military import army
 from hakoniwa_core.modules import production
 from hakoniwa_core.naming import default_place_style, place_of, place_styles
 from hakoniwa_core.orders import OrderCheck, check_order
+from hakoniwa_core.trade import ships as trade_ships
 from hakoniwa_core.units import from_milli, to_basis
 from server import jsonbody
 from server.accounts import keys
@@ -405,6 +406,9 @@ def island_map(request, island_id: int):
     # 部隊の印は、見ている国に見えるものだけ（自分の部隊と、見える範囲に入った相手の部隊。
     # 陣地と占領は誰にでも見える）
     data["units"] = military_views.island_units(island, letter_services.own_island(request.user))
+    # 港に停泊中の商船（案6）と、母港に繋留中の艦隊（W-100）。地図に船を浮かべるための材料
+    data["port_ships"] = _port_ships(island)
+    data["harbor_fleets"] = military_views.harbor_fleets(island, viewer)
     facilities = [
         {
             "number": f.number,
@@ -446,6 +450,28 @@ def island_map(request, island_id: int):
             **data,
         }
     )
+
+
+def _port_ships(island: m.Island) -> dict[str, Any] | None:
+    """港に停泊中の商船の隻数（案6）。動いている港（コアの port_of と同じ選び方: 建っていて
+    止まっていない港のうち番号が最小）と、海運業の船団のうち港にいる分（船団の総数から、
+    航海中の重さを使っている船の数に換算して引く。換算はコアの ships_of_load と同じ）。
+    港か海運業がなければ None。隻数は整数分だけ（端数は航海の途中の分とみる）。"""
+    config = get_game().config
+    rows = list(island.facilities.all())
+    ports = [
+        f
+        for f in rows
+        if f.kind == config.get("trade.port_facility") and f.built and not is_stopped(f)
+    ]
+    shippers = [f for f in rows if f.kind == config.get("trade.shipping_facility")]
+    if not ports or not shippers:
+        return None
+    port = min(ports, key=lambda f: f.number)
+    shipper = min(shippers, key=lambda f: f.number)
+    at_sea = trade_ships.ships_of_load(config, trade_ships.busy(shipper))
+    count = max(0, trade_ships.fleet(shipper) - at_sea) // trade_ships.MILLI
+    return {"x": port.x, "y": port.y, "count": count}
 
 
 def _freight(island: m.Island) -> dict[str, Any]:

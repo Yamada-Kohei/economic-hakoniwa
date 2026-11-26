@@ -135,6 +135,8 @@ def _allowed_keys(theme: dict | None = None) -> set[str]:
         }
         | {f"unit/{a}" for a, spec in d.army.items() if spec["arm"] == "land"}
         | {f"fleet/{a}" for a, spec in d.army.items() if spec["arm"] == "sea"}
+        | {"ship/merchant"}  # 島の俯瞰図に停泊させる商船（案6）
+        | {f"ship/{a}" for a, spec in d.army.items() if spec["arm"] == "sea"}  # 同じく艦隊（W-100）
     )
 
 

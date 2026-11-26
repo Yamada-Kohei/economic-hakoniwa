@@ -58,6 +58,7 @@ AI で作った絵は、作った道具の名前と、依頼した人を書き�
 | server/static/themes/default/sprites/facility/radar.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
 | server/static/themes/default/sprites/unit/infantry.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
 | server/static/themes/default/sprites/fleet/frigate.svg | Claude（Anthropic。幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/ship | むぎ（幾何の形で作成。tools/sprites/ship_sprites.py で生成。依頼: セビーリャ） | MIT | このリポジトリ |
 | server/static/themes/default/sprites/overlay/trench_back.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
 | server/static/themes/default/sprites/overlay/trench_front.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
 | server/static/themes/default/sprites/facility/arms_plant.svg | Claude（Anthropic。幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
