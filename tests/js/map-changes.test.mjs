@@ -1,5 +1,5 @@
 // node --test tests/js/map-changes.test.mjs
-// 前のターンから変わったマスの印（案3 の静止版）: 既定では出さず、切り替えたことを
+// 前のターンから変わったマスの印（案3 の静止版＋案10 の衰退の印）: 既定では出さず、切り替えたことを
 // ブラウザに覚えること。API の changed の並びを、マスの組に直すこと。
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -42,12 +42,14 @@ test("changed の並びをマスの組に直す", () => {
       { x: 1, y: 2, kind: "built" },
       { x: 3, y: 4, kind: "removed" },
       { x: 5, y: 6, kind: "stage" },
+      { x: 7, y: 8, kind: "decline" },
     ],
   });
   assert.equal(marks.get("1,2"), "built");
   assert.equal(marks.get("3,4"), "removed");
   assert.equal(marks.get("5,6"), "stage");
-  assert.equal(marks.size, 3);
+  assert.equal(marks.get("7,8"), "decline");
+  assert.equal(marks.size, 4);
 });
 
 test("知らない種類や壊れた行は飛ばす", () => {
@@ -64,6 +66,6 @@ test("知らない種類や壊れた行は飛ばす", () => {
   assert.equal(changeMarks(null).size, 0);
 });
 
-test("種類の色は3種そろっている", () => {
-  assert.deepEqual(Object.keys(CHANGE_COLORS).sort(), ["built", "removed", "stage"]);
+test("種類の色は4種そろっている", () => {
+  assert.deepEqual(Object.keys(CHANGE_COLORS).sort(), ["built", "decline", "removed", "stage"]);
 });

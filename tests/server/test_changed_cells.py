@@ -1,7 +1,7 @@
-"""前のターンから変わったマス（グラフィック強化 案3 の静止版）。
+"""前のターンから変わったマス（グラフィック強化 案3 の静止版＋案10 の衰退の印）。
 
 サーバー側の決め方（server/web/changes.py）: いちばん新しいターンのバックアップと
-今の地形・施設を見た目で比べ、建設・撤去・段階の3種に分ける。地図の API は
+今の地形・施設を見た目で比べ、建設・撤去・段階・衰退の4種に分ける。地図の API は
 ?changes=1 のとき、持ち主にだけ changed を足す。
 """
 
@@ -14,7 +14,9 @@ import pytest
 from django.contrib.auth.models import User
 from django.urls import reverse
 
+from hakoniwa_core import facilities as fac
 from hakoniwa_core.state.serialize import world_to_dict
+from server.game import get_game
 from server.turns.models import Backup
 from server.web.changes import changed_cells
 from server.world.models import Island
@@ -104,6 +106,47 @@ def test_classifies_built_removed_and_stage(world):
         (stage_target.x, stage_target.y, "stage"),
         (terrain_cell[0], terrain_cell[1], "stage"),
     }
+
+
+def _housing_at_level(world, island: Island, level: str):
+    """島の住宅を1つ、今の段階を指定の段階にそろえて返す。"""
+    target = next(
+        f
+        for f in island.facilities.all()
+        if f.x >= 0 and f.kind == fac.housing_kind(get_game().config)
+    )
+    target.ext = {**(target.ext or {}), "level": level}
+    target.save(update_fields=["ext"])
+    return target
+
+
+def test_housing_level_drop_counts_as_decline(world):
+    island = Island.objects.order_by("id").first()
+    levels = get_game().defs.settlement_levels()
+    assert len(levels) >= 3, "段階が3つ以上ある前提で比べる"
+    target = _housing_at_level(world, island, levels[1])
+
+    def mutate(before: dict) -> None:
+        # 前の写しでは1つ上の段階だった → 今の段階は下がった
+        row = next(f for f in before["facilities"] if f["x"] == target.x and f["y"] == target.y)
+        row.setdefault("ext", {})["level"] = levels[2]
+
+    _backup_with(world, island.id, mutate)
+    assert _marks(island) == {(target.x, target.y, "decline")}
+
+
+def test_housing_level_rise_stays_stage(world):
+    island = Island.objects.order_by("id").first()
+    levels = get_game().defs.settlement_levels()
+    target = _housing_at_level(world, island, levels[1])
+
+    def mutate(before: dict) -> None:
+        # 前の写しでは1つ下の段階だった → 段階は上がったので「姿の変化」のまま
+        row = next(f for f in before["facilities"] if f["x"] == target.x and f["y"] == target.y)
+        row.setdefault("ext", {})["level"] = levels[0]
+
+    _backup_with(world, island.id, mutate)
+    assert _marks(island) == {(target.x, target.y, "stage")}
 
 
 def test_completed_construction_counts_as_built(world):

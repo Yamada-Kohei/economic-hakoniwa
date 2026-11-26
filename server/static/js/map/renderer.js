@@ -416,8 +416,10 @@ export function drawCapitalFlag(ctx, flag, px, base, theme) {
 }
 
 /**
- * 前のターンから変わったマスの印（案3 の静止版）: 種類の色の静止枠と、上の頂点に色丸＋白い記号。
- * 記号は 建設=＋、撤去=×、段階=◆。色は changes.js の CHANGE_COLORS（凡例と同じ色）。
+ * 前のターンから変わったマスの印（案3 の静止版＋案10 の衰退の印）: 種類の色の静止枠と、
+ * 上の頂点に色丸＋白い記号。
+ * 記号は 建設=＋、撤去=×、段階=◆、衰退=▼（住宅の段階が下がったマス）。
+ * 色は changes.js の CHANGE_COLORS（凡例と同じ色）。
  * top はマスの上面の上の頂点。丸は枠の角に重ね、白い縁を付けて建物や地形の絵に埋もれないようにする。
  * 止まった施設の赤い点（マスの真ん中）とは置く場所を分け、重なっても両方読めるようにする。
  */
@@ -457,6 +459,12 @@ function drawChangeMark(ctx, kind, px, top, theme) {
     ctx.moveTo(px + g, top - g);
     ctx.lineTo(px - g, top + g);
     ctx.stroke();
+  } else if (kind === "decline") {
+    ctx.moveTo(px - g, top - g);
+    ctx.lineTo(px + g, top - g);
+    ctx.lineTo(px, top + g);
+    ctx.closePath();
+    ctx.fill();
   } else {
     ctx.moveTo(px, top - g);
     ctx.lineTo(px + g, top);
