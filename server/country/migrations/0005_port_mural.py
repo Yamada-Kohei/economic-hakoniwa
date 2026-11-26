@@ -5,27 +5,47 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('country', '0004_profile_theme_color'),
-        ('world', '0008_geo_names'),
+        ("country", "0004_profile_theme_color"),
+        ("world", "0008_geo_names"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='PortMural',
+            name="PortMural",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('total', models.FloatField(default=0, verbose_name='直近1年の貿易額')),
-                ('tally_turn', models.IntegerField(default=0, verbose_name='集計したターン')),
-                ('svg', models.TextField(blank=True, default='', verbose_name='相手の島の輪郭')),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('island', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='port_mural', to='world.island', verbose_name='国')),
-                ('partner', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='+', to='world.island', verbose_name='相手の国')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                ("total", models.FloatField(default=0, verbose_name="直近1年の貿易額")),
+                ("tally_turn", models.IntegerField(default=0, verbose_name="集計したターン")),
+                ("svg", models.TextField(blank=True, default="", verbose_name="相手の島の輪郭")),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "island",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="port_mural",
+                        to="world.island",
+                        verbose_name="国",
+                    ),
+                ),
+                (
+                    "partner",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="+",
+                        to="world.island",
+                        verbose_name="相手の国",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '姉妹港の壁画',
-                'verbose_name_plural': '姉妹港の壁画',
+                "verbose_name": "姉妹港の壁画",
+                "verbose_name_plural": "姉妹港の壁画",
             },
         ),
     ]

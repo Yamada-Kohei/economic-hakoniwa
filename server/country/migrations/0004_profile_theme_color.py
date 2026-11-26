@@ -4,15 +4,16 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('country', '0003_diary'),
+        ("country", "0003_diary"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='profile',
-            name='theme_color',
-            field=models.CharField(blank=True, default='', max_length=16, verbose_name='テーマカラー'),
+            model_name="profile",
+            name="theme_color",
+            field=models.CharField(
+                blank=True, default="", max_length=16, verbose_name="テーマカラー"
+            ),
         ),
     ]
