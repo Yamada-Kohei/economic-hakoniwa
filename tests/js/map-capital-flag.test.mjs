@@ -53,16 +53,17 @@ function close(actual, expected) {
   assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} ≠ ${expected}`);
 }
 
-test("旗の大きさ: 幅はマスの半分で縦横比どおり、背の高い画像はマスの高さまでに収める", () => {
+test("旗の大きさ: 幅はマスの 8 分の 1 で縦横比どおり、背の高い画像はマスの高さの 4 分の 1 までに収める", () => {
+  const W = theme.tile_width / 8, H = theme.tile_height / 4;
   const a = capitalFlagSize({ w: 90, h: 60 }, theme);
-  close(a.w, 32);
-  close(a.h, 32 * 60 / 90);
+  close(a.w, W);
+  close(a.h, W * 60 / 90);
   const b = capitalFlagSize({ w: 30, h: 120 }, theme);
-  close(b.h, 32);
-  close(b.w, 32 * 30 / 120);
+  close(b.h, H);
+  close(b.w, H * 30 / 120);
   const c = capitalFlagSize({ w: 60, h: 60 }, theme);
-  close(c.w, 32);
-  close(c.h, 32);
+  close(c.w, Math.min(W, H));
+  close(c.h, Math.min(W, H));
 });
 
 test("首都の建物の絵のあとに、その上に旗を描く", () => {
@@ -74,8 +75,8 @@ test("首都の建物の絵のあとに、その上に旗を描く", () => {
   assert.equal(draws.length, 1);
   const [, , x, y, w, h] = draws[0];
   close(x, 0); // 首都のマスの真ん中
-  close(w, 32);
-  close(h, 32 * 60 / 90);
+  close(w, theme.tile_width / 8);
+  close(h, (theme.tile_width / 8) * 60 / 90);
   // 建物の絵（高さ 73）のてっぺんより上に旗が出る
   const bldgAt = ctx.calls.findIndex((c) => c[0] === "drawImage" && c[1] === BLDG);
   assert.ok(bldgAt >= 0);
