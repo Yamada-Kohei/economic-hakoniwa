@@ -41,6 +41,7 @@ from server.web import changes as changes_views
 from server.web import country as country_views
 from server.web import diplomacy as diplomacy_views
 from server.web import facility_page as facility_views
+from server.web import marks as marks_views
 from server.web import military as military_views
 from server.web import news as news_views
 from server.web import politics as politics_views
@@ -361,6 +362,7 @@ def island_map(request, island_id: int):
     ?freight=1 のときだけ、陸のマスごとの拠点までの運賃の率（freight、1万分の1。海は null）も返す
     （計算が重いので、重ね表示で選んだときだけ読む）。
     ?changes=1 のときだけ、持ち主に、前のターンから変わったマス（changed）も返す。
+    ?battles=1 のとき戦闘の跡（battles）、?money=1 のときお金の出来事（money）も返す。
     """
     island = get_object_or_404(m.Island, pk=island_id)
     columns = ["terrain", "population", "zone", "infra", "pollution", "ext"]
@@ -414,6 +416,13 @@ def island_map(request, island_id: int):
         # 前のターンから変わったマスの印（案3 の静止版）。前のターンの写しと比べるので、
         # 切り替えたときだけ読む。持ち主の地図だけに出す（他国の施設の変化は見せない）
         data["changed"] = changes_views.changed_cells(island)
+    if request.GET.get("battles"):
+        # 戦闘の跡（案26）。出来事の記録（ターンログ）を読むだけなので軽いが、
+        # 切り替えたときだけ取る（変わったマスと同じ流儀）
+        data["battles"] = marks_views.battle_marks(island)
+    if request.GET.get("money"):
+        # お金の出来事（案15）。同じく切り替えたときだけ取る
+        data["money"] = marks_views.money_marks(island)
     # 部隊の印は、見ている国に見えるものだけ（自分の部隊と、見える範囲に入った相手の部隊。
     # 陣地と占領は誰にでも見える）
     data["units"] = military_views.island_units(island, letter_services.own_island(request.user))
@@ -454,6 +463,8 @@ def island_map(request, island_id: int):
             "name": island.name,
             "size": island.size,
             "turn": island.world.turn,
+            # 気候帯（寒冷・温帯・熱帯）。季節の色調（案18）の材料。無い島は null
+            "climate": (island.ext or {}).get(nature.CLIMATE),
             "capital": [island.capital_x, island.capital_y]
             if island.capital_x is not None
             else None,
