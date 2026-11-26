@@ -1,0 +1,694 @@
+{
+ "name": "lb47-household-remeasure-fix-1126",
+ "commit": "6f4c4ba8d284fc85e3a5621cc0871e3337fad17e",
+ "files": [
+  "lb47_household_probe.py"
+ ],
+ "pool": "any",
+ "runs": [
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-off-plan-s1.jsonl.gz"
+   ],
+   "name": "lb47-off-plan-s1",
+   "summary": [
+    "lb47-off-plan-s1.jsonl.gz",
+    "lb47-off-plan-s1.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-on-plan-s1.jsonl.gz"
+   ],
+   "name": "lb47-on-plan-s1",
+   "summary": [
+    "lb47-on-plan-s1.jsonl.gz",
+    "lb47-on-plan-s1.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "2",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-off-plan-s2.jsonl.gz"
+   ],
+   "name": "lb47-off-plan-s2",
+   "summary": [
+    "lb47-off-plan-s2.jsonl.gz",
+    "lb47-off-plan-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "2",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-on-plan-s2.jsonl.gz"
+   ],
+   "name": "lb47-on-plan-s2",
+   "summary": [
+    "lb47-on-plan-s2.jsonl.gz",
+    "lb47-on-plan-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "3",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-off-plan-s3.jsonl.gz"
+   ],
+   "name": "lb47-off-plan-s3",
+   "summary": [
+    "lb47-off-plan-s3.jsonl.gz",
+    "lb47-off-plan-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "3",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-on-plan-s3.jsonl.gz"
+   ],
+   "name": "lb47-on-plan-s3",
+   "summary": [
+    "lb47-on-plan-s3.jsonl.gz",
+    "lb47-on-plan-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "none",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-off-none-s1.jsonl.gz"
+   ],
+   "name": "lb47-off-none-s1",
+   "summary": [
+    "lb47-off-none-s1.jsonl.gz",
+    "lb47-off-none-s1.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "none",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-on-none-s1.jsonl.gz"
+   ],
+   "name": "lb47-on-none-s1",
+   "summary": [
+    "lb47-on-none-s1.jsonl.gz",
+    "lb47-on-none-s1.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "none",
+    "--seed",
+    "2",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-off-none-s2.jsonl.gz"
+   ],
+   "name": "lb47-off-none-s2",
+   "summary": [
+    "lb47-off-none-s2.jsonl.gz",
+    "lb47-off-none-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "none",
+    "--seed",
+    "2",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-on-none-s2.jsonl.gz"
+   ],
+   "name": "lb47-on-none-s2",
+   "summary": [
+    "lb47-on-none-s2.jsonl.gz",
+    "lb47-on-none-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "none",
+    "--seed",
+    "3",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-off-none-s3.jsonl.gz"
+   ],
+   "name": "lb47-off-none-s3",
+   "summary": [
+    "lb47-off-none-s3.jsonl.gz",
+    "lb47-off-none-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "none",
+    "--seed",
+    "3",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-on-none-s3.jsonl.gz"
+   ],
+   "name": "lb47-on-none-s3",
+   "summary": [
+    "lb47-on-none-s3.jsonl.gz",
+    "lb47-on-none-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-off-independent-s1.jsonl.gz"
+   ],
+   "name": "lb47-off-independent-s1",
+   "summary": [
+    "lb47-off-independent-s1.jsonl.gz",
+    "lb47-off-independent-s1.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-on-independent-s1.jsonl.gz"
+   ],
+   "name": "lb47-on-independent-s1",
+   "summary": [
+    "lb47-on-independent-s1.jsonl.gz",
+    "lb47-on-independent-s1.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "2",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-off-independent-s2.jsonl.gz"
+   ],
+   "name": "lb47-off-independent-s2",
+   "summary": [
+    "lb47-off-independent-s2.jsonl.gz",
+    "lb47-off-independent-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "2",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-on-independent-s2.jsonl.gz"
+   ],
+   "name": "lb47-on-independent-s2",
+   "summary": [
+    "lb47-on-independent-s2.jsonl.gz",
+    "lb47-on-independent-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "3",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-off-independent-s3.jsonl.gz"
+   ],
+   "name": "lb47-off-independent-s3",
+   "summary": [
+    "lb47-off-independent-s3.jsonl.gz",
+    "lb47-off-independent-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "3",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-on-independent-s3.jsonl.gz"
+   ],
+   "name": "lb47-on-independent-s3",
+   "summary": [
+    "lb47-on-independent-s3.jsonl.gz",
+    "lb47-on-independent-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "small",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-off-small-s1.jsonl.gz"
+   ],
+   "name": "lb47-off-small-s1",
+   "summary": [
+    "lb47-off-small-s1.jsonl.gz",
+    "lb47-off-small-s1.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "small",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-on-small-s1.jsonl.gz"
+   ],
+   "name": "lb47-on-small-s1",
+   "summary": [
+    "lb47-on-small-s1.jsonl.gz",
+    "lb47-on-small-s1.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "small",
+    "--seed",
+    "2",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-off-small-s2.jsonl.gz"
+   ],
+   "name": "lb47-off-small-s2",
+   "summary": [
+    "lb47-off-small-s2.jsonl.gz",
+    "lb47-off-small-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "small",
+    "--seed",
+    "2",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-on-small-s2.jsonl.gz"
+   ],
+   "name": "lb47-on-small-s2",
+   "summary": [
+    "lb47-on-small-s2.jsonl.gz",
+    "lb47-on-small-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "small",
+    "--seed",
+    "3",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-off-small-s3.jsonl.gz"
+   ],
+   "name": "lb47-off-small-s3",
+   "summary": [
+    "lb47-off-small-s3.jsonl.gz",
+    "lb47-off-small-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "small",
+    "--seed",
+    "3",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-on-small-s3.jsonl.gz"
+   ],
+   "name": "lb47-on-small-s3",
+   "summary": [
+    "lb47-on-small-s3.jsonl.gz",
+    "lb47-on-small-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "open",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-off-open-s1.jsonl.gz"
+   ],
+   "name": "lb47-off-open-s1",
+   "summary": [
+    "lb47-off-open-s1.jsonl.gz",
+    "lb47-off-open-s1.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "open",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-on-open-s1.jsonl.gz"
+   ],
+   "name": "lb47-on-open-s1",
+   "summary": [
+    "lb47-on-open-s1.jsonl.gz",
+    "lb47-on-open-s1.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "open",
+    "--seed",
+    "2",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-off-open-s2.jsonl.gz"
+   ],
+   "name": "lb47-off-open-s2",
+   "summary": [
+    "lb47-off-open-s2.jsonl.gz",
+    "lb47-off-open-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "open",
+    "--seed",
+    "2",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-on-open-s2.jsonl.gz"
+   ],
+   "name": "lb47-on-open-s2",
+   "summary": [
+    "lb47-on-open-s2.jsonl.gz",
+    "lb47-on-open-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "open",
+    "--seed",
+    "3",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-off-open-s3.jsonl.gz"
+   ],
+   "name": "lb47-off-open-s3",
+   "summary": [
+    "lb47-off-open-s3.jsonl.gz",
+    "lb47-off-open-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "open",
+    "--seed",
+    "3",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-on-open-s3.jsonl.gz"
+   ],
+   "name": "lb47-on-open-s3",
+   "summary": [
+    "lb47-on-open-s3.jsonl.gz",
+    "lb47-on-open-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "war",
+    "--seed",
+    "1",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-off-war-s1.jsonl.gz"
+   ],
+   "name": "lb47-off-war-s1",
+   "summary": [
+    "lb47-off-war-s1.jsonl.gz",
+    "lb47-off-war-s1.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "war",
+    "--seed",
+    "1",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-on-war-s1.jsonl.gz"
+   ],
+   "name": "lb47-on-war-s1",
+   "summary": [
+    "lb47-on-war-s1.jsonl.gz",
+    "lb47-on-war-s1.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "war",
+    "--seed",
+    "2",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-off-war-s2.jsonl.gz"
+   ],
+   "name": "lb47-off-war-s2",
+   "summary": [
+    "lb47-off-war-s2.jsonl.gz",
+    "lb47-off-war-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "war",
+    "--seed",
+    "2",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-on-war-s2.jsonl.gz"
+   ],
+   "name": "lb47-on-war-s2",
+   "summary": [
+    "lb47-on-war-s2.jsonl.gz",
+    "lb47-on-war-s2.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "war",
+    "--seed",
+    "3",
+    "--off",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-off-war-s3.jsonl.gz"
+   ],
+   "name": "lb47-off-war-s3",
+   "summary": [
+    "lb47-off-war-s3.jsonl.gz",
+    "lb47-off-war-s3.gate.json"
+   ]
+  },
+  {
+   "args": [
+    "probe",
+    "--scenario",
+    "war",
+    "--seed",
+    "3",
+    "--on",
+    "--turns",
+    "300",
+    "--out",
+    "lb47-on-war-s3.jsonl.gz"
+   ],
+   "name": "lb47-on-war-s3",
+   "summary": [
+    "lb47-on-war-s3.jsonl.gz",
+    "lb47-on-war-s3.gate.json"
+   ]
+  }
+ ]
+}
