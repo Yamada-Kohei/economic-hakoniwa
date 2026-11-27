@@ -278,7 +278,28 @@
     <dt>{% translate "自動車（耐久消費財）" %}</dt>
     <dd>{% blocktranslate with wear=cars.wear share=cars.share %}家計は階級ごとに自動車を持ち、所得に応じた欲しい台数に足りない分を少しずつ買います（資本家階級が先に、労働者階級は豊かになってから）。自動車は年 {{ wear }}% ずつ傷んで使えなくなり、買うのはぜいたく品の予算の {{ share }}% までです。持っている自動車は毎ターン石油燃料を使います。{% endblocktranslate %}</dd>
     <dt>{% translate "トラック" %}</dt>
-    <dd>{% blocktranslate with drivers=trucks.drivers share=trucks.share %}運送業は、トラック1台を1ターン使う費用（値段の利子と傷み・石油燃料）が運転手 {{ drivers }} 人の賃金より安ければ、市場で自動車を買ってトラックにし、運転手の代わりに使います（雇いたい運転手の {{ share }}% まで）。石油燃料が足りなければ、その分のトラックは動きません。{% endblocktranslate %}</dd>
+    <dd>
+      <ul>
+        <li>{% blocktranslate with drivers=trucks.drivers share=trucks.share %}運送業は、トラック1台を1ターン使う費用（値段の利子と傷み・石油燃料）が運転手 {{ drivers }} 人の賃金より安ければ、市場で自動車を買ってトラックにし、運転手の代わりに使います（雇いたい運転手の {{ share }}% まで）。{% endblocktranslate %}</li>
+        <li>{% blocktranslate with drivers=trucks.drivers %}トラック1台は運転手 {{ drivers }} 人分の働きをし、トラックで替えた分の運転手は雇いません。{% endblocktranslate %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "トラックの台数の決まり方" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "欲しい台数は、直近6ターンで一番少なかった雇いたい運転手をもとに決めます。ふだん続く仕事はトラックで受け、波のある分は人で受けます。記録が6ターン分たまるまでは買いません。" %}</li>
+        <li>{% translate "買うときは、欲しい台数との差の1割ほどと、傷んだ分の買い直しを買います。" %}</li>
+        <li>{% translate "トラックは年に1割ほど傷んで使えなくなります。" %}</li>
+        <li>{% translate "運送業が独立採算のときは、買ったあとも手元に、3ターン分の賃金や借りの返済と、トラックを3ターン動かす燃料の分が残る範囲でしか買いません。足りなければ傷んだ分の買い直しも延ばし、減った分は人で受けます。" %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "トラックの燃料" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "石油燃料が足りなければ、その分のトラックは動きません。" %}</li>
+        <li>{% translate "燃料は、持っているトラックの3ターン分を持っておくよう買い足します。ただし、トラックが運転手より高くつく値段では買いません。" %}</li>
+      </ul>
+    </dd>
     <dt>{% translate "燃料の代わり" %}</dt>
     <dd>{% translate "輸送船は石油燃料と石炭のどちらでも動き、安い方を使います。火力発電所は石炭か石油燃料のどちらかの生産方式で動きます。" %}</dd>
     <dt>{% translate "生産方式の切り替え" %}</dt>
