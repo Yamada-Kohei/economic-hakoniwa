@@ -614,8 +614,22 @@
     </dd>
     <dt>{% translate "停戦と講和" %}</dt>
     <dd>{% blocktranslate with turns=diplomacy.withdraw_turns max=diplomacy.max_withdraw_turns %}停戦は両国が署名すると効き、破棄の予告期間が過ぎると戦争に戻ります。講和は戦争を終え、その戦争の停戦の条約も終わらせます。講和には、部隊の引き揚げの期限（初めの値は {{ turns }} ターン、最大 {{ max }} ターン）・捕虜を返すかどうか・賠償を書けます。占領の解除と、約束した捕虜の返還はゲームが行います。引き揚げの期限が来ても外国の島にいる部隊は、自国の輸送船団に載せる空きがあれば船で帰国し、なければその場で除隊して家計に戻ります。条約を破棄しても、貿易圏の加盟は残ります（抜けるときは貿易圏の命令で）。{% endblocktranslate %}</dd>
-    <dt>{% translate "賠償の約束と支払い" %}</dt>
-    <dd>{% blocktranslate with turns=diplomacy.max_reparation_turns %}講和に賠償を添えるときは、払う国・通貨・額・講和が効いてから期日までのターン数（最大 {{ turns }} ターン）を決めます。ゲームは自動では払わせません。払う国が「貿易」の画面からお金の援助の命令を出し、相手へ送ります。約束の通貨と額が期日までに届かなければ、払う国の条約違反として記録されます。{% endblocktranslate %}</dd>
+    <dt>{% translate "賠償の約束" %}</dt>
+    <dd>
+      <ul>
+        <li>{% blocktranslate with turns=diplomacy.max_reparation_turns %}講和に賠償を添えるときは、払う国・通貨・額・講和が効いてから期日までのターン数（最大 {{ turns }} ターン）を決めます。{% endblocktranslate %}</li>
+        <li>{% translate "通貨は、払う国か受け取る国の通貨から選びます。" %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "賠償の支払い" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "ゲームは自動では払わせません。払う国が「貿易」の画面からお金の援助の命令を出し、相手へ送ります。" %}</li>
+        <li>{% translate "分けて払ってもよく、約束の通貨で届いた分が払った分に数えられます。同じ送金は先に講和の賠償へ充てます。" %}</li>
+        <li>{% translate "約束の通貨と額が期日までに届かなければ、払う国の条約違反として記録されます。" %}</li>
+        <li>{% translate "期日までに全額が届けば賠償は済みます。払い残しが少ないほど、違反の重みと信用の傷は小さくなります。" %}</li>
+      </ul>
+    </dd>
     <dt id="economic-clauses">{% translate "経済の条項" %}</dt>
     <dd>{% translate "提案で条項にチェックすると、その条件の入力欄が開きます。両国が署名すると約束が効き、貿易・為替・移民の仕組みに反映されます。戦争のあいだは、講和に添える形で結びます。" %}
       <ul>
@@ -628,8 +642,23 @@
       </ul>
       <p>{% translate "予告つきの破棄では、予告期間が過ぎた後に約束をやめても罰はありません。契約と援助は、期間や回数が終わるとその条項が済み、すべての条項が済んだ条約は終了します。不可侵などの続く条項が残っている場合は、その条約も続きます。" %}</p>
     </dd>
-    <dt>{% translate "違反の記録と信用" %}</dt>
-    <dd>{% blocktranslate with premium=diplomacy.violation_premium max=diplomacy.violation_premium_max turns=diplomacy.violation_decay_turns %}不可侵や同盟を破る宣戦・賠償の未払い・経済の条項の違反は、違反の記録と国債の利回りへの信用の傷を残します。利回りの上乗せは違反ごとに {{ premium }} パーセントポイント、合計で最大 {{ max }} パーセントポイントです。上乗せは {{ turns }} ターンかけて消えます。違反があっても、銀行が国債を買わなくなることはありません。{% endblocktranslate %}</dd>
+    <dt>{% translate "違反の記録" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "不可侵や同盟を破る宣戦・賠償の未払い・経済の条項の違反は、違反として記録されます。" %}</li>
+        <li>{% translate "違反の記録は島の「外交の状態」で誰でも見られ、国際会議場にも載ります。違反をしても、ゲームがその行動を止めることはありません。" %}</li>
+        <li>{% translate "相手の島が消えたときは、違反を記録せずに条約や戦争が終わります。" %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "信用の傷と国債の利回り" %}</dt>
+    <dd>
+      <ul>
+        <li>{% blocktranslate with premium=diplomacy.violation_premium max=diplomacy.violation_premium_max %}違反は国債の利回りへの信用の傷を残します。利回りの上乗せは違反の重み1ごとに {{ premium }} パーセントポイント、合計で最大 {{ max }} パーセントポイントです。{% endblocktranslate %}</li>
+        <li>{% translate "ふつうの条約違反の重みは1、核を持たない約束を破ると3、核を使うと5です。賠償の未払いは、払い残した割合がそのまま重みになります。" %}</li>
+        <li>{% blocktranslate with turns=diplomacy.violation_decay_turns %}上乗せは {{ turns }} ターンかけて少しずつ消えます。{% endblocktranslate %}</li>
+        <li>{% translate "違反があっても、銀行が国債を買わなくなることはありません。" %}</li>
+      </ul>
+    </dd>
     <dt>{% translate "国際会議場" %}</dt>
     <dd><a href="{% url 'hall' %}">{% translate "国際会議場" %}</a>{% blocktranslate with max=diplomacy.hall_per_day %}は誰でも読める公開の場です。島を持つ人は、1つの島につき24時間に {{ max }} 件まで声明を出せます。宣戦・停戦・講和・条約の効き始め・破棄の予告・違反は、当事国のターンログから自動で載ります。世界が巻き戻ると、その出来事も消えます。{% endblocktranslate %}</dd>
   </dl>
