@@ -904,7 +904,22 @@
 <section class="panel" id="facilities">
   <h2>{% translate "施設" %}</h2>
   <p>{% translate "品目どうしのつながりを図で見るには" %} <a href="{% url 'help_chain' %}">{% translate "手引き：産業のつながり" %}</a>{% translate "。" %}</p>
-  <p>{% translate "民営の鉱山を銅鉱石の生産方式へ替えることはできません。鉱山には鉄鉱石・石炭・ボーキサイト・銅鉱石・ウラン鉱石の方式がありますが、国営でも掘る鉱業資源の違う方式には変更できません。銅を自作するには、銅鉱石のある国で、鉱山の数の上限を確かめて国営の鉱山を「銅鉱石」の方式で建て、銅の精錬所で加工します。銅鉱石のない国は輸入を検討してください。" %}</p>
+  <dl class="rules">
+    <dt>{% translate "鉱山の生産方式" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "鉱山には鉄鉱石・石炭・ボーキサイト・銅鉱石・ウラン鉱石の方式がありますが、国営でも掘る鉱業資源の違う方式には変更できません。" %}</li>
+        <li>{% translate "民営の鉱山を銅鉱石の生産方式へ替えることはできません。" %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "銅の作り方" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "銅を自作するには、銅鉱石のある国で、鉱山の数の上限を確かめて国営の鉱山を「銅鉱石」の方式で建て、銅の精錬所で加工します。" %}</li>
+        <li>{% translate "銅鉱石のない国は輸入を検討してください。" %}</li>
+      </ul>
+    </dd>
+  </dl>
   <div class="table-scroll">
   <table class="facilities">
     <thead><tr><th>{% translate "施設" %}</th><th>{% translate "建設できる地形" %}</th><th>{% translate "従業者" %}</th><th>{% translate "生産方式（1ターンあたり）" %}</th></tr></thead>
