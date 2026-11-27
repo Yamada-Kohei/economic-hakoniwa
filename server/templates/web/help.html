@@ -631,7 +631,28 @@
     <dt>{% translate "違反の記録と信用" %}</dt>
     <dd>{% blocktranslate with premium=diplomacy.violation_premium max=diplomacy.violation_premium_max turns=diplomacy.violation_decay_turns %}不可侵や同盟を破る宣戦・賠償の未払い・経済の条項の違反は、違反の記録と国債の利回りへの信用の傷を残します。利回りの上乗せは違反ごとに {{ premium }} パーセントポイント、合計で最大 {{ max }} パーセントポイントです。上乗せは {{ turns }} ターンかけて消えます。違反があっても、銀行が国債を買わなくなることはありません。{% endblocktranslate %}</dd>
     <dt>{% translate "国際会議場" %}</dt>
-    <dd><a href="{% url 'hall' %}">{% translate "国際会議場" %}</a>{% blocktranslate with max=diplomacy.hall_per_day %}は誰でも読める公開の場です。島を持つ人は、1つの島につき24時間に {{ max }} 件まで声明を出せます。宣戦・停戦・講和・条約の効き始め・破棄の予告・違反は、当事国のターンログから自動で載ります。世界が巻き戻ると、その出来事も消えます。{% endblocktranslate %}</dd>
+    <dd>
+      <ul>
+        <li><a href="{% url 'hall' %}">{% translate "国際会議場" %}</a>{% translate "は誰でも読める公開の場です。画面には、声明と出来事の並びのほか、続いている戦争の状態と、効いている条約の一覧も載ります。" %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "会議場の声明" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "声明は島を持つ人が出せます。出したとたんに載り、ターン更新を待ちません。声明と出来事は新しい順に並びます。" %}</li>
+        <li>{% blocktranslate with max=diplomacy.hall_per_day %}1つの島につき24時間に {{ max }} 件まで声明を出せます。{% endblocktranslate %}</li>
+        <li>{% translate "題名は100字まで、本文は2000字までです。" %}</li>
+        <li>{% translate "運営が不適切な声明を非表示にすることがあります。" %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "自動で載る出来事" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "宣戦・停戦・講和・条約の効き始め・破棄の予告・条約の終了・違反は、当事国のターンログから自動で載ります。" %}</li>
+        <li>{% translate "停戦が終わって戦争に戻ったこと、降伏、当事国がなくなって条約が終わったことも載ります。" %}</li>
+        <li>{% translate "世界が巻き戻ると、その出来事も消えます。" %}</li>
+      </ul>
+    </dd>
   </dl>
 </section>
 
