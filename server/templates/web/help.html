@@ -606,7 +606,27 @@
       <p>{% blocktranslate with turns=diplomacy.proposal_turns max=diplomacy.max_proposals %}返事がないまま {{ turns }} ターンたつと流れ、同時に出せる返事待ちの提案は {{ max }} 件までです。休止中の国にも停戦と、賠償やほかの約束を添えない講和は提案でき、留守を預かる政府が持ち主に代わって自動で受けます。それ以外の条約は提案できません。{% endblocktranslate %}</p>
     </dd>
     <dt>{% translate "民主主義と議会" %}</dt>
-    <dd>{% translate "民主主義では、宣戦布告・条約の提案・署名・破棄に議会の過半数の賛成が要ります。命令を列に追加しただけでは決まらず、ターン更新の採決と実行の結果を確かめてください。断りと取り下げには採決は要りません。" %}</dd>
+    <dd>
+      <ul>
+        <li>{% translate "民主主義では、宣戦布告・条約の提案・署名・破棄に議会の過半数の賛成が要ります。" %}</li>
+        <li>{% translate "断りと取り下げには採決は要りません。" %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "採決のしかた" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "命令を列に追加しただけでは決まらず、ターン更新でその命令を実行するときに採決します。" %}</li>
+        <li>{% translate "賛成の割合は与党の議席の割合が元で、選挙のあと支持率が上がると増え、下がると減ります（効くのは支持率の動きの半分です）。" %}</li>
+        <li>{% translate "賛成が過半数を超えれば可決して命令が実行され、超えなければ否決されます。" %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "否決されたら" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "否決された命令は実行されませんが、行政力は使ったことになります。" %}</li>
+        <li>{% translate "採決の結果はターンログに残り、政治の画面でも賛成の割合と一緒に確かめられます。" %}</li>
+      </ul>
+    </dd>
     <dt>{% translate "約束と破棄の予告" %}</dt>
     <dd>
       <p>{% blocktranslate with turns=diplomacy.notice_turns min=diplomacy.min_notice_turns max=diplomacy.max_notice_turns %}不可侵・同盟などの約束をどう守るかは遊ぶ人に任され、ゲームは条項の履行を強制しません。提案では、破棄の予告から終了までの期間を {{ min }}〜{{ max }} ターンの間で決めます（初めの値は {{ turns }} ターン）。破棄の命令を出してもすぐには終わらず、予告の期間が過ぎると罰なしで終わります。その期間が過ぎる前に不可侵や同盟を結ぶ相手へ宣戦しても命令は止まりませんが、条約違反になります。{% endblocktranslate %}</p>
