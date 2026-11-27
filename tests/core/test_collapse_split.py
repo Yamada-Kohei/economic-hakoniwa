@@ -1,7 +1,7 @@
 """崩れの表を分ける道具（tools/measure/collapse_split.py）の自己確認。
 
 分け方（240 の前後・発行国の体制）を、小さな材料で確かめる。材料の写しは、
-測りの写しと同じ形（world の ext に圏、islands に体制）で作る。
+測りの写しと同じ形（world の ext に圏（created つき）、islands に体制）で作る。
 """
 
 from __future__ import annotations
@@ -73,20 +73,91 @@ def test_labels_and_render_with_files(tmp_path):
     }
     file = tmp_path / "plan-s1-t300.json"
     file.write_text(json.dumps(result), encoding="utf-8")
-    assert collapse_split.issuer_label(file) == "不明（写しなし）"
+    label = collapse_split.largest_bloc_label(collapse_split.load_snapshot(file))
+    assert label == "不明（写しなし）"
 
     snapshot = _snapshot(
-        [{"id": 1, "currency": 2, "members": [2, 3]}],
+        [{"id": 1, "currency": 2, "members": [1, 2], "created": 10}],
         {2: "market", 3: "planned"},
     )
     with gzip.open(collapse_split.snapshot_path(file), "wt", encoding="utf-8") as f:
         json.dump(snapshot, f)
-    assert collapse_split.issuer_label(file) == "market（発行国は島 2）"
+    label = collapse_split.largest_bloc_label(collapse_split.load_snapshot(file))
+    assert label == "market（発行国は島 2）"
 
     text = collapse_split.render([(file, result)], 240)
+    assert "| 組 | 崩れの合計 | 発行国の体制（写し時点の最大圏） |" in text
     assert "| plan-s1-t300 | 2 | market（発行国は島 2） |" in text
     assert "| stockout | 1 | 1 | 2 |" in text
-    assert "| market（発行国は島 2） | stockout | 2 |" in text
+    # 主の集計は、崩れた島 1 の圏（10 ターン目に作成）の発行国 2 の体制で数える
+    assert "| market | stockout | 2 |" in text
+
+
+def test_event_issuer_confirms_bloc_at_first_turn():
+    snapshot = _snapshot(
+        [
+            {"id": 1, "currency": 2, "members": [1, 2], "created": 10},
+            {"id": 2, "currency": 3, "members": [1, 3], "created": 200},
+        ],
+        {2: "market", 3: "planned"},
+    )
+    # 100 ターン目では、島 1 が入っている圏は圏 1 だけ（圏 2 はまだ無い）
+    assert collapse_split.event_issuer(snapshot, _found("stockout", 100, island=1)) == (
+        2,
+        "market",
+    )
+    # 250 ターン目では 2 つの圏に入っていて、対象圏が 1 つに定まらない
+    assert collapse_split.event_issuer(snapshot, _found("stockout", 250, island=1)) is None
+    # 島 3 の圏 2 は 100 ターン目にはまだ作られていない
+    assert collapse_split.event_issuer(snapshot, _found("stockout", 100, island=3)) is None
+    assert collapse_split.event_issuer(snapshot, _found("stockout", 250, island=3)) == (
+        3,
+        "planned",
+    )
+    # どの圏にも入っていない島は確認できない
+    assert collapse_split.event_issuer(snapshot, _found("stockout", 250, island=9)) is None
+
+
+def test_event_issuer_without_created_is_unknown():
+    snapshot = _snapshot(
+        [{"id": 1, "currency": 2, "members": [1, 2]}],
+        {2: "market"},
+    )
+    assert collapse_split.event_issuer(snapshot, _found("stockout", 100, island=1)) is None
+
+
+def test_render_keeps_unconfirmed_events_as_unknown(tmp_path):
+    confirmed = {
+        "scenario": "plan",
+        "seed": 1,
+        "turns": 300,
+        "collapse": {
+            "counts": {},
+            "found": [_found("stockout", 100, island=1), _found("stockout", 250, island=9)],
+        },
+    }
+    file = tmp_path / "plan-s1-t300.json"
+    file.write_text(json.dumps(confirmed), encoding="utf-8")
+    snapshot = _snapshot(
+        [{"id": 1, "currency": 2, "members": [1, 2], "created": 10}],
+        {2: "market"},
+    )
+    with gzip.open(collapse_split.snapshot_path(file), "wt", encoding="utf-8") as f:
+        json.dump(snapshot, f)
+
+    no_snapshot = {
+        "scenario": "plan",
+        "seed": 2,
+        "turns": 300,
+        "collapse": {"counts": {}, "found": [_found("stockout", 100, island=1)]},
+    }
+    file2 = tmp_path / "plan-s2-t300.json"
+    file2.write_text(json.dumps(no_snapshot), encoding="utf-8")
+
+    text = collapse_split.render([(file, confirmed), (file2, no_snapshot)], 240)
+    # 確認できた 1 件は体制で、確認できない 2 件は落とさず「不明」で数える
+    assert "| market | stockout | 1 |" in text
+    assert "| 不明 | stockout | 2 |" in text
 
 
 def test_load_results_skips_other_json(tmp_path):
