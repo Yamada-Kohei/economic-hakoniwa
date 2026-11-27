@@ -80,8 +80,29 @@
 
 <section class="panel" id="calendar">
   <h2>{% translate "暦と更新の間隔" %}</h2>
-  <p>{% translate "1ターンは箱庭暦の1か月です。日付は「箱庭暦N年M月（ターン T）」と読み、12の倍数のターンは12月です。予算と金利の「年」は12か月分で、1回の更新で1年進むわけではありません。" %}</p>
-  <p>{% if interval_hours %}{% blocktranslate with hours=interval_hours %}現実の時間では {{ hours }} 時間おきにターンが進みます。{% endblocktranslate %}{% else %}{% translate "現実の更新間隔はサーバーの設定で決まります。画面の次の更新時刻を確認してください。" %}{% endif %}</p>
+  <dl class="rules">
+    <dt>{% translate "暦と更新の間隔" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "1ターンは箱庭暦の1か月です。" %}</li>
+        <li>{% translate "日付は「箱庭暦N年M月（ターン T）」と読みます。ターン1が1年1月です。" %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "年の区切り" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "12の倍数のターンは12月です。" %}</li>
+        <li>{% translate "予算と金利の「年」は12か月分で、1回の更新で1年進むわけではありません。" %}</li>
+        <li>{% translate "12月には、政情の年の処理や産業の経験の薄れなど、年に1度の処理が動きます。" %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "現実の更新間隔" %}</dt>
+    <dd>
+      <ul>
+        <li>{% if interval_hours %}{% blocktranslate with hours=interval_hours %}現実の時間では {{ hours }} 時間おきにターンが進みます。{% endblocktranslate %}{% else %}{% translate "現実の更新間隔はサーバーの設定で決まります。画面の次の更新時刻を確認してください。" %}{% endif %}</li>
+      </ul>
+    </dd>
+  </dl>
 </section>
 
 <section class="panel" id="ai">
