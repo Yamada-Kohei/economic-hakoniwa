@@ -1,0 +1,34 @@
+{
+ "name": "island23-treasury-trace-1128",
+ "commit": "266cf73d192a33b01b9e91f7940f7b053d6d0cfb",
+ "pool": "any",
+ "files": [
+  "island23_treasury_trace.py"
+ ],
+ "patches": [
+  "kprime.diff"
+ ],
+ "runs": [
+  {
+   "name": "plan-s18-t1200-trace",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "18",
+    "--turns",
+    "1200",
+    "--island",
+    "23",
+    "--label",
+    "K2off",
+    "--out",
+    "island23-trace-K2off-plan-s18-t1200.json"
+   ],
+   "summary": [
+    "island23-trace-K2off-plan-s18-t1200.json"
+   ],
+   "large": []
+  }
+ ]
+}
