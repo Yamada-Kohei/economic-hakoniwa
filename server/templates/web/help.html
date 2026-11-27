@@ -892,8 +892,29 @@
 
 <section class="panel" id="units">
   <h2>{% translate "資源の単位" %}</h2>
-  <p>{% blocktranslate with food=food_per_person power=power_per_person %}量は実物に近い単位で出します。1人が1か月に食べる食料は {{ food }} トン、家庭で使う電力は1人1か月 {{ power }} MWh です。自動車・自動車部品・輸送船は1つずつ、サービスと小売りは働く人1人の1か月の働き（人月）で数えます。{% endblocktranslate %}</p>
-  <p>{% blocktranslate with n=weight_scale %}内部の計算では量を縮めており、計算上の1トンは実物のおよそ{{ n }}トン分です。画面・ログ・この手引きの量は、すでに財ごとの倍率で換算した値です。表示されたトン数をさらに{{ n }}倍する必要はありません。{% endblocktranslate %}</p>
+  <dl class="rules">
+    <dt>{% translate "量の単位" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "量は実物に近い単位で出します。" %}</li>
+        <li>{% blocktranslate with food=food_per_person power=power_per_person %}1人が1か月に食べる食料は {{ food }} トン、家庭で使う電力は1人1か月 {{ power }} MWh です。{% endblocktranslate %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "1つずつ数える物と人月" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "自動車・自動車部品・輸送船は1つずつ、サービスと小売りは働く人1人の1か月の働き（人月）で数えます。" %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "計算の縮め方と見せる量" %}</dt>
+    <dd>
+      <ul>
+        <li>{% blocktranslate with n=weight_scale %}内部の計算では量を縮めており、計算上の1トンは実物のおよそ{{ n }}トン分です。{% endblocktranslate %}</li>
+        <li>{% blocktranslate with n=weight_scale %}画面・ログ・この手引きの量は、すでに財ごとの倍率で換算した値です。表示されたトン数をさらに{{ n }}倍する必要はありません。{% endblocktranslate %}</li>
+        <li>{% translate "値段は見せる単位1つあたりの値段で出し、お金の総額は変わりません。注文などで量や値段を打ち込むときも見せる単位のままでよく、計算の単位には中で戻します。" %}</li>
+      </ul>
+    </dd>
+  </dl>
   <div class="table-scroll">
   <table class="info">
     {% for u in units %}<tr><th>{{ u.name }}</th><td>{{ u.unit }}</td></tr>{% endfor %}
