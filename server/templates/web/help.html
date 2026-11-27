@@ -830,9 +830,35 @@
 
 <section class="panel" id="country-pages">
   <h2>{% translate "国のページ・記念碑・賞" %}</h2>
-  <p>{% blocktranslate %}国の公開ページ（入口の「国」の中の「国の紹介」）は誰でも読めます。国旗（PNG）と紹介文、国ごとの紀年（世界の暦のまま・建国紀元・元号）、年表、来訪者の一言が載ります。世界の近況（上の「世界」の中）は、全部の国の主な出来事を新しい順に並べたものです。島の一覧の表には、国旗と賞が付きます。{% endblocktranslate %}</p>
-  <p>{% blocktranslate with prosperity=awards.prosperity peace_kills=awards.peace_kills calm_years=awards.calm_years calamity_count=awards.calamity_count %}賞は記録ではなく、そのつどターンの記録から数えます。繁栄賞・超繁栄賞・究極繁栄賞は人口が {{ prosperity }} 人に届いたとき、平和賞は戦争で殺した相手の数が {{ peace_kills }} 人に届いたとき（元の箱庭諸島と同じ、平和という名前への皮肉です）、平穏賞は災害・暴動・反乱・戦争が {{ calm_years }} 年続けてないとき、災難賞は災難の出来事が {{ calamity_count }} 件以上のとき、ターン杯は建国がいちばん古い国に付きます。{% endblocktranslate %}</p>
-  <p>{% blocktranslate %}記念碑は、資材と工事の賃金で建てる、働く人のいない施設です。碑文は自動の文（建てたときの記録から作り、後で変わりません）に、建てるときに 1〜2 行足せます。建てられる条件は次のとおりです。モノリスと自作の記念碑以外は 1 つの国に 1 つまでです。{% endblocktranslate %}</p>
+  <dl class="rules">
+    <dt>{% translate "国の公開ページ" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "国の公開ページ（入口の「国」の中の「国の紹介」）は誰でも読めます。国旗（PNG）と紹介文、国ごとの紀年（世界の暦のまま・建国紀元・元号）、年表、来訪者の一言が載ります。" %}</li>
+        <li>{% translate "世界の近況（上の「世界」の中）は、全部の国の主な出来事を新しい順に並べたものです。" %}</li>
+        <li>{% translate "島の一覧の表には、国旗と賞が付きます。" %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "賞" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "賞は記録ではなく、そのつどターンの記録から数えます。" %}</li>
+        <li>{% blocktranslate with prosperity=awards.prosperity %}繁栄賞・超繁栄賞・究極繁栄賞は、人口が {{ prosperity }} 人に届いたとき。付くのは、届いた段のうちいちばん高い段だけです。{% endblocktranslate %}</li>
+        <li>{% blocktranslate with peace_kills=awards.peace_kills %}平和賞は、戦争で殺した相手の数が {{ peace_kills }} 人に届いたとき（元の箱庭諸島と同じ、平和という名前への皮肉です）。{% endblocktranslate %}</li>
+        <li>{% blocktranslate with calm_years=awards.calm_years %}平穏賞は、災害・暴動・反乱・戦争が {{ calm_years }} 年続けてなく、今も戦争中でないとき。{% endblocktranslate %}</li>
+        <li>{% blocktranslate with calamity_count=awards.calamity_count %}災難賞は、災難の出来事が {{ calamity_count }} 件以上のとき。{% endblocktranslate %}</li>
+        <li>{% translate "ターン杯は、建国から決まった期間以上続いている国の中で、建国がいちばん古い国に付きます。休止中の国は除きます。" %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "記念碑" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "記念碑は、資材と工事の賃金で建てる、働く人のいない施設です。" %}</li>
+        <li>{% translate "碑文は自動の文（建てたときの記録から作り、後で変わりません）に、建てるときに 1〜2 行足せます。" %}</li>
+        <li>{% translate "建てられる条件は次の表のとおりです。モノリスと自作の記念碑以外は 1 つの国に 1 つまでです。" %}</li>
+      </ul>
+    </dd>
+  </dl>
   <div class="table-scroll">
   <table class="info">
     <tr><th>{% translate "モノリス" %}</th><td>{% translate "いつでも" %}</td></tr>
@@ -840,7 +866,7 @@
     <tr><th>{% translate "建国記念碑" %}</th><td>{% blocktranslate with years=awards.founding_years turns=awards.founding_turns %}建国から {{ years }} 年（{{ turns }} ターン）以上{% endblocktranslate %}</td></tr>
     <tr><th>{% translate "平和記念碑" %}</th><td>{% blocktranslate with years=awards.peace_years turns=awards.peace_turns %}災害・暴動・反乱・戦争が {{ years }} 年（{{ turns }} ターン）続けてなかった国{% endblocktranslate %}</td></tr>
     <tr><th>{% translate "戦いの碑" %}</th><td>{% translate "戦争に加わったことのある国" %}</td></tr>
-    <tr><th>{% translate "慰霊碑" %}</th><td>{% blocktranslate with n=awards.cenotaph_dead %}飢えや戦争で {{ n }} 人以上が亡くなったことのある国{% endblocktranslate %}</td></tr>
+    <tr><th>{% translate "慰霊碑" %}</th><td>{% blocktranslate with n=awards.cenotaph_dead %}飢えか戦争の、どちらか一方で {{ n }} 人以上が亡くなったことのある国{% endblocktranslate %}</td></tr>
     <tr><th>{% translate "元首の像" %}</th><td>{% translate "民主主義でない国（民主主義に変わると倒されます）" %}</td></tr>
     <tr><th>{% translate "労働者の像" %}</th><td>{% translate "産業の称号を持っている国" %}</td></tr>
     <tr><th>{% translate "展望塔" %}</th><td>{% translate "大都市（以上）のある国" %}</td></tr>
