@@ -186,7 +186,7 @@ sprites:
   capital/parliament-palace: {file: sprites/capital/parliament-palace.svg, flag_anchor: [27, 4]}
   capital/parliament-presidential_office: {file: sprites/capital/parliament-presidential_office.svg, flag_anchor: [34, 4]}
   capital/official_residence-palace: {file: sprites/capital/official_residence-palace.svg, flag_anchor: [40, 4]}
-  capital/official_residence-presidential_office: {file: sprites/capital/official_residence-presidential_office.svg, flag_anchor: [25, 4]}
+  capital/official_residence-presidential_office: {file: sprites/capital/official_residence-presidential_office.svg, flag_anchor: [32, 4]}
   capital/party_headquarters-palace: {file: sprites/capital/party_headquarters-palace.svg, flag_anchor: [40, 5]}
   capital/party_headquarters-presidential_office: {file: sprites/capital/party_headquarters-presidential_office.svg, flag_anchor: [35, 5]}
   # 軍事（フェーズ4-2）。部隊の印と陣地は島の俯瞰図、fleet/ は世界マップの船（横から見た絵）
