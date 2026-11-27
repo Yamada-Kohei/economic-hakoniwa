@@ -92,6 +92,7 @@ size_tiers: [2, 5, 8]
 # 例: terrain/plain: sprites/terrain/plain.svg
 #     facility/steel_mill: {file: sprites/facility/steel_mill.svg, anchor: [32, 80]}
 #     facility/bank: {file: sprites/facility/bank.png, scale: 0.5}   # 2倍の大きさで描いた PNG
+#     flag_anchor: [x, y] は首都の旗の竿の下端の位置（絵の左上からのピクセル。首都の建物の絵にだけ付ける）
 sprite_scale: 1         # 画像の 1 ピクセルを何ピクセルとして描くか（項目の scale がなければこれ）
 sprites:
   # 海沿いの施設（coastal）は、海のある向きごとに描き分ける。名前のままの絵は海が右下（x + 1）、
@@ -123,7 +124,7 @@ sprites:
   facility/fishing_port@ne: sprites/facility/fishing_port@ne.svg
   facility/fishing_port@nw: sprites/facility/fishing_port@nw.svg
   facility/food_factory: sprites/facility/food_factory.svg
-  facility/government_office: sprites/facility/government_office.svg
+  facility/government_office: {file: sprites/facility/government_office.svg, flag_anchor: [32, 3]}
   facility/hydro_power_plant: sprites/facility/hydro_power_plant.svg
   facility/lumber_camp: sprites/facility/lumber_camp.svg
   facility/machinery_plant: sprites/facility/machinery_plant.svg
@@ -182,12 +183,12 @@ sprites:
   housing/town: sprites/housing/town.svg
   housing/village: sprites/housing/village.svg
   # 首都の官庁は、体制で決まる建物（政治の仕組み-元首の形）の組み合わせの絵で描く
-  capital/parliament-palace: sprites/capital/parliament-palace.svg
-  capital/parliament-presidential_office: sprites/capital/parliament-presidential_office.svg
-  capital/official_residence-palace: sprites/capital/official_residence-palace.svg
-  capital/official_residence-presidential_office: sprites/capital/official_residence-presidential_office.svg
-  capital/party_headquarters-palace: sprites/capital/party_headquarters-palace.svg
-  capital/party_headquarters-presidential_office: sprites/capital/party_headquarters-presidential_office.svg
+  capital/parliament-palace: {file: sprites/capital/parliament-palace.svg, flag_anchor: [27, 4]}
+  capital/parliament-presidential_office: {file: sprites/capital/parliament-presidential_office.svg, flag_anchor: [34, 4]}
+  capital/official_residence-palace: {file: sprites/capital/official_residence-palace.svg, flag_anchor: [40, 4]}
+  capital/official_residence-presidential_office: {file: sprites/capital/official_residence-presidential_office.svg, flag_anchor: [25, 4]}
+  capital/party_headquarters-palace: {file: sprites/capital/party_headquarters-palace.svg, flag_anchor: [40, 5]}
+  capital/party_headquarters-presidential_office: {file: sprites/capital/party_headquarters-presidential_office.svg, flag_anchor: [35, 5]}
   # 軍事（フェーズ4-2）。部隊の印と陣地は島の俯瞰図、fleet/ は世界マップの船（横から見た絵）
   facility/barracks: sprites/facility/barracks.svg
   facility/naval_base: {file: sprites/facility/naval_base.svg, anchor: [32, 49]}

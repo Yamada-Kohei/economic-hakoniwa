@@ -333,8 +333,15 @@ function drawFacility(ctx, f, map, defs, px, ground, theme, sprites, flag) {
     drawSprite(ctx, sprite, px, ground + theme.tile_height);
     if (f.built) drawStopped(ctx, f, defs, px, ground, theme.tile_height / 2);
     if (isCapital && f.built && flag) {
-      // 絵の上の余白ぶん、竿の下端を屋根に少し沈める
-      drawCapitalFlag(ctx, flag, px, ground + theme.tile_height - sprite.h + FLAG_SINK, theme);
+      if (sprite.flagAnchor) {
+        // 首都の建物の絵ごとに決めた旗の位置（theme.yaml の flag_anchor）: 建物の頂点に
+        // 竿の下端を合わせる。描く位置は絵の基準点（ax, ay）から数える
+        drawCapitalFlag(ctx, flag, px - sprite.ax + sprite.flagAnchor.x,
+          ground + theme.tile_height - sprite.ay + sprite.flagAnchor.y, theme);
+      } else {
+        // 絵の上の余白ぶん、竿の下端を屋根に少し沈める
+        drawCapitalFlag(ctx, flag, px, ground + theme.tile_height - sprite.h + FLAG_SINK, theme);
+      }
     }
     return;
   }
@@ -394,22 +401,25 @@ export function capitalFlagSize(flag, theme) {
 }
 
 /**
- * 首都の旗: (px, base) を竿の下端として竿を立て、竿の上のほうから右へ旗を広げる（静止画）。
- * 旗の後ろに白い縁を置き、建物や空の色に埋もれて見えなくならないようにする。
+ * 首都の旗: (x, base) を竿の下端として竿を立て、竿の上から右へ旗を広げる（静止画）。
+ * 旗の上下の辺は場面のひし形の右の辺と同じ傾き（右へ行くほどマスの高さ÷幅だけ下がる）にし、
+ * 平らな四角のまま貼ったときの、場面から浮いた感じを無くす。旗の後ろに縁は置かない。
  */
-export function drawCapitalFlag(ctx, flag, px, base, theme) {
+export function drawCapitalFlag(ctx, flag, x, base, theme) {
   if (!flag || !flag.w || !flag.h) return;
   const { w, h } = capitalFlagSize(flag, theme);
   const poleTop = base - h - 3;
   ctx.save();
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(px - 0.5, poleTop + 0.5, w + 1, h + 1);
-  ctx.drawImage(flag.img, px, poleTop + 1, w, h);
+  ctx.translate(x, poleTop);
+  ctx.transform(1, theme.tile_height / theme.tile_width, 0, 1, 0, 0);
+  ctx.drawImage(flag.img, 0, 0, w, h);
+  ctx.restore();
+  ctx.save();
   ctx.strokeStyle = "#4a3520";
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(px, base);
-  ctx.lineTo(px, poleTop);
+  ctx.moveTo(x, base);
+  ctx.lineTo(x, poleTop);
   ctx.stroke();
   ctx.restore();
 }

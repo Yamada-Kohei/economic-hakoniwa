@@ -49,6 +49,19 @@ function flagDraws(ctx) {
   return ctx.calls.filter((c) => c[0] === "drawImage" && c[1] === FLAG);
 }
 
+/** 旗を描いた直後の竿の線（moveTo が下端、lineTo が上端）。 */
+function poleAfterFlag(ctx) {
+  const at = ctx.calls.findIndex((c) => c[0] === "drawImage" && c[1] === FLAG);
+  const rest = ctx.calls.slice(at);
+  return { move: rest.find((c) => c[0] === "moveTo"), line: rest.find((c) => c[0] === "lineTo") };
+}
+
+/** 旗を描くときの translate（竿の上の位置）。 */
+function flagTranslate(ctx) {
+  const at = ctx.calls.findIndex((c) => c[0] === "drawImage" && c[1] === FLAG);
+  return ctx.calls.slice(0, at).filter((c) => c[0] === "translate").pop();
+}
+
 function close(actual, expected) {
   assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} ≠ ${expected}`);
 }
@@ -73,15 +86,41 @@ test("首都の建物の絵のあとに、その上に旗を描く", () => {
   drawIsland(ctx, map, defs, view, { sprites, flag });
   const draws = flagDraws(ctx);
   assert.equal(draws.length, 1);
-  const [, , x, y, w, h] = draws[0];
-  close(x, 0); // 首都のマスの真ん中
+  const [, , , , w, h] = draws[0];
   close(w, theme.tile_width / 8);
   close(h, (theme.tile_width / 8) * 60 / 90);
-  // 建物の絵（高さ 73）のてっぺんより上に旗が出る
+  // 建物の絵よりあとに旗を描く
   const bldgAt = ctx.calls.findIndex((c) => c[0] === "drawImage" && c[1] === BLDG);
   assert.ok(bldgAt >= 0);
   assert.ok(ctx.calls.indexOf(draws[0]) > bldgAt);
-  assert.ok(y + h < -41 + 3, `旗の下端 ${y + h} が建物のてっぺん付近にない`);
+  // 竿はマスの真ん中に、建物の絵（高さ 73）のてっぺんへ少し沈めた位置から立つ
+  const base = theme.tile_height - 73 + 3;
+  const { move, line } = poleAfterFlag(ctx);
+  close(move[1], 0);
+  close(move[2], base);
+  close(line[1], 0);
+  close(line[2], base - h - 3);
+  // 旗は竿の上から、場面の傾き（マスの高さ÷幅）で描く。白い縁（fillRect）は置かない
+  const tr = flagTranslate(ctx);
+  close(tr[1], 0);
+  close(tr[2], base - h - 3);
+  const shear = ctx.calls.find((c) => c[0] === "transform");
+  assert.deepEqual(shear.slice(1), [1, theme.tile_height / theme.tile_width, 0, 1, 0, 0]);
+  assert.equal(ctx.calls.filter((c) => c[0] === "fillRect").length, 0);
+});
+
+test("首都の絵に flagAnchor があれば、絵の頂点に竿を立てる", () => {
+  const ctx = recorder();
+  const anchored = { ...capitalSprite, flagAnchor: { x: 27, y: 4 } };
+  const sprites = new Map([["capital/government_office", anchored]]);
+  const map = mapWith([{ x: 0, y: 0, kind: "government", built: true }]);
+  drawIsland(ctx, map, defs, view, { sprites, flag });
+  assert.equal(flagDraws(ctx).length, 1);
+  // 竿の下端は、絵の基準点 (32, 73) から見た flagAnchor (27, 4) の位置
+  const { move } = poleAfterFlag(ctx);
+  close(move[1], 27 - 32);
+  close(move[2], theme.tile_height - 73 + 4);
+  close(flagTranslate(ctx)[1], 27 - 32);
 });
 
 test("建物の絵がないときは箱の屋根の上に旗を描く", () => {
@@ -114,7 +153,9 @@ test("首都でない建物には旗を立てない", () => {
   // (1, 1) の建物には立てず、建物のない首都 (0, 0) の地面にだけ立てる
   const draws = flagDraws(ctx);
   assert.equal(draws.length, 1);
-  close(draws[0][2], 0);
+  const { move } = poleAfterFlag(ctx);
+  close(move[1], 0);
+  close(move[2], theme.tile_height / 2);
 });
 
 let failLoad = false;
