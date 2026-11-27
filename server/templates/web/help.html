@@ -225,7 +225,28 @@
     <dd>{% translate "島の気候は世界マップの行で決まり、上から寒冷・温帯・熱帯です。気候は農場・牧場・林業場・漁港の産出に効き、綿と嗜好品は合う気候でしか作れません（その生産方式は選べません）。寒い島は家庭の電力を多く使います。" %}
       <ul>{% for z in climates %}<li>{{ z.name }}: {{ z.text }}</li>{% endfor %}</ul></dd>
     <dt>{% translate "肥沃度" %}</dt>
-    <dd>{% blocktranslate with low=fertility.0 high=fertility.1 %}平地のマスには肥沃度（{{ low }}〜{{ high }}）があり、農場と牧場の産出に効きます。地図の施設の欄で見られます。汚染のあったターンが1年分たまるごとに少しずつ下がります。{% endblocktranslate %}</dd>
+    <dd>
+      <ul>
+        <li>{% blocktranslate with low=fertility.0 high=fertility.1 %}平地のマスには肥沃度（{{ low }}〜{{ high }}）があり、島を作るときに決まります。{% endblocktranslate %}</li>
+        <li>{% translate "近くのマスどうしは似た値になるよう、まとまりで配られます。" %}</li>
+        <li>{% translate "平地でないマスには付かず、1 として扱います。" %}</li>
+        <li>{% translate "地図でマスを選ぶと、そのマスの欄で見られます。" %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "肥沃度と産出" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "農場と牧場の産出に、そのまま掛かります。肥沃度の高い土地ほど多く作れます。" %}</li>
+        <li>{% translate "村で自給する農家が畑で作れる量にも掛かります。" %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "肥沃度の下がり方" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "汚染のあるマスは、汚染のあったターンが1年分（12ターン）たまるごとに 0.02 ずつ下がります。汚染のないターンは数えません。" %}</li>
+        <li>{% translate "下限は 0.5 で、それより下には下がりません。下がった肥沃度が元に戻ることはありません。" %}</li>
+      </ul>
+    </dd>
     <dt>{% translate "必需品とぜいたく品" %}</dt>
     <dd>
       <p>{% blocktranslate with share=necessity.share floor=necessity.floor %}家計は、まず電力・食べ物・衣料を買い、残りからサービス、ぜいたく品（消費財・嗜好品・自動車）へ予算を配ります。必需品に使う上限は豊かになるほど下がります（建国のころの労働者階級で {{ share }}%、下限 {{ floor }}%）。食べ物は好みの献立で4品目に分けて買い、豊かになるほど主食の穀物を減らして肉・魚・食品を増やします（下の「家計の献立」）。ぜいたく品の種類が多いほど幸福度が上がり、衣料が足りないと幸福度が下がります。{% endblocktranslate %}</p>
