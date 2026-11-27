@@ -607,10 +607,37 @@
     </dd>
     <dt>{% translate "民主主義と議会" %}</dt>
     <dd>{% translate "民主主義では、宣戦布告・条約の提案・署名・破棄に議会の過半数の賛成が要ります。命令を列に追加しただけでは決まらず、ターン更新の採決と実行の結果を確かめてください。断りと取り下げには採決は要りません。" %}</dd>
-    <dt>{% translate "約束と破棄の予告" %}</dt>
+    <dt>{% translate "条約の破棄と期限" %}</dt>
     <dd>
-      <p>{% blocktranslate with turns=diplomacy.notice_turns min=diplomacy.min_notice_turns max=diplomacy.max_notice_turns %}不可侵・同盟などの約束をどう守るかは遊ぶ人に任され、ゲームは条項の履行を強制しません。提案では、破棄の予告から終了までの期間を {{ min }}〜{{ max }} ターンの間で決めます（初めの値は {{ turns }} ターン）。破棄の命令を出してもすぐには終わらず、予告の期間が過ぎると罰なしで終わります。その期間が過ぎる前に不可侵や同盟を結ぶ相手へ宣戦しても命令は止まりませんが、条約違反になります。{% endblocktranslate %}</p>
-      <p>{% blocktranslate with turns=diplomacy.notice_turns min=diplomacy.min_notice_turns max=diplomacy.max_notice_turns %}同盟を結んでも自動では参戦せず、参戦する国が自分で宣戦します。{% endblocktranslate %}</p>
+      <ul>
+        <li>{% blocktranslate with turns=diplomacy.notice_turns min=diplomacy.min_notice_turns max=diplomacy.max_notice_turns %}条約を終わらせるには、破棄の予告の命令を出します。予告から終了までの期間は条項ごとに提案のときに決め、{{ min }}〜{{ max }} ターンの間です（初めの値は {{ turns }} ターン）。破棄できる条項が複数ある条約では、いちばん長い期間が条約全体の予告期間になります。{% endblocktranslate %}</li>
+        <li>{% translate "破棄の命令を出してもすぐには終わらず、予告の間も条約は効いています。予告の期間が過ぎると、罰なしで終わります。" %}</li>
+        <li>{% translate "予告は当事国のどちらからでも出せます。出した予告は取り消せず、出し直しもできません。" %}</li>
+        <li>{% translate "破棄できるのは、停戦・不可侵・同盟・核を持たない約束と、貿易圏・固定相場・通貨の融通・人の行き来の自由・難民の受け入れの条項です。" %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "破棄できない条約" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "講和は破棄できません（戦争を終えた事実そのものだからです）。賠償の残っている条約は、賠償が払い終わるか、期日を過ぎて違反として記録されるまで、破棄の予告を出せません。" %}</li>
+        <li>{% translate "契約の期間が終わっていない条約と、援助の回数が残っている条約も、それらが済むまでは破棄の予告を出せません。" %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "期限で終わる条約" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "契約と援助は、期間や回数が終わるとその条項が済み、すべての条項が済んだ条約は終了します。不可侵などの続く条項が残っている場合は、その条約も続きます。" %}</li>
+        <li>{% translate "停戦の条約が終わると戦争に戻ります。講和を結ぶと、その戦争の停戦の条約も終わります。" %}</li>
+        <li>{% translate "当事国の島が消えた条約は、違反にならずに終わります。終わった条約は36ターンの間、「外交の状態」の記録に残ります。" %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "約束の守り方" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "不可侵・同盟などの約束をどう守るかは遊ぶ人に任され、ゲームは条項の履行を強制しません。" %}</li>
+        <li>{% translate "予告の期間が過ぎる前に、不可侵や同盟を結ぶ相手へ宣戦しても命令は止まりませんが、条約違反になります。" %}</li>
+        <li>{% translate "同盟を結んでも自動では参戦せず、参戦する国が自分で宣戦します。" %}</li>
+      </ul>
     </dd>
     <dt>{% translate "停戦と講和" %}</dt>
     <dd>{% blocktranslate with turns=diplomacy.withdraw_turns max=diplomacy.max_withdraw_turns %}停戦は両国が署名すると効き、破棄の予告期間が過ぎると戦争に戻ります。講和は戦争を終え、その戦争の停戦の条約も終わらせます。講和には、部隊の引き揚げの期限（初めの値は {{ turns }} ターン、最大 {{ max }} ターン）・捕虜を返すかどうか・賠償を書けます。占領の解除と、約束した捕虜の返還はゲームが行います。引き揚げの期限が来ても外国の島にいる部隊は、自国の輸送船団に載せる空きがあれば船で帰国し、なければその場で除隊して家計に戻ります。条約を破棄しても、貿易圏の加盟は残ります（抜けるときは貿易圏の命令で）。{% endblocktranslate %}</dd>
