@@ -442,10 +442,58 @@
   <dl class="rules">
     <dt>{% translate "港と船" %}</dt>
     <dd>
-      <p>{% blocktranslate with port=trade.port_capacity ships=trade.start_ships cap=trade.ship_capacity speed=trade.ship_speed life=trade.ship_life fuel=trade.fuel %}島の外との物の出入りはすべて港を通ります。建国した直後から港と商社が置かれます。港を置ける島では、首都に近い海辺の平地に国営の港が1つ置かれます（港を置けなかった島は、海に面した平地に建てられます）。港は1ターンに {{ port }} トン（積む量と下ろす量の合計）まで荷を扱い、荷1トンごとに使用料を受け取ります。{% endblocktranslate %}</p>
-      <p>{% blocktranslate with port=trade.port_capacity ships=trade.start_ships cap=trade.ship_capacity speed=trade.ship_speed life=trade.ship_life fuel=trade.fuel %}港・海運業・商社は扱う荷の量に合わせて少なく雇うので、雇いたい人数がそろっていれば「扱う荷に合わせて操業」と表示されます。島の外へ運べる物は重さのある財で、電力は運べません。船は島に1つの海運業が持ち、初めは輸送船 {{ ships }} 隻です。1隻で1航海に {{ cap }} トン運べます。荷は買う国の船で運びます。圏の市場の荷は、買う国の船が足りなければ、売る国や圏のほかの国の空いた船を借りて運び、運賃を払います（自分の空いた船も、ほかの国の荷のために貸し出され、運賃の収入になります）。船は空で売る国の港へ行って積んで戻り、実際に走る時間の分だけ使います。{% endblocktranslate %}</p>
-      <p>{% blocktranslate with port=trade.port_capacity ships=trade.start_ships cap=trade.ship_capacity speed=trade.ship_speed life=trade.ship_life fuel=trade.fuel %}片道のターン数は、世界マップの区画の距離を {{ speed }} で割って切り上げたもの（少なくとも1）です。船は航海のたびに燃料（{{ fuel }}）を使い、{{ life }} ターンで古くなって廃船になります。船が足りない状態が続くと、海運業が市場で輸送船を買います（造船所で作れます）。運賃は荷1トン・1区画あたりで、船員の賃金と燃料（運航費）に、船の傷みと沈んだ船の分（資本費）を船の使われ方に合わせて足して決まります。船が余っていれば運航費の近くまで下がり、船が足りずにいっぱいに走っていれば上がります。運賃は買う側が自国の海運業に払います（借りた船なら、その国の海運業に決済通貨で払います）。船が足りないと数えるのは、どの国の船にも荷が載らなかったときだけです。{% endblocktranslate %}</p>
-      <p>{% blocktranslate with deposit=trade.order_deposit progress=trade.order_progress late=trade.order_late_turns %}島に造船所があれば、海運業は船を市場で1隻ずつ買う代わりに、足りない隻数の見込み（船が足りなかったターンの割合と載せられなかった荷の重さから。寿命の近い船の買い替えも足します）を島の造船所に前もって注文します。代金は注文のときに手付けとして {{ deposit }}%、造船所が作っている間に {{ progress }}%、引き渡しで残りを払います。造船所は注文の船を市場に出さずに取り置き、先に作ります。届く見込みを {{ late }} ターン過ぎても届かない注文は取り消し、前払いは造船所が返します（海運業は市場で買う形に戻ります）。注文した海運業が倒産すると、前払いは返りません。注文している隻数は、貿易の画面の「船団と港」に出ます。島に造船所がなければ、今までどおり市場で買います。{% endblocktranslate %}</p>
+      <ul>
+        <li>{% translate "島の外との物の出入りはすべて港を通ります。建国した直後から港と商社が置かれます。" %}</li>
+        <li>{% translate "港は、首都に一番近い、海か浅瀬に接する空いた平地に、国営で1つ置かれます。置けるマスがなければ置かれません。その場合は、国が海に面した平地に港を建てられます。" %}</li>
+        <li>{% blocktranslate with port=trade.port_capacity %}港は1ターンに {{ port }} トン（積む量と下ろす量の合計）まで荷を扱い、荷1トンごとに使用料を受け取ります。{% endblocktranslate %}</li>
+        <li>{% translate "港を建て増すと、扱える量は規模の分だけ増えます。" %}</li>
+        <li>{% translate "港・海運業・商社は扱う荷の量に合わせて少なく雇うので、雇いたい人数がそろっていれば「扱う荷に合わせて操業」と表示されます。" %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "船と運び方" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "島の外へ運べる物は重さのある財で、電力は運べません。" %}</li>
+        <li>{% blocktranslate with ships=trade.start_ships cap=trade.ship_capacity %}船は島に1つの海運業が持ち、初めは輸送船 {{ ships }} 隻です。1隻で1航海に {{ cap }} トン運べます。{% endblocktranslate %}</li>
+        <li>{% translate "荷は買う国の船で運びます。" %}</li>
+        <li>{% translate "圏の市場の荷は、買う国の船が足りなければ、売る国や圏のほかの国の空いた船を借りて運び、運賃を払います（自分の空いた船も、ほかの国の荷のために貸し出され、運賃の収入になります）。" %}</li>
+        <li>{% translate "自国の船をほかの国に貸すかどうかは、命令で止められます。貸さない国の船は借りられません。" %}</li>
+        <li>{% translate "船は空で売る国の港へ行って積んで戻り、実際に走る時間の分だけ使います。近い島へは、1ターンに何度も行き来できます。" %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "航海の時間と燃料" %}</dt>
+    <dd>
+      <ul>
+        <li>{% blocktranslate with speed=trade.ship_speed %}片道のターン数は、世界マップの区画の距離を {{ speed }} で割って切り上げたもの（少なくとも1）です。{% endblocktranslate %}</li>
+        <li>{% blocktranslate with fuel=trade.fuel %}船は航海のたびに燃料（{{ fuel }}）を使います。燃料は船出のときに往復の分を使い、足りなければその分だけ運べる重さが減ります。{% endblocktranslate %}</li>
+        <li>{% blocktranslate with life=trade.ship_life %}船は {{ life }} ターンで古くなって廃船になります。{% endblocktranslate %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "運賃" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "運賃は荷1トン・1区画あたりで、船員の賃金と燃料（運航費）に、船の傷みと沈んだ船の分（資本費）を船の使われ方に合わせて足して決まります。" %}</li>
+        <li>{% translate "船が余っていれば運航費の近くまで下がり、船が足りずにいっぱいに走っていれば上がります。" %}</li>
+        <li>{% translate "運賃は買う側が自国の海運業に払います（借りた船なら、その国の海運業に決済通貨で払います）。" %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "船を増やす" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "船が足りないと数えるのは、どの国の船にも荷が載らなかったときだけです。" %}</li>
+        <li>{% translate "船が足りない状態が続くと、海運業が市場で輸送船を買います（造船所で作れます）。寿命の近い船は、使っている分だけ前もって買い替えます。" %}</li>
+      </ul>
+    </dd>
+    <dt>{% translate "造船所への前注文" %}</dt>
+    <dd>
+      <ul>
+        <li>{% translate "島に造船所があれば、海運業は船を市場で1隻ずつ買う代わりに、足りない隻数の見込み（船が足りなかったターンの割合と載せられなかった荷の重さから。寿命の近い船の買い替えも足します）を島の造船所に前もって注文します。" %}</li>
+        <li>{% blocktranslate with deposit=trade.order_deposit progress=trade.order_progress %}代金は注文のときに手付けとして {{ deposit }}%、造船所が作っている間に {{ progress }}%、引き渡しで残りを払います。{% endblocktranslate %}</li>
+        <li>{% translate "造船所は注文の船を市場に出さずに取り置き、先に作ります。" %}</li>
+        <li>{% blocktranslate with late=trade.order_late_turns %}届く見込みを {{ late }} ターン過ぎても届かない注文は取り消し、前払いは造船所が返します（海運業は市場で買う形に戻ります）。{% endblocktranslate %}</li>
+        <li>{% translate "注文した海運業が倒産すると、前払いは返りません。" %}</li>
+        <li>{% translate "注文している隻数は、貿易の画面の「船団と港」に出ます。島に造船所がなければ、今までどおり市場で買います。" %}</li>
+      </ul>
     </dd>
     <dt>{% translate "商社" %}</dt>
     <dd>
