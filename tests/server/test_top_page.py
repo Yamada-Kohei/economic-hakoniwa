@@ -407,6 +407,19 @@ def test_sync_copies_once_and_keeps_admin_edits(client, world, monkeypatch):
     assert [u["text"] for u in client.get("/api/world").json()["updates"]] == texts
 
 
+def test_new_lines_after_the_first_sync_are_dated_the_deploy_day(monkeypatch):
+    """後から写した行は、コミットの日ではなく写した日（本番に入った日）にする。初めは昔の日のまま。"""
+    SiteUpdate.objects.all().delete()
+    monkeypatch.setattr(top, "_yaml", lambda: {})
+    found = [{"key": "git:aaa:2", "date": "2026-11-01", "text": "昔の行です。"}]
+    monkeypatch.setattr(top, "git_updates", lambda: list(found))
+    assert top.sync_updates() == 1
+    assert SiteUpdate.objects.get(key="git:aaa:2").date == date(2026, 11, 1)
+    found.append({"key": "git:bbb:2", "date": "2026-11-02", "text": "後から入った行です。"})
+    assert top.sync_updates() == 1
+    assert SiteUpdate.objects.get(key="git:bbb:2").date == timezone.localdate()
+
+
 def test_updates_without_git(monkeypatch):
     def broken(*args, **kwargs):
         raise FileNotFoundError("git")

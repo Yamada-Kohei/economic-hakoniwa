@@ -193,14 +193,20 @@ def sync_updates() -> int:
         found.append({"key": f"yaml:{digest}", "date": str(row["date"]), "text": text})
     known = set(SiteUpdate.objects.filter(key__isnull=False).values_list("key", flat=True))
     texts = set(SiteUpdate.objects.values_list("text", flat=True))
+    # 遊ぶ人に見せる日付は本番に入った日。コミットの日はその前のことがあるので、
+    # 一度でも写した後の新しい行は今日（写した日＝反映した日）にそろえる。
+    # 初めて写すとき（表が空）は、昔の行をコミットの日のまま並べる。
+    first_sync = not any(k.startswith("git:") for k in known)
+    today = timezone.localdate()
     new = []
     for r in found:
         if r["key"] in known or r["text"] in texts:
             continue
         texts.add(r["text"])
-        new.append(
-            SiteUpdate(key=r["key"], date=date.fromisoformat(r["date"]), text=r["text"][:200])
-        )
+        day = date.fromisoformat(r["date"])
+        if not first_sync and r["key"].startswith("git:"):
+            day = max(day, today)
+        new.append(SiteUpdate(key=r["key"], date=day, text=r["text"][:200]))
     SiteUpdate.objects.bulk_create(new, ignore_conflicts=True)
     _apply_update_fixes()
     return len(new)
