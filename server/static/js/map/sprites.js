@@ -5,6 +5,7 @@
 /**
  * テーマの sprites を読み込み、名前 → { img, w, h, ax, ay } の Map を返す。
  * w, h は描くときの大きさ、(ax, ay) は基準点（マスの上面のひし形の下の頂点に合わせる点）。
+ * 項目に flag_anchor があれば、首都の旗の竿の下端 flagAnchor（絵の左上から）も付く。
  * どれも拡大前のピクセルで、倍率（項目の scale か、テーマの sprite_scale）を掛けた値。
  *
  * options:
@@ -32,7 +33,11 @@ export async function loadSprites(theme, options = {}) {
             const w = img.naturalWidth * scale;
             const h = img.naturalHeight * scale;
             const [ax, ay] = s.anchor ? [s.anchor[0] * scale, s.anchor[1] * scale] : [w / 2, h];
-            sprites.set(key, { img, w, h, ax, ay });
+            const sprite = { img, w, h, ax, ay };
+            // 首都の旗の竿の下端の位置（絵の左上から。theme.yaml の flag_anchor で、
+            // 首都の建物の絵にだけ付く。renderer.js の drawFacility が使う）
+            if (s.flag_anchor) sprite.flagAnchor = { x: s.flag_anchor[0] * scale, y: s.flag_anchor[1] * scale };
+            sprites.set(key, sprite);
             if (options.onLoad) options.onLoad(key);
             resolve();
           };

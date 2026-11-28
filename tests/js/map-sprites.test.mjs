@@ -45,6 +45,19 @@ test("priority がなければ全部をそのまま読み、返り値は新し�
   assert.equal(result.size, 5);
 });
 
+test("flag_anchor のある絵には倍率を掛けた flagAnchor が付き、ない絵には付かない", async () => {
+  const result = await loadSprites({
+    base: "/sprites/",
+    sprite_scale: 2,
+    sprites: {
+      "capital/parliament-palace": { file: "cap.svg", flag_anchor: [27, 4] },
+      "terrain/plain": "plain.svg",
+    },
+  });
+  assert.deepEqual(result.get("capital/parliament-palace").flagAnchor, { x: 54, y: 8 });
+  assert.equal(result.get("terrain/plain").flagAnchor, undefined);
+});
+
 test("その島で使う絵だけを priority に集める（施設の印付きの絵も含む）", () => {
   const keys = spritePriorityKeys(
     { ...theme, construction_looks: { farm: "field" }, sprites: { ...theme.sprites, construction: "c.svg", "construction@field": "cf.svg", "housing/town": "h.svg" } },
