@@ -1244,10 +1244,14 @@ class _Round:
         )
         books.add_sector(seller, books.WAREHOUSE, "sales", value)
         books.add_trade(seller, "exports", good, value)
-        books.add_partner_trade(seller, str(buyer.id), "exports", good, value)
+        books.add_partner_trade(
+            seller, str(buyer.id), "exports", good, value, route=books.ROUTE_CONTRACT
+        )
         books.add_sector(buyer, books.WAREHOUSE, "purchases", cost)
         books.add_trade(buyer, "imports", good, cost)
-        books.add_partner_trade(buyer, str(seller.id), "imports", good, cost)
+        books.add_partner_trade(
+            buyer, str(seller.id), "imports", good, cost, route=books.ROUTE_CONTRACT
+        )
         self.islands[seller.id].exports += value
         self.islands[buyer.id].imports += cost
         self.islands[seller.id].settled(currency, amount)
@@ -1448,10 +1452,12 @@ class _Round:
         f: Facility | None,
         freight: int,
         currency: int,
+        route: str = books.ROUTE_BLOC,
     ) -> int:
         """S1: 借りたほかの国の船の運賃を、決済通貨で運んだ国の海運業に払う（払えるだけ。
         サービスの輸入と輸出。国際収支の shipping_freight）。払った額（買い手の自国通貨。外貨は
-        帳簿の値打ち）を返す。"""
+        帳簿の値打ち）を返す。相手ごとの内訳の経路は、呼び元の荷の経路（route）をそのまま使う
+        （圏の市場の荷か二国間契約の荷かで内訳がずれないように。#6188）。"""
         if freight <= 0:
             return 0
         amount = freight
@@ -1484,7 +1490,9 @@ class _Round:
         )
         books.add(carrier, shipping.id, books.SALES, value)
         books.add_trade(carrier, "exports", books.FREIGHT_ITEM, value)
-        books.add_partner_trade(carrier, str(buyer.id), "exports", books.FREIGHT_ITEM, value)
+        books.add_partner_trade(
+            carrier, str(buyer.id), "exports", books.FREIGHT_ITEM, value, route=route
+        )
         # 貸した船の運賃の収入（船の国の通貨）と、借りた船に払った運賃（買い手の通貨）
         carrier.stats["trade.charter_income"] = carrier.stats.get("trade.charter_income", 0) + value
         buyer.stats["trade.charter_paid"] = buyer.stats.get("trade.charter_paid", 0) + cost
@@ -1494,7 +1502,9 @@ class _Round:
         else:
             books.add_sector(buyer, books.GOVERNMENT, "freight", cost)
         books.add_trade(buyer, "imports", books.FREIGHT_ITEM, cost)
-        books.add_partner_trade(buyer, str(carrier.id), "imports", books.FREIGHT_ITEM, cost)
+        books.add_partner_trade(
+            buyer, str(carrier.id), "imports", books.FREIGHT_ITEM, cost, route=route
+        )
         self.islands[carrier.id].settled(currency, amount)
         self.islands[buyer.id].settled(currency, amount)
         return cost
@@ -1565,8 +1575,12 @@ class _Round:
                 payer = Payer(entity) if f is not None else gov_payer()
                 paid = self._pay_freight(buyer, payer, freight, f)
             else:
-                assert currency is not None  # 借りた船は圏の市場の荷だけ
-                paid = self._pay_carrier(buyer, carrier, shipping, entity, f, freight, currency)
+                assert currency is not None  # 借りた船の運賃は決済通貨で払う
+                # 運賃の相手ごとの内訳の経路は、この荷の経路（圏の市場か二国間契約か）を渡す
+                route = books.ROUTE_CONTRACT if kind == "contract" else books.ROUTE_BLOC
+                paid = self._pay_carrier(
+                    buyer, carrier, shipping, entity, f, freight, currency, route=route
+                )
             if f is not None:
                 traders.add_cost(f, good, paid)
         self.state["shipments"].append(
@@ -2470,7 +2484,10 @@ class _Round:
             books.stock_moved(seller, sf.id, good, -moved)
             books.add(seller, sf.id, books.SALES, value)
             books.add_trade(seller, "exports", good, value)
-            books.add_partner_trade(seller, books.PARTNER_BLOC, "exports", good, value)
+            # 相手ごとの内訳は、清算で決まった実際の相手の島で記録する（#5605。計算は変えない）
+            books.add_partner_trade(
+                seller, str(buyer.id), "exports", good, value, route=books.ROUTE_BLOC
+            )
             sold_item = traders.entry(sf, good)
             taken = traders.take_cost(sold_item, moved)
             traders.cover_price_gap(seller, sf, ask.entity, taken, value)
@@ -2490,7 +2507,9 @@ class _Round:
             # 買い手: 仕入れと輸入に数え、運ぶ途中の荷も在庫に数える
             books.add(buyer, bf.id, books.PURCHASES, cost)
             books.add_trade(buyer, "imports", good, cost)
-            books.add_partner_trade(buyer, books.PARTNER_BLOC, "imports", good, cost)
+            books.add_partner_trade(
+                buyer, str(seller.id), "imports", good, cost, route=books.ROUTE_BLOC
+            )
             books.stock_moved(buyer, bf.id, good, moved)
             item = traders.entry(bf, good)
             item["held"][0] += moved

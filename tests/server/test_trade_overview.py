@@ -243,7 +243,16 @@ def test_trade_by_good_pies_on_the_overview(world):
     """品目ごとの輸出と輸入の額（export.<財>・import.<財>。W-72）を、貿易の概要の推移に円グラフで
     出す。円グラフの切れの名前は品目の名前（頭の「輸出・」は見出しで足りるので画面が外す）。"""
     owner, island, _, _ = _world_with_offer(world)
-    _stats(island, 5, {"export.grain": 300.0, "export.freight": 20.0, "import.food": 120.0})
+    _stats(
+        island,
+        5,
+        {
+            "export.grain": 300.0,
+            "export.freight": 20.0,
+            "import.food": 120.0,
+            "import.cloth": 40.0,
+        },
+    )
     browser = _client(owner)
     page = browser.get(f"/islands/{island.id}/trade/").content.decode()
     assert 'data-pie="export.*"' in page and 'data-pie="import.*"' in page
@@ -253,13 +262,16 @@ def test_trade_by_good_pies_on_the_overview(world):
     assert data["labels"]["export.grain"] == "輸出・穀物"
     assert data["labels"]["import.food"] == "輸入・食品"
     assert data["labels"]["export.freight"] == "輸出・他国に貸した船の運賃"
+    # 財の定義に無い名前（cloth）も、表示名の定義があれば英字のまま出ない
+    assert data["labels"]["import.cloth"] == "輸入・布地"
     assert data["series"]["export.grain"][-1] == 300
 
 
 def test_trade_partner_stats_table(world):
     """相手国ごとの輸出・輸入（#5455）: 統計 partner.* から、集計ターンと直近 1 年（12 ターン）の
-    表を貿易の概要の下に出し、API（MCP と同じ trade_data）にも同じ行を出す。相手が決まらない
-    圏の市場は 1 行にまとめ、主な品目は直近 1 年の額の大きい順。"""
+    表を貿易の概要の下に出し、API（MCP と同じ trade_data）にも同じ行を出す。圏の市場の分も
+    実際の相手の国ごとに出し（#5605）、行には経路ごとの直近 1 年の内訳を添える。主な品目は
+    直近 1 年の額の大きい順。"""
     owner, island, other, _ = _world_with_offer(world)
     turn = world.turn - 1
     _stats(
@@ -270,10 +282,11 @@ def test_trade_partner_stats_table(world):
             f"partner.{other.id}.exports.grain": 500.0,
             f"partner.{other.id}.imports": 100.0,
             f"partner.{other.id}.imports.coal": 100.0,
-            "partner.bloc.exports": 700.0,
-            "partner.bloc.exports.coal": 700.0,
+            f"partner_route.{other.id}.exports.bloc": 500.0,
+            f"partner_route.{other.id}.imports.contract": 100.0,
             "partner.merchant.imports": 50.0,
             "partner.merchant.imports.food": 50.0,
+            "partner_route.merchant.imports.merchant": 50.0,
         },
     )
     _stats(
@@ -282,8 +295,7 @@ def test_trade_partner_stats_table(world):
         {
             f"partner.{other.id}.exports": 300.0,
             f"partner.{other.id}.exports.grain": 300.0,
-            "partner.bloc.imports": 200.0,
-            "partner.bloc.imports.grain": 200.0,
+            f"partner_route.{other.id}.exports.bloc": 300.0,
         },
     )
     _stats(island, turn - 20, {f"partner.{other.id}.exports": 9000.0})  # 1 年より前は数えない
@@ -291,16 +303,49 @@ def test_trade_partner_stats_table(world):
     data = browser.get(f"/api/islands/{island.id}/trade").json()
     rows = {row["partner"]: row for row in data["partner_stats"]}
     assert rows[str(other.id)]["name"] == other.name
-    assert rows["bloc"]["name"] == "圏の市場（相手は混ざる）"
+    # 新しい記録では「圏の市場」の行は出ず、相手の国の行に経路の内訳として出る
+    assert "bloc" not in rows
     assert rows["merchant"]["name"] == "海外の商人"
     # 集計ターンの列はそのターンだけ、直近 1 年の列は 12 ターンの合計（20 ターン前は入らない）
     assert "500" in rows[str(other.id)]["exports_turn"]
     assert "800" in rows[str(other.id)]["exports_year"]
-    assert "200" in rows["bloc"]["imports_year"]
     assert [g["good"] for g in rows[str(other.id)]["goods"]] == ["grain", "coal"]
+    # 経路の内訳は直近 1 年の合計で、額の大きい順
+    routes = {r["route"]: r for r in rows[str(other.id)]["routes"]}
+    assert routes["bloc"]["label"] == "圏の市場" and "800" in routes["bloc"]["exports"]
+    assert routes["contract"]["label"] == "二国間契約" and "100" in routes["contract"]["imports"]
+    # 表の注用に、輸出・輸入の片側ずつの内訳も出す（その側の額が無い経路は除く）
+    route_exports = rows[str(other.id)]["route_exports"]
+    assert [r["label"] for r in route_exports] == ["圏の市場"]
+    assert "800" in route_exports[0]["amount"]
+    assert [r["label"] for r in rows[str(other.id)]["route_imports"]] == ["二国間契約"]
+    assert "100" in rows[str(other.id)]["route_imports"][0]["amount"]
+    assert [r["label"] for r in rows["merchant"]["route_imports"]] == ["海外の商人"]
     page = browser.get(f"/islands/{island.id}/trade/").content.decode()
     section = _section(page, "trade-partners")
-    assert "貿易の相手国" in section and "圏の市場（相手は混ざる）" in section
+    assert "貿易の相手国" in section and "圏の市場（相手は混ざる）" not in section
+    assert "経路" in section and "圏の市場" in section and "二国間契約" in section
     assert other.name in section and "穀物" in section
+    # 経路の注は相手の名前の欄ではなく、直近 1 年の金額の欄の 2 行目に小さく出す
+    assert f"<th>{other.name}</th>" in section
+    assert '<small class="muted route-note">' in section
     # 金額の桁が長くスマホ幅に収まらないので、表は横スクロールの入れ物で包む
     assert '<div class="table-scroll">' in section
+
+
+def test_trade_partner_route_stat_with_a_bad_name_fails_loudly(world):
+    """partner_route.* の統計名の形が違う（経路の節が無い）ときは、黙って捨てずに落とす
+    （#6188。記録側の不具合を試験で気づけるように）。"""
+    owner, island, other, _ = _world_with_offer(world)
+    turn = world.turn - 1
+    _stats(
+        island,
+        turn,
+        {
+            f"partner.{other.id}.exports": 500.0,
+            f"partner_route.{other.id}.exports": 10.0,  # 経路の節が無い壊れた名前
+        },
+    )
+    browser = _client(owner)
+    with pytest.raises(ValueError):
+        browser.get(f"/api/islands/{island.id}/trade")

@@ -58,6 +58,20 @@
   </div>
 </section>
 
+<section class="panel" id="awards">
+  <h2>{% translate "世界の賞と受賞国" %}</h2>
+  <p class="hint">{% translate "いま賞を持っている国です。国の名前から公開ページを読めます。受賞の条件は手引きにあります。" %} <a href="{% url 'help' %}#country-pages">{% translate "賞の手引き" %}</a></p>
+  <div class="award-grid">
+    {% translate "繁栄賞" as award_name %}{% include "web/award_card.html" with name=award_name table=data.table %}
+    {% translate "超繁栄賞" as award_name %}{% include "web/award_card.html" with name=award_name table=data.table %}
+    {% translate "究極繁栄賞" as award_name %}{% include "web/award_card.html" with name=award_name table=data.table %}
+    {% translate "平和賞" as award_name %}{% include "web/award_card.html" with name=award_name table=data.table %}
+    {% translate "平穏賞" as award_name %}{% include "web/award_card.html" with name=award_name table=data.table %}
+    {% translate "災難賞" as award_name %}{% include "web/award_card.html" with name=award_name table=data.table %}
+    {% translate "ターン杯" as award_name %}{% include "web/award_card.html" with name=award_name table=data.table %}
+  </div>
+</section>
+
 <section class="panel" id="firms">
   <h2>{% translate "世界の企業" %}</h2>
   <p class="hint">{% blocktranslate with n=data.firms|length %}動いている施設の多い順（同じなら働く人の多い順）に上位 {{ n }} 社です。国営企業は国の施設を業種ごとにまとめたものです。お金の数字は持ち主の国の「施設」で見られます。{% endblocktranslate %}</p>

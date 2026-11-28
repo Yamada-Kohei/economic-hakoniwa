@@ -137,6 +137,8 @@ jobs:
         run: python tools/spec/design_index.py check
       - name: docs/ を読む試験
         run: pytest tests/core/test_spec_design.py tests/core/test_docs_match.py
+      - name: 直書き文言の歯止め
+        run: pytest tests/core/test_i18n_guard.py
 
   # 「更新履歴:」の行の確かめ。PR のコミットの「更新履歴:」の行は本番のお知らせに
   # そのまま写るので、書かない理由のメモや内側の言葉（PR・コミット・試験・テスト）が

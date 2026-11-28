@@ -42,6 +42,9 @@ W-201 からは、住まいの広さを幸福度に入れていない島の幸�
 項目へ population.blend_turns ターンかけて移します（町の床は今の段階の上限のまま。モジュール
 population の dwelling_status）。
 
+W-272 の数え替え（#6011）で倒れた自給の村の印は、population.restore_flipped_farming が島の
+ext の印を見て 1 度だけ戻します（経済のない島にも。記録の段が印を使うため）。
+
 移し替えをターンの中で行うのは、サーバーを通さずにコアだけで世界を回すとき（一括シミュレーションや
 テスト）にも同じに動くようにするためです。
 """
@@ -57,6 +60,7 @@ from hakoniwa_core.economy.prices import add_missing_prices
 from hakoniwa_core.modules.bonds import whole_terms
 from hakoniwa_core.modules.central_bank import end_for_planned
 from hakoniwa_core.modules.infrastructure import contracts
+from hakoniwa_core.modules.population import restore_flipped_farming
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import IslandState, LogEntry
 from hakoniwa_core.trade import setup as trade_setup
@@ -71,6 +75,8 @@ class Upgrade(IslandStage):
         economy = island.economy
         for good in veins.place(island, ctx.config, ctx.seed):  # 経済のない島にも置く（MI-60）
             island.log.append(LogEntry("vein_found", {"good": good}))
+        # 自給の村の印の一度だけの戻し（#6011。経済のない島も記録の段が印を使うのでここで）
+        restore_flipped_farming(ctx.defs, ctx.config, island)
         if not island.has_economy:
             return
         if economy.ext.get("version", 0) < groundwork.VERSION:

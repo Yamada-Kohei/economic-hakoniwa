@@ -28,21 +28,22 @@ def _village(game, population):  # noqa: F811
 
 
 def test_village_housing_keeps_farming_above_the_town_size(game, switch):  # noqa: F811
-    """村の段階の住宅地は、人数が町の下限を超えても自給の農業を続ける（切なら人数で町になる）。"""
+    """村の段階の住宅地は、人数が町の下限を超えても自給の農業を続ける（印は段階が変わるまで
+    人数で動かない。切なら人数で町になる）。"""
     town = village_size(game.defs) + 1
-    switch(False)
-    island, tile = _village(game, town + 10)
-    refresh_farming(game.defs, game.config, island)
-    assert FARMING not in tile.ext
-    assert not farming(game.defs, tile)
-
     switch()
+    island, tile = _village(game, town - 1)
+    refresh_farming(game.defs, game.config, island)
+    assert tile.ext[FARMING] is True
+    tile.population = town + 10  # 人数が町の大きさを超えても入れ替わらない
     refresh_farming(game.defs, game.config, island)
     assert tile.ext[FARMING] is True
     assert farming(game.defs, tile)
-    tile.population = town - 1  # 人数が上下しても入れ替わらない
+
+    switch(False)
     refresh_farming(game.defs, game.config, island)
-    assert farming(game.defs, tile)
+    assert FARMING not in tile.ext
+    assert not farming(game.defs, tile)
 
 
 def test_tile_without_housing_keeps_its_mark(game, switch):  # noqa: F811
@@ -126,3 +127,108 @@ def test_two_months_of_the_same_size_follow_the_housing_stage(game, switch):  # 
         marks[value] = (before, farming(game.defs, tile))
     assert marks[True] == (True, False)
     assert marks[False] == (True, True)
+
+
+def test_switching_on_does_not_recount_the_whole_island(game, switch):  # noqa: F811
+    """入にした最初のターンに、全マスの数え直し（建った段階での決め直し）は起きない（#6011）。
+    初めて決めるマスは前の決め方（人数）で決めるので、建った段階と人数が食い違うマスも、
+    人数で決めた印のままになる。"""
+    town = village_size(game.defs) + 1
+    island = make_island(game)
+    home(game, island, 6, 6, town - 1, level="town")  # 建てば町、人数は村
+    home(game, island, 8, 8, town + 10, level="village")  # 建てば村、人数は町
+    switch(False)
+    refresh_farming(game.defs, game.config, island)
+    assert FARMING not in island.tile(6, 6).ext
+    switch()
+    refresh_farming(game.defs, game.config, island)
+    assert island.tile(6, 6).ext[FARMING] is True  # 人数（村）のまま。建った段階なら False
+    assert island.tile(8, 8).ext[FARMING] is False  # 人数（町）のまま。建った段階なら True
+
+
+def test_only_tiles_whose_stage_changed_are_redetermined(game, switch):  # noqa: F811
+    """建った段階で決め直すのは、段階が変わったマスだけ（#6011）。人数だけが動いたマスは
+    前の印のまま。"""
+    town = village_size(game.defs) + 1
+    switch()
+    island = make_island(game)
+    home(game, island, 6, 6, town - 1, level="village")
+    home(game, island, 8, 8, town + 10, level="town")
+    home(game, island, 10, 10, town - 1, level="town")
+    refresh_farming(game.defs, game.config, island)
+    assert island.tile(6, 6).ext[FARMING] is True
+    assert island.tile(8, 8).ext[FARMING] is False
+    assert island.tile(10, 10).ext[FARMING] is True
+    island.facility_at(6, 6).ext["level"] = "town"  # 段階の変更（村→町）
+    island.facility_at(8, 8).ext["level"] = "village"  # 段階の変更（町→村）
+    island.tile(10, 10).population = town + 10  # 人数だけの変更
+    refresh_farming(game.defs, game.config, island)
+    assert island.tile(6, 6).ext[FARMING] is False  # 建った段階（町）で決め直した
+    assert island.tile(8, 8).ext[FARMING] is True  # 建った段階（村）で決め直した
+    assert island.tile(10, 10).ext[FARMING] is True  # 段階は同じなので前の印のまま
+
+
+def test_flipped_tiles_are_restored_once(game, switch):  # noqa: F811
+    """一度だけの戻し（#6011）: 数え替えで倒れたマス（人数は村・建った段階は町・印 False）を
+    村の印に戻し、戻した人数を島の ext とターンログに 1 行残す。二度はやらない。戻しは移し替えの
+    段（restore_flipped_farming）の仕事で、毎ターンの refresh_farming では起きない（#6188）。"""
+    from hakoniwa_core.modules.population import FARMING_RESTORED, restore_flipped_farming
+
+    town = village_size(game.defs) + 1
+    switch()
+    island = make_island(game)
+    home(game, island, 6, 6, 1000, level="town")
+    island.tile(6, 6).ext[FARMING] = False  # 倒れたマス
+    home(game, island, 8, 8, 500, level="town")
+    island.tile(8, 8).ext[FARMING] = False  # 倒れたマス
+    home(game, island, 10, 10, town + 10, level="town")
+    island.tile(10, 10).ext[FARMING] = False  # 人数も町なので倒れていない
+    home(game, island, 12, 12, 1000, level="village")
+    island.tile(12, 12).ext[FARMING] = True  # 村のまま
+    # 毎ターンの印の書き直しだけでは戻らない（移行の段に分けたので）
+    refresh_farming(game.defs, game.config, island)
+    assert island.tile(6, 6).ext[FARMING] is False
+    assert FARMING_RESTORED not in island.ext
+    # 設定が切の間は戻さず、済んだ印も残さない（入にしたら改めて効く）
+    switch(False)
+    restore_flipped_farming(game.defs, game.config, island)
+    assert island.tile(6, 6).ext[FARMING] is False
+    assert FARMING_RESTORED not in island.ext
+    switch()
+    restore_flipped_farming(game.defs, game.config, island)
+    assert island.tile(6, 6).ext[FARMING] is True
+    assert island.tile(8, 8).ext[FARMING] is True
+    assert island.tile(10, 10).ext[FARMING] is False
+    assert island.tile(12, 12).ext[FARMING] is True
+    assert island.ext[FARMING_RESTORED] == 1500  # 倒れていた人口と一致する
+    logs = [e for e in island.log if e.kind == "farming_restored"]
+    assert len(logs) == 1 and logs[0].args["count"] == 1500
+    # 二度はやらない: 戻したマスの印を手で倒しても、もう戻らない
+    island.tile(6, 6).ext[FARMING] = False
+    restore_flipped_farming(game.defs, game.config, island)
+    assert island.tile(6, 6).ext[FARMING] is False
+    assert island.ext[FARMING_RESTORED] == 1500
+    assert len([e for e in island.log if e.kind == "farming_restored"]) == 1
+
+
+def test_demolished_housing_tile_follows_the_no_housing_rule(game, switch):  # noqa: F811
+    """住宅地が取り壊されたマスは、住宅地のないマスの扱いになる（#6188）。町の印は人がいる間は
+    残り、人がいなくなれば消える。村の印は人数で決め直す。"""
+    switch()
+    town = village_size(game.defs) + 1
+    island = make_island(game)
+    home(game, island, 6, 6, town + 10, level="town")
+    home(game, island, 8, 8, 1000, level="village")
+    refresh_farming(game.defs, game.config, island)
+    assert island.tile(6, 6).ext[FARMING] is False  # 人数で町
+    assert island.tile(8, 8).ext[FARMING] is True  # 人数で村
+    island.facilities.remove(island.facility_at(6, 6))  # 取り壊し
+    island.facilities.remove(island.facility_at(8, 8))
+    island.tile(6, 6).population = town - 1  # 人数が村の大きさに戻っても
+    island.tile(8, 8).population = town + 10  # 人数が町の大きさになれば
+    refresh_farming(game.defs, game.config, island)
+    assert island.tile(6, 6).ext[FARMING] is False  # 町の印は人がいる間は残る
+    assert island.tile(8, 8).ext[FARMING] is False  # 村の印は人数で町に決め直す
+    island.tile(6, 6).population = 0
+    refresh_farming(game.defs, game.config, island)
+    assert FARMING not in island.tile(6, 6).ext  # 人がいなくなれば印を消す

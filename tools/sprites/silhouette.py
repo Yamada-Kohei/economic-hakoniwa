@@ -2294,9 +2294,46 @@ def port(s: Side) -> list[Prim]:
     ]
 
 
-def shipyard(s: Side) -> list[Prim]:
+def shipyard(s: Side, tier: int = 1) -> list[Prim]:
     # 地面を掘り下げた乾ドックで組み立て中の船体（赤い船底・とがった船首）、海との間の扉船、
-    # それをまたぐ黄色い門形クレーンが吊った船体の部品、奥に加工の建屋、手前に鋼材
+    # それをまたぐ黄色い門形クレーンが吊った船体の部品、奥に加工の建屋、手前に鋼材。
+    # 段が上がると建屋が伸びて高くなり、鋼材が増え、奥の置き場にもう 1 つの船体が乗り、
+    # クレーンが伸びる（ドックと水際は変えない。グラフィック強化 案17・案A）
+    lift = (0, 0, 0, 6)[tier - 1]  # クレーンの伸び（段 4）
+    if tier == 1:
+        shed = [
+            s.box(0.08, 0.08, 0.38, 0.32, 3, 10, WALL),
+            s.gable(0.08, 0.08, 0.38, 0.32, 13, 5, "u", ROOF_STEEL, WALL),
+        ]
+    elif tier == 2:
+        shed = [
+            s.box(0.08, 0.08, 0.38, 0.32, 3, 12, WALL),
+            s.gable(0.08, 0.08, 0.38, 0.32, 15, 5, "u", ROOF_STEEL, WALL),
+        ]
+    elif tier == 3:
+        shed = [
+            s.box(0.08, 0.08, 0.46, 0.32, 3, 12, WALL),
+            s.gable(0.08, 0.08, 0.46, 0.32, 15, 5, "u", ROOF_STEEL, WALL),
+        ]
+    else:
+        shed = [
+            s.box(0.08, 0.08, 0.46, 0.32, 3, 14, WALL),
+            s.gable(0.08, 0.08, 0.46, 0.32, 17, 5, "u", ROOF_STEEL, WALL),
+        ]
+    plate_us = (0.6, 0.7) if tier == 1 else (0.5, 0.6, 0.7)
+    second_hull = (
+        [
+            s.ship(0.14, 0.7, 0.44, 0.88, 3, 5, 0.16, RED),
+            s.ship(0.14, 0.7, 0.44, 0.88, 8, 3, 0.16, METAL, "#c3c8cc"),
+            s.box(0.18, 0.74, 0.26, 0.84, 11, 3.5, WHITE),
+        ]
+        if tier >= 3
+        else []
+    )
+    if tier == 1:
+        hanging = s.box(0.47, 0.44, 0.59, 0.56, 19, 6, METAL, "#c3c8cc")
+    else:
+        hanging = s.box(0.46, 0.43, 0.6, 0.57, 18 + lift, 7, METAL, "#c3c8cc")
     return [
         *basin(s, 0.18),
         s.box(0.06, 0.06, 0.82, 0.36, -6, 9, CONCRETE, PAVEMENT),
@@ -2312,37 +2349,75 @@ def shipyard(s: Side) -> list[Prim]:
             (-SEA_Z if s.front else 6) + 2,
             "#6d7177",
         ),
-        s.box(0.08, 0.08, 0.38, 0.32, 3, 10, WALL),
-        s.gable(0.08, 0.08, 0.38, 0.32, 13, 5, "u", ROOF_STEEL, WALL),
+        *shed,
         s.ship(0.2, 0.4, 0.78, 0.6, -5.7, 8, 0.16, RED),
         s.ship(0.2, 0.4, 0.78, 0.6, 2.3, 5.5, 0.16, METAL, "#c3c8cc"),
         s.box(0.22, 0.43, 0.34, 0.57, 7.8, 6, WHITE),
-        *[s.box(u, 0.12, u + 0.1, 0.3, 3, 2 + k, ROOF_STEEL) for k, u in enumerate((0.6, 0.7))],
-        *[s.box(0.5, v, 0.56, v + 0.06, 3, 31, YELLOW) for v in (0.12, 0.82)],
-        s.strut((0.53, 0.5, 34), (0.53, 0.5, 25), 0.6, IRON),
-        s.box(0.47, 0.44, 0.59, 0.56, 19, 6, METAL, "#c3c8cc"),
+        *([s.box(0.38, 0.44, 0.48, 0.56, 7.8, 5, METAL, "#c3c8cc")] if tier >= 2 else []),
+        *second_hull,
+        *[s.box(u, 0.12, u + 0.1, 0.3, 3, 2 + k, ROOF_STEEL) for k, u in enumerate(plate_us)],
+        *[s.box(0.5, v, 0.56, v + 0.06, 3, 31 + lift, YELLOW) for v in (0.12, 0.82)],
+        s.strut((0.53, 0.5, 34 + lift), (0.53, 0.5, 25 + lift), 0.6, IRON),
+        hanging,
         *tiered(
             2,
-            s.box(0.48, 0.08, 0.58, 0.92, 34, 6, YELLOW),
-            s.box(0.47, 0.44, 0.59, 0.56, 40, 4, WHITE),
+            s.box(0.48, 0.08, 0.58, 0.92, 34 + lift, 6, YELLOW),
+            s.box(0.47, 0.44, 0.59, 0.56, 40 + lift, 4, WHITE),
         ),
     ]
 
 
-def naval_base(s: Side) -> list[Prim]:
-    """軍港: 広い水面の軍艦 1 隻、細長い桟橋、陸上の管制塔。"""
+def naval_base(s: Side, tier: int = 1) -> list[Prim]:
+    """軍港: 広い水面の軍艦 1 隻、細長い桟橋、陸上の管制塔。
+    段が上がると管制塔が高くなってレーダーが乗り、陸に庁舎と燃料タンクが増え、
+    もう 1 本の桟橋が伸びる（軍艦と水際は変えない。グラフィック強化 案17・案A）"""
     wz = s.water_z
+    shaft = 14 + (tier - 1) * 2  # 管制塔の幹の高さ
+    roof_top = 0.6 + shaft + 4 + 1.4
+    hq = (
+        [s.box(0.12, 0.52, 0.34, 0.78, 0.6, 5, MILITARY, MILITARY_DARK)]
+        if tier == 2
+        else ([s.box(0.12, 0.52, 0.4, 0.82, 0.6, 7, MILITARY, MILITARY_DARK)] if tier >= 3 else [])
+    )
+    mast = (
+        [
+            s.cylinder(0.31, 0.26, 0.012, roof_top, 5, c=IRON),
+            s.box(0.26, 0.235, 0.36, 0.285, roof_top + 3.4, 0.8, METAL),
+        ]
+        if tier >= 3
+        else []
+    )
+    tanks = (
+        [
+            s.cylinder(0.49, 0.58, 0.045, 0.6, 4, c=METAL),
+            s.cylinder(0.49, 0.76, 0.045, 0.6, 4, c=METAL),
+        ]
+        if tier >= 3
+        else []
+    )
+    second_pier = (
+        [
+            *[s.cylinder(0.95, v, 0.016, wz, 1 - wz, c=IRON) for v in (0.28, 0.62)],
+            s.box(0.92, 0.2, 0.98, 0.7, 1, 1.2, CONCRETE, PAVEMENT),
+        ]
+        if tier >= 4
+        else []
+    )
     return [
         *basin(s, 0.44),
         *tiered(0, s.box(0.08, 0.08, 0.56, 0.92, 0, 0.6, CONCRETE, PAVEMENT)),
-        s.box(0.22, 0.16, 0.4, 0.36, 0.6, 14, MILITARY),
-        s.box(0.2, 0.14, 0.42, 0.38, 14.6, 4, GLASS, MILITARY_DARK),
-        s.box(0.18, 0.12, 0.44, 0.4, 18.6, 1.4, MILITARY_DARK),
+        s.box(0.22, 0.16, 0.4, 0.36, 0.6, shaft, MILITARY),
+        s.box(0.2, 0.14, 0.42, 0.38, 0.6 + shaft, 4, GLASS, MILITARY_DARK),
+        s.box(0.18, 0.12, 0.44, 0.4, 0.6 + shaft + 4, 1.4, MILITARY_DARK),
+        *hq,
+        *mast,
+        *tanks,
         *[s.cylinder(0.64, v, 0.016, wz, 1 - wz, c=IRON) for v in (0.16, 0.48, 0.82)],
         s.box(0.54, 0.1, 0.7, 0.88, 1, 1.2, CONCRETE, PAVEMENT),
         *[s.cylinder(0.68, v, 0.014, 2.2, 1.2, c=IRON) for v in (0.2, 0.72)],
         *warship(s, wz),
         *[s.strut((0.68, v, 3), (0.77, v + 0.03, wz + 3.2), 0.5, IRON) for v in (0.2, 0.72)],
+        *second_pier,
     ]
 
 
@@ -2384,6 +2459,14 @@ for _name, _shape in (
     for _side in SIDES:
         _suffix = "" if _side == "se" else f"@{_side}"
         SHAPES[f"facility/{_name}{_suffix}"] = _shape(Side(_side))
+
+# 海沿い施設の規模段（グラフィック強化 案17・案A）: 向き×段の組み合わせ。
+# 段絵は施設ごとに足す（ここでは造船所と軍港。港はそれぞれの変更で足す）
+for _t in (2, 3, 4):
+    for _side in SIDES:
+        _suffix = "" if _side == "se" else f"@{_side}"
+        SHAPES[f"facility/shipyard{_suffix}@s{_t}"] = shipyard(Side(_side), _t)
+        SHAPES[f"facility/naval_base{_suffix}@s{_t}"] = naval_base(Side(_side), _t)
 
 
 # --- 軍事のサンプル（第1部。theme.yaml への登録は施設の実装時に行う）----------------------

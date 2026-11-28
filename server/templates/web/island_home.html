@@ -33,6 +33,7 @@
         {% if trade %}<tr><th>{% translate "貿易（1ターン）" %}</th><td>{{ trade.text }} <a href="{% url 'island_trade' island.id %}">{% translate "貿易の画面へ" %}</a></td></tr>{% endif %}
         {% if strengths.strengths %}<tr><th>{% translate "得意産業" %}</th><td>{% for x in strengths.strengths %}{{ x.name }}{% if x.rank %} <small class="muted">{% blocktranslate with r=x.rank %}世界 {{ r }} 位{% endblocktranslate %}</small>{% endif %}{% if not forloop.last %}・{% endif %}{% endfor %}</td></tr>{% endif %}
         {% if strengths.titles %}<tr><th>{% translate "称号" %}</th><td>{{ strengths.titles|join:"・" }}</td></tr>{% endif %}
+        {% if awards %}<tr><th>{% translate "賞" %}</th><td>{% for a in awards %}{% include "web/award_badge.html" with name=a.name detail=a.detail %}{% endfor %}</td></tr>{% endif %}
       </table>
     {% else %}
       <p class="muted">{% translate "未集計です。最初のターンの更新後に表示されます。" %}</p>

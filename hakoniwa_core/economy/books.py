@@ -60,11 +60,16 @@ SUBSISTENCE = "subsistence"  # 項目: sales（自給の農家が作って市場
 # 財でないので exports.freight
 TRADE_GOODS = "trade_goods"
 # TRADE の相手ごとの内訳（#5455）。項目: <相手>.exports・<相手>.imports と、その品目ごとの
-# <相手>.exports.<財>・<相手>.imports.<財>。<相手> は相手の島の番号か、相手が決まらない
-# 圏の市場は "bloc"、海外の商人は "merchant"
+# <相手>.exports.<財>・<相手>.imports.<財>。<相手> は相手の島の番号か、海外の商人は
+# "merchant"。圏の市場の約定も、清算で決まった実際の相手の島で記録する（#5605）
 TRADE_PARTNERS = "trade_partners"
-PARTNER_BLOC = "bloc"
 PARTNER_MERCHANT = "merchant"
+# TRADE の相手ごとの経路の内訳（#5605）。項目: <相手>.exports.<経路>・<相手>.imports.<経路>。
+# 経路は圏の市場（bloc）・二国間契約（contract）・海外の商人（merchant）
+TRADE_PARTNER_ROUTES = "trade_partner_routes"
+ROUTE_BLOC = "bloc"
+ROUTE_CONTRACT = "contract"
+ROUTE_MERCHANT = "merchant"
 FREIGHT_ITEM = "freight"
 FX_REALIZED = "fx_realized"  # 施設の外貨を売った損益（為替の実現損益。フェーズ3-1）
 
@@ -92,12 +97,22 @@ def add_trade(island: IslandState, item: str, good: str, amount: int) -> None:
     add_sector(island, TRADE_GOODS, f"{item}.{good}", amount)
 
 
-def add_partner_trade(island: IslandState, partner: str, item: str, good: str, amount: int) -> None:
+def add_partner_trade(
+    island: IslandState,
+    partner: str,
+    item: str,
+    good: str,
+    amount: int,
+    route: str | None = None,
+) -> None:
     """貿易の相手ごとの内訳（TRADE_PARTNERS）に足す（#5455）。add_trade と同じ額を、相手と
-    品目ごとに分けて記録するだけで、計算は変えない。"""
+    品目ごとに分けて記録するだけで、計算は変えない。route を渡すと、経路ごとの内訳
+    （TRADE_PARTNER_ROUTES）にも同じ額を足す（#5605）。"""
     if amount:
         add_sector(island, TRADE_PARTNERS, f"{partner}.{item}", amount)
         add_sector(island, TRADE_PARTNERS, f"{partner}.{item}.{good}", amount)
+        if route is not None:
+            add_sector(island, TRADE_PARTNER_ROUTES, f"{partner}.{item}.{route}", amount)
 
 
 def stock_moved(island: IslandState, facility: int, good: str, qty: int) -> None:

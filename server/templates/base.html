@@ -7,6 +7,8 @@
   <link rel="apple-touch-icon" href="{% static 'img/push/icon-192.png' %}">
   <title>{% block title %}{% translate "経済版箱庭諸国" %}{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'css/site.css' %}">
+  {# 明暗の枠（台帳 P2 の 13）: data-theme の土台。既定では OS に合わせない #}
+  <script type="module" src="{% static 'js/theme.js' %}"></script>
   {% calendar_script %}
   <script src="{% static 'js/feedback.js' %}" defer></script>
   <script src="{% static 'js/table-sort.js' %}" defer></script>

@@ -23,6 +23,7 @@ from django.core.exceptions import PermissionDenied
 from django.db.models import Sum
 from django.shortcuts import render
 from django.utils import timezone
+from django.utils.translation import gettext, gettext_lazy
 
 from server.accounts.models import LoginAttempt
 from server.world.models import Island, World
@@ -31,24 +32,27 @@ STALE_SECONDS = 180  # 書き出しがこれより古ければ「止まってい
 BUCKET_SECONDS = 300  # 推移の図は 5 分ごとの平均にする（スマホの幅で 288 点）
 HOURS = 24
 
+# 画面の文言は多言語の形（gettext）で書く。移し方の型は docs/i18n.md。
+# モジュールの読み込み時に決まる辞書の値は gettext_lazy（訳は使うときに決まる）、
+# 呼び出しのたびに組み立てる文は gettext。辞書のキー（機械の識別子）は訳さない。
 # 見張り（hakoniwa-health）の知らせの印 → 画面の言葉
 ALERT_NAMES = {
-    "turn-late": "ターンが進んでいない",
-    "db-unreadable": "DB を読めない",
-    "backup-old": "毎晩の写しが古い",
-    "units-failed": "失敗しているサービスがある",
-    "tunnel-down": "トンネルがつながっていない",
-    "game-down": "ゲームのページが開かない",
+    "turn-late": gettext_lazy("ターンが進んでいない"),
+    "db-unreadable": gettext_lazy("DB を読めない"),
+    "backup-old": gettext_lazy("毎晩の写しが古い"),
+    "units-failed": gettext_lazy("失敗しているサービスがある"),
+    "tunnel-down": gettext_lazy("トンネルがつながっていない"),
+    "game-down": gettext_lazy("ゲームのページが開かない"),
 }
 UNIT_NAMES = {
-    "hakoniwa-gunicorn": "ゲーム本体",
-    "caddy": "配信（Caddy）",
-    "cloudflared": "トンネル",
-    "postgresql@16-main": "DB",
-    "hakoniwa-turn.timer": "ターンのタイマー",
-    "hakoniwa-deploy.timer": "反映のタイマー",
-    "hakoniwa-health.timer": "見張りのタイマー",
-    "hakoniwa-backup.timer": "写しのタイマー",
+    "hakoniwa-gunicorn": gettext_lazy("ゲーム本体"),
+    "caddy": gettext_lazy("配信（Caddy）"),
+    "cloudflared": gettext_lazy("トンネル"),
+    "postgresql@16-main": gettext_lazy("DB"),
+    "hakoniwa-turn.timer": gettext_lazy("ターンのタイマー"),
+    "hakoniwa-deploy.timer": gettext_lazy("反映のタイマー"),
+    "hakoniwa-health.timer": gettext_lazy("見張りのタイマー"),
+    "hakoniwa-backup.timer": gettext_lazy("写しのタイマー"),
 }
 
 
@@ -82,9 +86,13 @@ class Meter:
 
     @property
     def level_text(self) -> str:
-        return {"critical": "危ない", "serious": "高め", "good": "ふつう", "none": "読めない"}[
-            self.level
-        ]
+        # プロパティは開くたびに評価されるので、遅延でない gettext でよい。
+        return {
+            "critical": gettext("危ない"),
+            "serious": gettext("高め"),
+            "good": gettext("ふつう"),
+            "none": gettext("読めない"),
+        }[self.level]
 
 
 # ---- 機械の今の値（この場で読む） ----
@@ -112,7 +120,9 @@ def memory_percent() -> tuple[float | None, str]:
         return None, ""
     used = total - avail
     swap = values.get("SwapTotal", 0) - values.get("SwapFree", 0)
-    detail = f"{_gib(used * 1024)} / {_gib(total * 1024)}、スワップ {_gib(swap * 1024)}"
+    detail = gettext("{used} / {total}、スワップ {swap}").format(
+        used=_gib(used * 1024), total=_gib(total * 1024), swap=_gib(swap * 1024)
+    )
     return round(100 * used / total), detail
 
 
@@ -153,9 +163,9 @@ def temperature_c() -> float | None:
 
 def disks() -> list[tuple[str, str]]:
     """(画面の名前, 場所)。あるものだけ。"""
-    found = [("SSD（/）", "/")]
+    found = [(gettext("SSD（/）"), "/")]
     if os.path.ismount("/srv/backup"):
-        found.append(("HDD（写しの置き場）", "/srv/backup"))
+        found.append((gettext("HDD（写しの置き場）"), "/srv/backup"))
     return found
 
 
@@ -166,18 +176,24 @@ def _gib(n: float) -> str:
 def uptime_text() -> str:
     raw = _read("/proc/uptime")
     if not raw:
-        return "読めません"
+        return gettext("読めません")
     sec = int(float(raw.split()[0]))
     d, rest = divmod(sec, 86400)
-    return f"{d}日{rest // 3600}時間" if d else f"{rest // 3600}時間{rest % 3600 // 60}分"
+    return (
+        gettext("{days}日{hours}時間").format(days=d, hours=rest // 3600)
+        if d
+        else gettext("{hours}時間{minutes}分").format(hours=rest // 3600, minutes=rest % 3600 // 60)
+    )
 
 
 def load_text() -> str:
     try:
         one, five, fifteen = os.getloadavg()
     except OSError:
-        return "読めません"
-    return f"{one:.2f} / {five:.2f} / {fifteen:.2f}（1・5・15 分の平均、コア {os.cpu_count()}）"
+        return gettext("読めません")
+    return gettext("{load}（1・5・15 分の平均、コア {cores}）").format(
+        load=f"{one:.2f} / {five:.2f} / {fifteen:.2f}", cores=os.cpu_count()
+    )
 
 
 # ---- 書き出されたもの ----
@@ -276,15 +292,26 @@ def chart(
             {
                 "x": round(W * k / n, 1),
                 "w": round(W * step / n, 1),
-                "title": f"{at:%H:%M}〜 {label} 平均 {_fmt(avg)}{unit}、最大 "
-                f"{_fmt(max(v for _, v in chunk))}{unit}",
+                # label と unit は呼び出し側で訳したものが来る（文全体を 1 つの文言にする）。
+                "title": gettext("{time}〜 {label} 平均 {avg}{unit}、最大 {peak}{unit}").format(
+                    time=f"{at:%H:%M}",
+                    label=label,
+                    avg=_fmt(avg),
+                    unit=unit,
+                    peak=_fmt(max(v for _, v in chunk)),
+                ),
             }
         )
     last = points[-1][1]
     ticks = []
     for h in (24, 18, 12, 6):
         at = datetime.fromtimestamp(now - h * 3600, tz=timezone.get_current_timezone())
-        ticks.append({"x": round(W * (HOURS - h) / HOURS, 1), "text": f"{at:%H時}"})
+        ticks.append(
+            {
+                "x": round(W * (HOURS - h) / HOURS, 1),
+                "text": gettext("{hour}時").format(hour=f"{at:%H}"),
+            }
+        )
     return {
         "label": label,
         "empty": False,
@@ -356,8 +383,8 @@ def view(request):
     mem, mem_detail = memory_percent()
     temp = temperature_c()
     meters = [
-        Meter("CPU", cpu, "%", "この 1 分の平均" if status else "いま", 80, 95),
-        Meter("メモリ", mem, "%", mem_detail, 80, 90),
+        Meter("CPU", cpu, "%", gettext("この 1 分の平均") if status else gettext("いま"), 80, 95),
+        Meter(gettext("メモリ"), mem, "%", mem_detail, 80, 90),
     ]
     for name, path in disks():
         try:
@@ -375,15 +402,15 @@ def view(request):
             )
         )
     if temp is not None:
-        meters.append(Meter("温度", temp, "℃", "CPU", 80, 90, top=105))
+        meters.append(Meter(gettext("温度"), temp, "℃", "CPU", 80, 90, top=105))
 
     charts = []
     if rows:
         charts = [
             chart(rows, 1, "CPU", "%", now_ts, top=100),
-            chart(rows, 2, "メモリ", "%", now_ts, top=100),
-            chart(rows, 4, "温度", "℃", now_ts, top=100),
-            chart(rows, 5, "ページの応答", "ミリ秒", now_ts),
+            chart(rows, 2, gettext("メモリ"), "%", now_ts, top=100),
+            chart(rows, 4, gettext("温度"), "℃", now_ts, top=100),
+            chart(rows, 5, gettext("ページの応答"), gettext("ミリ秒"), now_ts),
         ]
         charts = [c for c in charts if not c["empty"]]
 
@@ -404,7 +431,7 @@ def view(request):
     now = timezone.now()
     context = {
         **_admin_context(request),
-        "title": "サーバーの様子",
+        "title": gettext("サーバーの様子"),
         "status": status,
         "written_ago": written_ago,
         "stale": written_ago is not None and written_ago > STALE_SECONDS,
@@ -418,7 +445,7 @@ def view(request):
         else int((now - backup_at).total_seconds() // 3600),
         "load": load_text(),
         "uptime": uptime_text(),
-        "version": settings.HAKONIWA_VERSION or "（不明）",
+        "version": settings.HAKONIWA_VERSION or gettext("（不明）"),
         "game": game_facts(now),
         "now": now,
     }

@@ -223,6 +223,10 @@ class Records(IslandStage):
         # 合計は trade.exports・trade.imports に合う）
         for item, amount in books.sector(island, books.TRADE_PARTNERS).items():
             stats[f"partner.{item}"] = amount
+        # 相手ごとの経路の内訳（#5605。partner_route.<相手>.exports.<経路>・
+        # partner_route.<相手>.imports.<経路>。相手ごとの合計は partner.* の額に合う）
+        for item, amount in books.sector(island, books.TRADE_PARTNER_ROUTES).items():
+            stats[f"partner_route.{item}"] = amount
         balance.write_stats(island)  # 経常収支と金融収支（フェーズ3-3）
         stats.update(_finances(island))
         stats.update(_banking(island, ctx))

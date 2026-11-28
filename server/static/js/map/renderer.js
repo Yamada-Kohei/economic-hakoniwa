@@ -1,6 +1,7 @@
 // 描画: 奥のマスから手前のマスへ（x + y の小さい順に）描き、高いものが奥を自然に隠すようにする。
 // 重ね表示の棒（UI-79）は島を描いたあとにもう一度奥から手前へ描き、建物に隠れず、半透明で奥の棒も透けて見える。
 
+import { detailLevel, isSmokeSource, phaseFor, SMOKE_CYCLE, SMOKE_PEAK_ALPHA, SMOKE_RGB, smokePuffs } from "./anim.js";
 import { barPixels, barsBackToFront, drawsBars, solidColor } from "./overlays/bars.js";
 import { CHANGE_COLORS } from "./changes.js";
 import { lift, tileToWorld } from "./projection.js";
@@ -14,7 +15,10 @@ import { drawSprite } from "./sprites.js";
  *          overlayMode（"bars" で量のある重ね表示を棒にする。ほかは塗り分け。UI-79）、
  *          sprites（sprites.js の loadSprites が返す絵。ないものは色の箱で描く）、
  *          flag（その国の旗の画像 { img, w, h }。sprites.js の loadFlag が返す。
- *                あれば首都のマスに小さく立てる）
+ *                あれば首都のマスに小さく立てる）、
+ *          smoke（煙を出すか。案1）、animTime（アニメの時刻（秒）。anim.js）、
+ *          light（軽量モード。煙を静止した姿で出す。案47）、
+ *          glow（変化マスの光の強さ 0〜1。初回表示で一度だけ。案3 の動き）
  */
 export function drawIsland(ctx, map, defs, view, options = {}) {
   const theme = defs.theme;
@@ -70,6 +74,11 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       if (!f && options.flag && map.capital && map.capital[0] === x && map.capital[1] === y) {
         drawCapitalFlag(ctx, options.flag, px, top + theme.tile_height / 2, theme);
       }
+      // 煙は施設と同じ奥行きの位置で描く。島を描き終えてからまとめて描くと、
+      // 手前の建物の上にも煙がかぶって見えた（重なり順の直し）
+      if (options.smoke && f && isSmokeSource(f, defs)) {
+        drawFacilitySmoke(ctx, f, map, defs, view, options, px, py - h);
+      }
       if (f?.hidden && map.mine) drawUnderground(ctx, px, top, theme, options.undergroundLabel || "");
       if (trench) drawOverlay(ctx, sprites.get("overlay/trench_front"), px, top, theme);
       if (map.occupied?.[i]) {
@@ -83,7 +92,9 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       }
       if (unitsAt.has(i)) drawUnits(ctx, unitsAt.get(i), px, top, theme, sprites);
       const changeKind = options.changeMarks?.get(`${x},${y}`);
-      if (changeKind) drawChangeMark(ctx, changeKind, px, top, theme);
+      if (changeKind) {
+        drawChangeMark(ctx, changeKind, px, top, theme, options.glow || 0, detailLevel(view.scale));
+      }
       if (options.marked?.has(`${x},${y}`)) outlineTop(ctx, px, top, theme, "#ff5722");
       if (options.selected && options.selected.x === x && options.selected.y === y) {
         outlineTop(ctx, px, top, theme, "#ffeb3b");
@@ -248,7 +259,7 @@ function facilitySprite(f, defs, map, isCapital, sprites, theme) {
   }
   const name = defs.facilities[f.kind]?.sprite || f.kind;
   if (!isCapital) {
-    return coastalSprite(f, defs, map, name, sprites) || lookSprite(f, defs, theme, name, sprites)
+    return coastalSprite(f, defs, map, name, sprites, theme) || lookSprite(f, defs, theme, name, sprites)
       || sprites.get(`facility/${name}`);
   }
   const buildings = defs.facilities[f.kind]?.category === "admin" ? map.capital_buildings || [] : [];
@@ -286,17 +297,29 @@ function lookSprite(f, defs, theme, name, sprites) {
 // 海が手前（右下・左下）の絵は水面と岸壁が見えるので先に選ぶ
 const SEA_SIDES = [["", 1, 0], ["@sw", 0, 1], ["@ne", 0, -1], ["@nw", -1, 0]];
 
-/** 海沿いの施設（coastal）は、隣の海のある向きの絵（facility/port@sw など）。なければ null。 */
-function coastalSprite(f, defs, map, name, sprites) {
+/**
+ * 海沿いの施設（coastal）は、隣の海のある向きの絵（facility/port@sw など）。なければ null。
+ * 向きは SEA_SIDES の優先順で先に決め（基本絵のある最初の向き）、建て増しの規模の段は
+ * その向きの中でだけ探す（facility/port@sw@s3。海が右下なら facility/port@s3）。
+ * 優先した向きの段絵が無ければその向きの基本絵に落ち、別の向きの段絵には回らない
+ * （段絵の有無で向きが変わらないようにするため。グラフィック強化 案17・案A）。
+ */
+function coastalSprite(f, defs, map, name, sprites, theme) {
   if (!defs.facilities[f.kind]?.coastal) return null;
   const n = map.size;
+  const tier = 1 + (theme?.size_tiers || []).filter((t) => (f.size || 1) >= t).length;
   for (const [suffix, dx, dy] of SEA_SIDES) {
     const x = f.x + dx;
     const y = f.y + dy;
     if (x < 0 || y < 0 || x >= n || y >= n) continue;
     if (defs.terrain[map.terrain[y * n + x]]?.land) continue;
-    const sprite = sprites.get(`facility/${name}${suffix}`);
-    if (sprite) return sprite;
+    const base = sprites.get(`facility/${name}${suffix}`);
+    if (!base) continue;
+    if (tier > 1) {
+      const tiered = sprites.get(`facility/${name}${suffix}@s${tier}`);
+      if (tiered) return tiered;
+    }
+    return base;
   }
   return null;
 }
@@ -392,20 +415,32 @@ export function drawCapitalFlag(ctx, flag, px, base, theme) {
 }
 
 /**
- * 前のターンから変わったマスの印（案3 の静止版）: 種類の色の静止枠と、上の頂点に色丸＋白い記号。
+ * 前のターンから変わったマスの印（案3）: 種類の色の静止枠と、上の頂点に色丸＋白い記号。
  * 記号は 建設=＋、撤去=×、段階=◆。色は changes.js の CHANGE_COLORS（凡例と同じ色）。
  * top はマスの上面の上の頂点。丸は枠の角に重ね、白い縁を付けて建物や地形の絵に埋もれないようにする。
  * 止まった施設の赤い点（マスの真ん中）とは置く場所を分け、重なっても両方読めるようにする。
+ * glow（0〜1、第2波の動き）がある間は、静止枠の外に広がる光の枠を重ねる。
+ * 遠く（detail が "far"）では丸と記号を省き、枠だけにする（案46 のズーム別の詳しさ）。
  */
-function drawChangeMark(ctx, kind, px, top, theme) {
+function drawChangeMark(ctx, kind, px, top, theme, glow = 0, detail = "near") {
   const color = CHANGE_COLORS[kind];
   if (!color) return;
   const hw = theme.tile_width / 2;
   const hh = theme.tile_height / 2;
+  if (glow > 0) {
+    ctx.save();
+    ctx.globalAlpha = glow * 0.55;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    diamondPath(ctx, px, top - glow * hh * 0.5, hw + glow * hw * 0.45, hh + glow * hh * 0.45);
+    ctx.stroke();
+    ctx.restore();
+  }
   ctx.strokeStyle = color;
   ctx.lineWidth = 2.5;
   diamondPath(ctx, px, top, hw, hh);
   ctx.stroke();
+  if (detail === "far") return;
   const r = Math.max(5, hh * 0.42);
   ctx.beginPath();
   ctx.arc(px, top, r, 0, Math.PI * 2);
@@ -442,6 +477,96 @@ function drawChangeMark(ctx, kind, px, top, theme) {
     ctx.fill();
   }
   ctx.restore();
+}
+
+/**
+ * 建物のてっぺんの y（地図の座標）。絵があれば絵の上端、なければ色の箱の上面。
+ * drawFacility の置き方に合わせた近似で、煙の出る位置を決めるためだけに使う。
+ */
+function facilityTopY(f, defs, map, ground, theme, sprites) {
+  const isCapital = map.capital && map.capital[0] === f.x && map.capital[1] === f.y;
+  const sprite = facilitySprite(f, defs, map, isCapital, sprites, theme);
+  if (sprite) return ground + theme.tile_height - sprite.h;
+  const style = theme.facilities?.[f.kind] || theme.facility_fallback;
+  const base = ground + (theme.tile_height / 2) * (1 - 0.8);
+  return base - style.height * theme.facility_unit;
+}
+
+// 煙の粒の絵: 濃さの段ごとに、最初に1枚ずつだけ描いておいて使い回す。
+// 粒ごとに放射グラデーションを塗ると重い（実測 #6192: 煙源約40件で1コマ
+// 約33ms が粒の塗り）。絵が作れない環境（テスト用の疑似キャンバス等）では
+// null を返し、呼び出し側が従来どおり粒ごとに塗る。
+const SMOKE_SPRITE_SIZE = 128;
+const SMOKE_ALPHA_STEPS = 16;
+let smokeSpriteCache = null;
+
+function smokeSprites() {
+  if (smokeSpriteCache) return smokeSpriteCache;
+  const makeCanvas = () => {
+    if (typeof OffscreenCanvas !== "undefined") return new OffscreenCanvas(SMOKE_SPRITE_SIZE, SMOKE_SPRITE_SIZE);
+    if (typeof document !== "undefined") {
+      const c = document.createElement("canvas");
+      c.width = SMOKE_SPRITE_SIZE;
+      c.height = SMOKE_SPRITE_SIZE;
+      return c;
+    }
+    return null;
+  };
+  const half = SMOKE_SPRITE_SIZE / 2;
+  const sprites = [];
+  for (let k = 0; k < SMOKE_ALPHA_STEPS; k++) {
+    const canvas = makeCanvas();
+    if (!canvas) return null;
+    const g = canvas.getContext("2d");
+    if (!g) return null;
+    const a = (SMOKE_PEAK_ALPHA * k) / (SMOKE_ALPHA_STEPS - 1);
+    const grad = g.createRadialGradient(half, half, 0, half, half, half);
+    grad.addColorStop(0, `rgba(${SMOKE_RGB}, ${a})`);
+    grad.addColorStop(0.5, `rgba(${SMOKE_RGB}, ${a * 0.72})`);
+    grad.addColorStop(1, `rgba(${SMOKE_RGB}, 0)`);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, SMOKE_SPRITE_SIZE, SMOKE_SPRITE_SIZE);
+    sprites.push(canvas);
+  }
+  smokeSpriteCache = sprites;
+  return sprites;
+}
+
+/**
+ * 煙（案1）: 稼働中の工場・火力発電所の煙突から、粒がもくもくと湧き出して
+ * 昇り、広がりながら薄れていく。粒の決め方は anim.js（位相・詳しさ）。
+ * 色は一段濃い灰色（anim.js の SMOKE_RGB）。粒の絵は濃さの段ごとに作った
+ * ものを drawImage で使い回す（上の smokeSprites）。
+ * 描く位置は島の奥から手前への流れの中（drawIsland の施設の直後）で、
+ * 手前の建物が煙を隠すようにする。
+ * 軽量モード（options.light）では時刻を位相ぶんだけ進めて止め、静止した姿にする。
+ */
+function drawFacilitySmoke(ctx, f, map, defs, view, options, px, ground) {
+  const theme = defs.theme;
+  const sprites = options.sprites || new Map();
+  const detail = detailLevel(view.scale);
+  const topY = facilityTopY(f, defs, map, ground, theme, sprites);
+  const t = options.light ? phaseFor(f.x, f.y) * SMOKE_CYCLE : options.animTime || 0;
+  const puffSprites = smokeSprites();
+  for (const puff of smokePuffs(f, t, detail)) {
+    const cx = px + puff.dx * theme.tile_width;
+    const cy = topY + puff.dy * theme.tile_height;
+    const r = Math.max(1.5, puff.r * theme.tile_width);
+    if (puffSprites) {
+      const k = Math.round((puff.alpha / SMOKE_PEAK_ALPHA) * (SMOKE_ALPHA_STEPS - 1));
+      const img = puffSprites[Math.max(0, Math.min(SMOKE_ALPHA_STEPS - 1, k))];
+      ctx.drawImage(img, cx - r, cy - r, r * 2, r * 2);
+    } else {
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+      grad.addColorStop(0, `rgba(${SMOKE_RGB}, ${puff.alpha})`);
+      grad.addColorStop(0.5, `rgba(${SMOKE_RGB}, ${puff.alpha * 0.72})`);
+      grad.addColorStop(1, `rgba(${SMOKE_RGB}, 0)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
 }
 
 /** 止まっている施設には赤い印（絵の上にも描く）。top は印を置くひし形の上の頂点。

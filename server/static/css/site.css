@@ -10,9 +10,19 @@
   --border: #6f8fd0;
   --rule: #b7c9f0;  /* 表の行の区切り */
   --head: #c9d9ff;  /* 表の見出しの地 */
+  /* 明暗の共通変数（台帳 P2 の 13 の枠。theme.js が data-theme を付けたときだけ暗に替わる。
+     既定では付けないので、今までの見た目のまま） */
+  --bg-base: #e6f0ff;  /* = --bg */
+  --text-base: #102a6b;  /* = --fg */
+  --line-base: #b7c9f0;  /* = --rule */
+}
+html[data-theme="dark"] {
+  --bg-base: #161c28;
+  --text-base: #dfe6fb;
+  --line-base: #41527a;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg);
+body { margin: 0; background: var(--bg-base); color: var(--text-base);
   font-family: "MS PGothic", "ＭＳ Ｐゴシック", "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif; }
 main { padding: 0 16px 24px; max-width: 1100px; margin: 0 auto; }
 .site-footer { max-width: 1100px; margin: 0 auto; padding: 8px 16px 24px; border-top: 1px solid var(--border); font-size: 0.85em; color: #555; }
@@ -100,7 +110,8 @@ table.market-table tbody tr:nth-child(even) > :first-child { background: var(--p
 .mark-buttons button { margin: 0; }
 .island-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
 .island-stats .panel { margin: 0; }
-.map-tools { margin: 4px 0; }
+.map-tools { margin: 4px 0; padding-bottom: 4px; border-bottom: 1px solid var(--line-base); }
+.smoke-swatch { color: #78909c; font-weight: bold; }
 .capacity-bar { display: block; height: 10px; margin-top: 4px; max-width: 360px; background: #cfe3c4; border: 1px solid #9bb88c; border-radius: 3px; overflow: hidden; }
 .capacity-bar .capacity-busy { display: block; height: 100%; background: var(--accent); }
 .toggle-button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -141,6 +152,8 @@ table.market-table tbody tr:nth-child(even) > :first-child { background: var(--p
 .world-grid .island-pixels { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
 .world-grid .cell-name { position: absolute; left: 0; right: 0; bottom: 0; padding: 1px 2px; font-size: 10px;
   line-height: 1.2; background: rgba(0, 0, 0, 0.45); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 世界マップの島名の帯に出す小さい旗（グラフィック強化 案5。大きさは表の .table-flag と同じ 24×16） */
+.world-grid .cell-flag { display: inline-block; width: 24px; height: 16px; object-fit: contain; vertical-align: middle; margin-right: 2px; background: #fff; box-shadow: 0 0 0 1px var(--rule); }
 .world-grid .free { background: #f0f4f8; cursor: pointer; }
 .world-grid .free:hover, .world-grid .free.chosen { background: #ff7043; }
 /* 気候帯（フェーズ3-2） */
@@ -294,6 +307,8 @@ figure.chart select { max-width: 100%; }
 table td.num, table th.num { text-align: right; white-space: nowrap; }
 table td.numeric-with-note { white-space: normal; }
 .numeric-value { white-space: nowrap; }
+/* 貿易の相手国の表: 経路の内訳は直近1年の金額の欄の2行目に小さく折り返して出す（表が PC 幅に収まるように） */
+table.trade-partners .route-note { display: block; }
 table.info.money-table td { white-space: nowrap; }
 .loss { color: #c62828; }
 .warning-cell { color: #b26a00; }

@@ -91,11 +91,13 @@ MILESTONE_KINDS = (
 
 def timeline(island: m.Island, profile: Profile | None) -> list[dict[str, Any]]:
     """この国の年表（古い順）: ターンログの主な出来事（建国・選挙・憲法の改正など）と、外交の出来事
-    （宣戦・停戦・講和・条約）。各行に、紀年ごとの区切り（period）と節目かどうか（milestone）を付ける。"""
+    （宣戦・停戦・講和・条約）。各行に、紀年ごとの区切り（period）と節目かどうか（milestone）を付ける。
+    賞を取った瞬間も混ぜる（賞は記録を持たないので、到達ターンは awards.moments が統計と
+    ターンログから導く。同じターンの賞は、そのターンの出来事の後に置く）。"""
     kinds = TurnLog.objects.filter(top.headline_filter() | Q(kind__in=DIPLOMACY_KINDS))
     logs = list(kinds.filter(island=island).order_by("-turn", "-id")[:TIMELINE])
     logs.reverse()
-    return [
+    rows = [
         {
             "turn": log.turn,
             "date": services.date_text(island, profile, log.turn),
@@ -105,6 +107,20 @@ def timeline(island: m.Island, profile: Profile | None) -> list[dict[str, Any]]:
         }
         for log, entry in zip(logs, display.log_entries(logs), strict=True)
     ]
+    for moment in awards.moments(island.world, island.id):
+        rows.append(
+            {
+                "turn": moment["turn"],
+                "date": services.date_text(island, profile, moment["turn"]),
+                "period": services.period_text(island, profile, moment["turn"]),
+                "milestone": True,
+                "text": display.message(
+                    "award_gained", award=moment["name"], detail=moment["detail"]
+                ),
+            }
+        )
+    rows.sort(key=lambda r: r["turn"])  # 安定ソート: 同じターンでは出来事 → 賞の順を保つ
+    return rows
 
 
 def timeline_text(rows: list[dict[str, Any]]) -> str:

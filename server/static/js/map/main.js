@@ -3,7 +3,9 @@
 // ほかのマスを押すとそのマスの情報だけに替わる。地図を動かすと窓もマスに付いて動く。
 
 import { attachControls } from "./controls.js";
+import { GLOW_SECONDS, glowAlpha, readLightMode, readSmokeShown, writeLightMode, writeSmokeShown } from "./anim.js";
 import { changeMarks, readChangesShown, writeChangesShown } from "./changes.js";
+import { readFlagShown, writeFlagShown } from "./flagtoggle.js";
 import { drawMinimap, minimapTile } from "./minimap.js";
 import { BARS, FILL, overlayLegend, readOverlayMode, writeOverlayMode } from "./overlays/bars.js";
 import { overlayList } from "./overlays/index.js";
@@ -53,11 +55,20 @@ const storage = (() => {
     return null; // 覚えられない窓では毎回棒に戻る
   }
 })();
+/** 軽量モードの既定（#6050）: 画面が狭い（幅760px以下）ときだけ入。 */
+function lightDefault() {
+  return narrow.matches;
+}
 const state = {
   selected: null, marked: new Set(), overlay: null, overlayMode: readOverlayMode(storage),
   sprites: new Map(), flag: null, undergroundLabel: words().hidden,
   ruler: readRulerShown(storage), // 縁の目盛りと座標（UI-85）。既定は出さない
-  changes: readChangesShown(storage), changeMarks: null, // 前のターンから変わったマスの印（案3 の静止版）。既定は出さない
+  changes: readChangesShown(storage), changeMarks: null, // 前のターンから変わったマスの印（案3）。既定は出さない
+  flagShown: readFlagShown(storage), // 首都の旗（案23）を出すか。既定は出す
+  // 第2波の表示（anim.js）: 煙（案1。既定は出す）、軽量モード（案47。
+  // 既定は画面が狭いときだけ入。#6050）
+  smoke: readSmokeShown(storage),
+  light: readLightMode(storage, lightDefault()), animTime: 0, glow: 0,
 };
 let pending = false;
 
@@ -71,7 +82,7 @@ function redraw() {
   requestAnimationFrame(() => {
     pending = false;
     try {
-      drawIsland(ctx, map, defs, view, state);
+      drawIsland(ctx, map, defs, view, { ...state, flag: state.flagShown ? state.flag : null });
       if (state.ruler) drawRuler(ctx, map, view, theme);
       if (minimap) drawMinimap(minimap, map, defs, state.selected);
       placePopover();
@@ -81,6 +92,46 @@ function redraw() {
       showLoadFailure();
     }
   });
+}
+
+// 動きの駆動（第2波）: 煙と変化マスの光に要るときだけ、約100ミリ秒に1回描き直す。
+// 軽量モードでは駆動しない（煙は静止した姿で描かれる）。光は初回表示で一度だけ。
+let animFrame = null;
+let lastAnimDraw = 0;
+let glowStartMs = null;
+let glowPending = false;
+
+function animNeeded() {
+  return !state.light && (state.smoke || glowPending || glowStartMs !== null);
+}
+
+function animStep(now) {
+  animFrame = null;
+  if (glowPending) {
+    glowPending = false;
+    glowStartMs = now;
+  }
+  if (glowStartMs !== null) {
+    state.glow = glowAlpha((now - glowStartMs) / 1000);
+    if (now - glowStartMs >= GLOW_SECONDS * 1000) {
+      glowStartMs = null;
+      state.glow = 0;
+    }
+  }
+  if (now - lastAnimDraw >= 100) {
+    lastAnimDraw = now;
+    state.animTime = now / 1000;
+    redraw();
+  }
+  if (animNeeded()) animFrame = requestAnimationFrame(animStep);
+}
+
+function syncAnim() {
+  if (animNeeded() && animFrame === null) animFrame = requestAnimationFrame(animStep);
+  if (!animNeeded() && animFrame !== null) {
+    cancelAnimationFrame(animFrame);
+    animFrame = null;
+  }
 }
 
 /** マスの中ほどの、地図の上の位置（CSS ピクセル）。 */
@@ -302,6 +353,9 @@ async function applyChanges() {
     }
   }
   state.changeMarks = state.changes ? changeMarks(map) : null;
+  // 初回表示で一度だけ光らせる（第2波）。軽量モードでは光らせない
+  if (state.changes && state.changeMarks?.size && !state.light) glowPending = true;
+  syncAnim();
   redraw();
 }
 if (changesToggle) {
@@ -312,6 +366,53 @@ if (changesToggle) {
     applyChanges();
   });
   if (state.changes) applyChanges();
+}
+
+// 首都の旗（案23）の表示の切り替え（案44 の旗の分）。出すかどうかは覚え、
+// 次に開いたときも使う（変わったマスと同じ流儀）
+const flagToggle = document.getElementById("map-flag");
+if (flagToggle) {
+  flagToggle.checked = state.flagShown;
+  flagToggle.addEventListener("change", () => {
+    state.flagShown = flagToggle.checked;
+    writeFlagShown(storage, state.flagShown);
+    redraw();
+  });
+}
+
+// 煙（案1）と軽量モード（案47）の切り替え（第2波、案44 の表示の切り替え）。
+// 出すかどうかは覚え、次に開いたときも使う（変わったマスと同じ流儀）
+const smokeToggle = document.getElementById("map-smoke");
+const smokeLegend = document.getElementById("smoke-legend");
+function applySmoke() {
+  if (smokeLegend) smokeLegend.hidden = !state.smoke;
+  syncAnim();
+  redraw();
+}
+if (smokeToggle) {
+  smokeToggle.checked = state.smoke;
+  smokeToggle.addEventListener("change", () => {
+    state.smoke = smokeToggle.checked;
+    writeSmokeShown(storage, state.smoke);
+    applySmoke();
+  });
+}
+applySmoke();
+
+const lightToggle = document.getElementById("map-light");
+if (lightToggle) {
+  lightToggle.checked = state.light;
+  lightToggle.addEventListener("change", () => {
+    state.light = lightToggle.checked;
+    writeLightMode(storage, state.light);
+    if (state.light) {
+      glowPending = false;
+      glowStartMs = null;
+      state.glow = 0;
+    }
+    syncAnim();
+    redraw();
+  });
 }
 
 // 棒と塗り分けの切り替え（UI-79）。選んだ表し方は覚え、次に開いたときも使う

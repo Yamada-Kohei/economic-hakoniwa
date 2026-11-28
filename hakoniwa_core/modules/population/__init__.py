@@ -110,6 +110,10 @@ def _rand_round(value: float, rng: random.Random) -> int:
 
 # マスの ext: 自給の農業ができる村か（W-272。population.farming_by_housing が入のときだけ書く）
 FARMING = "farming"
+# マスの ext: 印を決めたときの住宅地の段階（refresh_farming。段階が変わったマスだけ決め直すため）
+FARMING_LEVEL = "farming_level"
+# 島の ext: 一度だけの戻しを済ませた印と、戻した人数（移し替えの段の restore_flipped_farming）
+FARMING_RESTORED = "farming_restored"
 
 
 def _farming(defs: Defs, tile: Tile) -> bool:
@@ -136,12 +140,17 @@ def refresh_farming(defs: Defs, config: GameConfig, island: IslandState) -> None
     ない人が自給の農家と失業者を行き来した（LAN の写しを 30 ターン回すと、8003 島 3 の 1 マスが
     6 回入れ替わり、自給 0〜19,352 人・失業者 1〜10,093 人。quick の 1 本で 111 マス 296 回）。
     住宅地の建ったマスは建った段階（床を足す工事でしか変わらない）だけで決める（_housed_farming）。
-    村か町かは、その時々の人数ではなく土地の使い方で決まる。住宅地のないマスは前の印を引き継ぎ、
-    村から町へは人数が町の下限に届いたときだけ移り、町の印は人がいなくなるまで残す（固定の幅は
-    持たない）。切なら印を書かず、前に書いた印は消す。"""
+    村か町かは、その時々の人数ではなく土地の使い方で決まる。ただし建った段階で決め直すのは、
+    段階が変わったマスだけ（印と一緒に、そのときの段階を FARMING_LEVEL に残して比べる）。それ
+    以外のマスは前の印のままにする。初めて決めるマスは、前の決め方（人数）で決める。既定を入に
+    した最初のターンに全マスを建った段階で数え替えると、人数は村の大きさなのに床だけ育っていた
+    マスの自給が一度に消えた（2026-11-25 の本番。掲示板 #6009・#6011）。住宅地のないマスは前の
+    印を引き継ぎ、村から町へは人数が町の下限に届いたときだけ移り、町の印は人がいなくなるまで
+    残す（固定の幅は持たない）。切なら印を書かず、前に書いた印は消す。"""
     if not config.get("population.farming_by_housing"):
         for tile in island.tiles:
             tile.ext.pop(FARMING, None)
+            tile.ext.pop(FARMING_LEVEL, None)
         return
     homes = {
         (f.x, f.y): f for f in island.facilities if fac.is_housing(config, f) and fac.on_map(f)
@@ -149,11 +158,50 @@ def refresh_farming(defs: Defs, config: GameConfig, island: IslandState) -> None
     for tile in island.tiles:
         home = homes.get((tile.x, tile.y))
         if home is not None:
-            tile.ext[FARMING] = _housed_farming(defs, home, tile)
+            level = home.ext.get("level") or defs.settlement_levels()[0]
+            mark = tile.ext.get(FARMING)
+            base = tile.ext.get(FARMING_LEVEL)
+            if mark is None and base is None:
+                # 初めて決めるマスは前の決め方（人数）で決め、そのときの段階を土台に残す
+                tile.ext[FARMING] = _farming_by_size(defs, tile.population)
+            elif base is not None and base != level:
+                # 段階が変わったマスだけ、建った段階で決め直す
+                tile.ext[FARMING] = _housed_farming(defs, home, tile)
+            # それ以外のマスは前の印のまま
+            tile.ext[FARMING_LEVEL] = level
         elif tile.population <= 0:
             tile.ext.pop(FARMING, None)
+            tile.ext.pop(FARMING_LEVEL, None)
         elif tile.ext.get(FARMING, True):
             tile.ext[FARMING] = _farming_by_size(defs, tile.population)
+
+
+def restore_flipped_farming(defs: Defs, config: GameConfig, island: IslandState) -> None:
+    """一度だけの戻し（掲示板 #6011）: 既定を入にしたときの数え替えで倒れたマスを村の印に戻す。
+
+    倒れたマスは「人数は村の大きさ・建った段階は町以上・印は False」の形で残っている。そのマスを
+    村の印（True）に戻し、戻した人数（そのマスの人口の合計）を島の ext（FARMING_RESTORED）と
+    ターンログに残す。一度だけの処理なので毎ターンの refresh_farming には置かず、移し替えの段
+    （modules/upgrade）から呼ぶ（#6188）。済ませた島と、設定が切の島（印そのものを使わないので、
+    後で入にしたときに改めて効くよう印も残さない）では何もしない。"""
+    if not config.get("population.farming_by_housing"):
+        return
+    if FARMING_RESTORED in island.ext:
+        return
+    homes = {
+        (f.x, f.y): f for f in island.facilities if fac.is_housing(config, f) and fac.on_map(f)
+    }
+    restored = 0
+    for tile in island.tiles:
+        home = homes.get((tile.x, tile.y))
+        if home is None or tile.ext.get(FARMING) is not False:
+            continue
+        if _farming_by_size(defs, tile.population) and not _built_farming(defs, home):
+            tile.ext[FARMING] = True
+            restored += tile.population
+    island.ext[FARMING_RESTORED] = restored
+    if restored > 0:
+        island.log.append(LogEntry("farming_restored", {"count": restored}))
 
 
 def _housed_farming(defs: Defs, home: Facility, tile: Tile) -> bool:
